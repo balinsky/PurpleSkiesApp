@@ -41,6 +41,89 @@ function checkCode(entry: EntryData | null): string {
   return 'N';
 }
 
+function setInfoCell(ws: XLSX.WorkSheet, c: number, r: number, v: string) {
+  const addr = XLSX.utils.encode_cell({ c, r });
+  ws[addr] = { t: 's', v };
+  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1');
+  if (c > range.e.c) range.e.c = c;
+  if (r > range.e.r) range.e.r = r;
+  ws['!ref'] = XLSX.utils.encode_range(range);
+}
+
+function addInfoBlock(ws: XLSX.WorkSheet, colA: number, year: number, siteName: string) {
+  const colB = colA + 1;
+
+  const siteInfo: [number, string, string][] = [
+    [2, 'Season:  ', String(year)],
+    [3, 'Name:', ''],
+    [4, 'Address:', ''],
+    [5, 'City:', ''],
+    [6, 'State:', ''],
+    [7, 'Zip:', ''],
+    [8, 'Site location:', siteName],
+  ];
+  for (const [row, label, val] of siteInfo) {
+    setInfoCell(ws, colA, row, label);
+    if (val) setInfoCell(ws, colB, row, val);
+  }
+
+  setInfoCell(ws, colA, 10, 'Age Codes');
+  const ageCodes: [string, string][] = [
+    ['ASY/ASY', 'Adult male / adult female'],
+    ['ASY/SY',  'Adult male / subadult female'],
+    ['SY/ASY',  'Subadult male / adult female'],
+    ['SY/SY',   'Subadult male / subadult female'],
+    ['UNK/ASY', 'Unknown male / adult female'],
+    ['ASY/UNK', 'Adult male / unknown female'],
+    ['UNK/SY',  'Unknown male / subadult female'],
+    ['SY/UNK',  'Subadult male / unknown female'],
+    ['UNK/UNK', 'Unknown male / unknown female'],
+  ];
+  for (let i = 0; i < ageCodes.length; i++) {
+    setInfoCell(ws, colA, 11 + i, ageCodes[i][0]);
+    setInfoCell(ws, colB, 11 + i, ageCodes[i][1]);
+  }
+
+  setInfoCell(ws, colA, 21, 'House Code');
+  setInfoCell(ws, colB, 21, 'Description');
+  const houseCodes: [string, string][] = [
+    ['WH', 'Wooden House'],
+    ['MH', 'Metal House'],
+    ['PH', 'Plastic House'],
+    ['NG', 'Natural Gourd'],
+    ['AG', 'Artificial Gourd'],
+  ];
+  for (let i = 0; i < houseCodes.length; i++) {
+    setInfoCell(ws, colA, 22 + i, houseCodes[i][0]);
+    setInfoCell(ws, colB, 22 + i, houseCodes[i][1]);
+  }
+
+  setInfoCell(ws, colA, 29, 'Hole Type Code');
+  setInfoCell(ws, colB, 29, 'Description');
+  const holeCodes: [string, string][] = [
+    ['RH', 'Round Hole'],
+    ['CH', 'Crescent Hole, including Clinger entrance'],
+    ['EH', 'Excluder Hole, including Connelly entrance'],
+    ['OH', 'Obround Hole'],
+  ];
+  for (let i = 0; i < holeCodes.length; i++) {
+    setInfoCell(ws, colA, 30 + i, holeCodes[i][0]);
+    setInfoCell(ws, colB, 30 + i, holeCodes[i][1]);
+  }
+
+  setInfoCell(ws, colA, 36, 'Martin Codes');
+  const martinCodes = [
+    'X=Empty Cavity', 'N=Nest', 'E=Egg(s)', 'Y=Young (living)',
+    '3do=Young 3 days old', 'HD=Hatching Day', 'DY=Dead Young',
+    'NR=Nest Replaced', 'D=Discarded', 'B=Banded', 'RA=Renesting Attempt',
+    'PM=Purple Martin', 'HS=House Sparrow', 'ST=Starling',
+    'TS=Tree Swallow', 'BB=Bluebird', 'HW=House Wren',
+  ];
+  for (let i = 0; i < martinCodes.length; i++) {
+    setInfoCell(ws, colA, 37 + i, martinCodes[i]);
+  }
+}
+
 export async function exportSeasonXls(
   SeasonId: string,
   SiteId: string,
@@ -63,7 +146,7 @@ export async function exportSeasonXls(
 
   const { data: Entries } = await supabase
     .from('nest_check_entries')
-    .select('nest_check_id, compartment_id, species, egg_count, young_count, nestling_age_days, nest_discarded, compartments(cavity_label, housing_units(name))')
+    .select('nest_check_id, compartment_id, species, egg_count, young_count, nestling_age_days, nest_discarded, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
     .in('nest_check_id', Checks.map(c => c.id));
 
   const { data: NestSeasons } = await supabase
@@ -79,7 +162,13 @@ export async function exportSeasonXls(
     for (const NS of NestSeasons) AgeMap.set(NS.compartment_id, NS);
   }
 
-  type CompData = { unit_name: string; label: string; byCheck: Map<string, EntryData> };
+  type CompData = {
+    unit_name: string;
+    label: string;
+    housing_type: string;
+    hole_type: string;
+    byCheck: Map<string, EntryData>;
+  };
   const CompMap = new Map<string, CompData>();
 
   for (const E of Entries) {
@@ -87,17 +176,19 @@ export async function exportSeasonXls(
     if (!comp) continue;
     if (!CompMap.has(E.compartment_id)) {
       CompMap.set(E.compartment_id, {
-        unit_name: (comp.housing_units as any)?.name ?? '',
-        label: comp.cavity_label as string,
-        byCheck: new Map(),
+        unit_name:    (comp.housing_units as any)?.name ?? '',
+        label:        comp.cavity_label as string,
+        housing_type: (comp.housing_type as string) ?? '',
+        hole_type:    (comp.hole_type as string) ?? '',
+        byCheck:      new Map(),
       });
     }
     CompMap.get(E.compartment_id)!.byCheck.set(E.nest_check_id, {
-      species:          E.species ?? null,
-      egg_count:        E.egg_count ?? 0,
-      young_count:      E.young_count ?? 0,
+      species:           E.species ?? null,
+      egg_count:         E.egg_count ?? 0,
+      young_count:       E.young_count ?? 0,
       nestling_age_days: E.nestling_age_days ?? null,
-      nest_discarded:   E.nest_discarded ?? false,
+      nest_discarded:    E.nest_discarded ?? false,
     });
   }
 
@@ -122,7 +213,6 @@ export async function exportSeasonXls(
       ? [Ages.male_age, Ages.female_age].filter(Boolean).join('/')
       : '';
 
-    // PM-specific timeline
     const EWD = Checks.map(c => ({ date: c.check_date, entry: Data.byCheck.get(c.id) ?? null }))
       .filter(({ entry }) => entry?.species === 'PM');
 
@@ -136,7 +226,7 @@ export async function exportSeasonXls(
     const FirstWithEggs = EWD.find(({ entry }) => (entry?.egg_count ?? 0) > 0);
     if (FirstWithEggs?.entry) {
       const LastEmpty = [...EWD]
-        .filter(({ entry, date }) => (entry?.egg_count ?? 0) === 0 && date < FirstWithEggs.date)
+        .filter(({ date }) => (Data.byCheck.get(Checks.find(c => c.check_date === date)?.id ?? '')?.egg_count ?? 0) === 0 && date < FirstWithEggs.date)
         .pop();
       MaxEggs = Math.max(...EWD.map(({ entry }) => entry?.egg_count ?? 0));
       const LatestFirst = addDays(FirstWithEggs.date, -(FirstWithEggs.entry.egg_count - 1));
@@ -159,8 +249,8 @@ export async function exportSeasonXls(
     HatchCount = EWD.length > 0 ? Math.max(...EWD.map(({ entry }) => entry?.young_count ?? 0)) : 0;
 
     return [
-      Data.unit_name,
-      '',
+      Data.housing_type,
+      Data.hole_type,
       Data.label,
       AgeStr,
       FirstEggDate,
@@ -180,12 +270,17 @@ export async function exportSeasonXls(
   const ws = XLSX.utils.aoa_to_sheet([HeaderRow, ...DataRows]);
 
   const colWidths = [
-    { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 12 },
+    { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 },
     { wch: 16 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 20 },
     ...Checks.map(() => ({ wch: 8 })),
     { wch: 6 }, { wch: 6 }, { wch: 6 },
   ];
   ws['!cols'] = colWidths;
+
+  // ── Info block: 2 columns after Fledge # ──────────────────────────
+  // Fledge # is at index 9 + Checks.length + 2, so info block starts at + 2 more
+  const InfoCol = 9 + Checks.length + 5;
+  addInfoBlock(ws, InfoCol, Year, SiteName);
 
   XLSX.utils.book_append_sheet(wb, ws, `${Year} Nest Data`);
 
