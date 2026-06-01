@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
+import { Share } from 'react-native';
 import { supabase } from './supabase';
 
 type EntryData = {
@@ -197,13 +197,7 @@ export async function exportSeasonXls(
     encoding: FileSystem.EncodingType.Base64,
   });
 
-  const CanShare = await Sharing.isAvailableAsync();
-  if (!CanShare) return 'Sharing is not available on this device.';
-
-  await Sharing.shareAsync(FilePath, {
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    dialogTitle: `${SiteName} ${Year} Nest Data`,
-  });
+  await Share.share({ url: FilePath, title: `${SiteName} ${Year} Nest Data` });
 
   return null;
 }
