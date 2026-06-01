@@ -297,8 +297,8 @@ export async function exportSeasonXls(
 
   // ── Write & share ──────────────────────────────────────────────────
   const SafeName = SiteName.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const FilePath = `${FileSystem.documentDirectory}PurpleSkies_${SafeName}_${Year}.xls`;
-  const Base64 = XLSX.write(wb, { type: 'base64', bookType: 'xls', cellStyles: true });
+  const FilePath = `${FileSystem.documentDirectory}PurpleSkies_${SafeName}_${Year}.xlsx`;
+  const Base64 = XLSX.write(wb, { type: 'base64', bookType: 'xlsx', cellStyles: true });
 
   await FileSystem.writeAsStringAsync(FilePath, Base64, {
     encoding: FileSystem.EncodingType.Base64,
