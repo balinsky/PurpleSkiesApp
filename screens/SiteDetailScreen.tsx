@@ -39,6 +39,8 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
   const [DeleteDialogVisible, setDeleteDialogVisible] = useState(false);
   const [Deleting, setDeleting]                       = useState(false);
   const [DeleteError, setDeleteError]                 = useState('');
+  const [SiteDetailsExpanded, setSiteDetailsExpanded] = useState(false);
+  const [DangerZoneExpanded, setDangerZoneExpanded]   = useState(false);
 
   // ── Edit site ──────────────────────────────────────────────────────
   const [EditVisible, setEditVisible]   = useState(false);
@@ -148,51 +150,67 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
     <>
       <ScrollView contentContainerStyle={styles.Container}>
 
-        <View style={styles.SiteActions}>
-          <Button mode="outlined" compact onPress={openEditSite}>
-            Edit site name &amp; location
-          </Button>
-        </View>
+        {/* ── Site Details (collapsible) ─────────────────────────── */}
+        <Button
+          mode="text"
+          compact
+          icon={SiteDetailsExpanded ? 'chevron-up' : 'chevron-down'}
+          contentStyle={styles.ExpandBtnContent}
+          onPress={() => setSiteDetailsExpanded(!SiteDetailsExpanded)}
+          style={styles.ExpandBtn}
+        >
+          Site Details
+        </Button>
+        {SiteDetailsExpanded && (
+          <>
+            <View style={styles.SiteActions}>
+              <Button mode="outlined" compact onPress={openEditSite}>
+                Edit site name &amp; location
+              </Button>
+            </View>
 
-        <List.Section>
-          <List.Subheader>Housing Units</List.Subheader>
-          {HousingUnits.length === 0 ? (
-            <List.Item
-              title="No housing units yet"
-              description="Add a house or gourd rack to get started"
-              left={(props) => <List.Icon {...props} icon="home-outline" />}
-            />
-          ) : (
-            HousingUnits.map((Unit) => (
-              <Card
-                key={Unit.id}
-                style={styles.Card}
-                mode="outlined"
-                onPress={() => navigation.navigate('HousingUnitDetail', {
-                  UnitId:          Unit.id,
-                  UnitName:        Unit.name,
-                  UnitType:        Unit.unit_type,
-                  DefaultHoleType: Unit.default_hole_type,
-                })}
-              >
-                <Card.Title
-                  title={Unit.name}
-                  subtitle={UnitTypeLabel[Unit.unit_type] ?? Unit.unit_type}
+            <List.Section>
+              <List.Subheader>Housing Units</List.Subheader>
+              {HousingUnits.length === 0 ? (
+                <List.Item
+                  title="No housing units yet"
+                  description="Add a house or gourd rack to get started"
+                  left={(props) => <List.Icon {...props} icon="home-outline" />}
                 />
-              </Card>
-            ))
-          )}
-          <Button
-            mode="outlined"
-            style={styles.SectionButton}
-            onPress={() => navigation.navigate('CreateHousingUnit', { SiteId })}
-          >
-            Add Housing Unit
-          </Button>
-        </List.Section>
+              ) : (
+                HousingUnits.map((Unit) => (
+                  <Card
+                    key={Unit.id}
+                    style={styles.Card}
+                    mode="outlined"
+                    onPress={() => navigation.navigate('HousingUnitDetail', {
+                      UnitId:          Unit.id,
+                      UnitName:        Unit.name,
+                      UnitType:        Unit.unit_type,
+                      DefaultHoleType: Unit.default_hole_type,
+                    })}
+                  >
+                    <Card.Title
+                      title={Unit.name}
+                      subtitle={UnitTypeLabel[Unit.unit_type] ?? Unit.unit_type}
+                    />
+                  </Card>
+                ))
+              )}
+              <Button
+                mode="outlined"
+                style={styles.SectionButton}
+                onPress={() => navigation.navigate('CreateHousingUnit', { SiteId })}
+              >
+                Add Housing Unit
+              </Button>
+            </List.Section>
+          </>
+        )}
 
-        <Divider />
+        <Divider style={styles.Divider} />
 
+        {/* ── Seasons (always visible) ───────────────────────────── */}
         <List.Section>
           <List.Subheader>Seasons</List.Subheader>
           {SiteSeasons.length === 0 ? (
@@ -238,20 +256,33 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
           )}
         </List.Section>
 
-        <Divider />
+        <Divider style={styles.Divider} />
 
-        <View style={styles.DangerZone}>
-          <Text variant="labelLarge" style={styles.DangerLabel}>Danger zone</Text>
-          <Button
-            mode="outlined"
-            textColor="red"
-            style={styles.DeleteButton}
-            onPress={() => setDeleteDialogVisible(true)}
-          >
-            Delete this site
-          </Button>
-          {DeleteError ? <Text style={styles.ErrorText}>{DeleteError}</Text> : null}
-        </View>
+        {/* ── Danger zone (collapsible) ──────────────────────────── */}
+        <Button
+          mode="text"
+          compact
+          textColor="red"
+          icon={DangerZoneExpanded ? 'chevron-up' : 'chevron-down'}
+          contentStyle={styles.ExpandBtnContent}
+          onPress={() => setDangerZoneExpanded(!DangerZoneExpanded)}
+          style={styles.ExpandBtn}
+        >
+          Danger zone
+        </Button>
+        {DangerZoneExpanded && (
+          <View style={styles.DangerActions}>
+            <Button
+              mode="outlined"
+              textColor="red"
+              style={styles.DeleteButton}
+              onPress={() => setDeleteDialogVisible(true)}
+            >
+              Delete this site
+            </Button>
+            {DeleteError ? <Text style={styles.ErrorText}>{DeleteError}</Text> : null}
+          </View>
+        )}
 
       </ScrollView>
 
@@ -311,13 +342,15 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  Container:     { padding: 16 },
-  SiteActions:   { marginBottom: 8 },
-  Card:          { marginHorizontal: 16, marginBottom: 8 },
-  SectionButton: { marginHorizontal: 16, marginTop: 4, marginBottom: 8 },
-  DangerZone:    { marginTop: 24, padding: 16 },
-  DangerLabel:   { color: 'red', marginBottom: 12 },
-  DeleteButton:  { borderColor: 'red' },
-  ErrorText:     { color: 'red', marginTop: 8 },
-  DialogInput:   { marginBottom: 8 },
+  Container:      { padding: 16 },
+  ExpandBtn:      { alignSelf: 'flex-start', marginTop: 8 },
+  ExpandBtnContent: { flexDirection: 'row-reverse' },
+  SiteActions:    { marginBottom: 8, marginTop: 4 },
+  Card:           { marginHorizontal: 16, marginBottom: 8 },
+  SectionButton:  { marginHorizontal: 16, marginTop: 4, marginBottom: 8 },
+  Divider:        { marginTop: 8 },
+  DangerActions:  { marginTop: 8, marginBottom: 8 },
+  DeleteButton:   { alignSelf: 'flex-start', borderColor: 'red' },
+  ErrorText:      { color: 'red', marginTop: 8 },
+  DialogInput:    { marginBottom: 8 },
 });
