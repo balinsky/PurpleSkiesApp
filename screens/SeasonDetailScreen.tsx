@@ -24,6 +24,46 @@ function formatDate(dateStr: string): string {
   });
 }
 
+function shortDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function addDays(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + days);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+type CompartmentProgress = {
+  compartment_id: string;
+  label: string;
+  unit_name: string;
+  first_egg_min: string | null;
+  first_egg_max: string | null;
+  proj_hatch_min: string | null;
+  proj_hatch_max: string | null;
+  actual_hatch: string | null;
+  proj_fledge: string | null;
+};
+
+function progressLine(P: CompartmentProgress): string {
+  if (P.actual_hatch) {
+    const fledge = P.proj_fledge ? `  ·  Fledge ${shortDate(P.proj_fledge)}` : '';
+    return `Hatched ${shortDate(P.actual_hatch)}${fledge}`;
+  }
+  if (!P.first_egg_min) return '';
+  const eggStr = P.first_egg_min === P.first_egg_max
+    ? shortDate(P.first_egg_min)
+    : `${shortDate(P.first_egg_min)}–${shortDate(P.first_egg_max!)}`;
+  if (!P.proj_hatch_min) return `1st egg: ${eggStr}`;
+  const hatchStr = P.proj_hatch_min === P.proj_hatch_max
+    ? shortDate(P.proj_hatch_min)
+    : `${shortDate(P.proj_hatch_min)}–${shortDate(P.proj_hatch_max!)}`;
+  return `1st egg: ${eggStr}  ·  Hatch: ~${hatchStr}`;
+}
+
 function todayString(): string {
   const now = new Date();
   const y = now.getFullYear();
@@ -41,8 +81,9 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   const [DatesError, setDatesError]               = useState('');
   const [ArrivalDatesExpanded, setArrivalDatesExpanded] = useState(false);
 
-  const [NestChecks, setNestChecks]   = useState<NestCheck[]>([]);
+  const [NestChecks, setNestChecks]       = useState<NestCheck[]>([]);
   const [ChecksLoading, setChecksLoading] = useState(true);
+  const [NestProgress, setNestProgress]   = useState<CompartmentProgress[]>([]);
 
   // ── Add check dialog ───────────────────────────────────────────────
   const [AddCheckVisible, setAddCheckVisible]   = useState(false);
@@ -52,29 +93,102 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
   useFocusEffect(
     useCallback(() => {
-      supabase
-        .from('site_seasons')
-        .select('date_first_asy_seen, date_first_sy_male_seen')
-        .eq('id', SeasonId)
-        .single()
-        .then(({ data }) => {
-          if (data) {
-            setFirstAsySeen(data.date_first_asy_seen ?? '');
-            setFirstSyMaleSeen(data.date_first_sy_male_seen ?? '');
-          }
-        });
+      async function loadAll() {
+        // Arrival dates
+        const { data: SeasonData } = await supabase
+          .from('site_seasons')
+          .select('date_first_asy_seen, date_first_sy_male_seen')
+          .eq('id', SeasonId)
+          .single();
+        if (SeasonData) {
+          setFirstAsySeen(SeasonData.date_first_asy_seen ?? '');
+          setFirstSyMaleSeen(SeasonData.date_first_sy_male_seen ?? '');
+        }
 
-      supabase
-        .from('nest_checks')
-        .select('id, check_date')
-        .eq('site_id', SiteId)
-        .gte('check_date', `${Year}-01-01`)
-        .lte('check_date', `${Year}-12-31`)
-        .order('check_date', { ascending: true })
-        .then(({ data }) => {
-          setNestChecks(data ?? []);
-          setChecksLoading(false);
-        });
+        // Nest check list
+        const { data: Checks } = await supabase
+          .from('nest_checks')
+          .select('id, check_date')
+          .eq('site_id', SiteId)
+          .gte('check_date', `${Year}-01-01`)
+          .lte('check_date', `${Year}-12-31`)
+          .order('check_date', { ascending: true });
+        setNestChecks(Checks ?? []);
+        setChecksLoading(false);
+
+        if (!Checks || Checks.length === 0) { setNestProgress([]); return; }
+
+        // All PM entries for the season (for nest progress)
+        const { data: Entries } = await supabase
+          .from('nest_check_entries')
+          .select('nest_check_id, compartment_id, egg_count, young_count, nestling_age_days, compartments(cavity_label, housing_units(name))')
+          .in('nest_check_id', Checks.map(c => c.id))
+          .eq('species', 'PM');
+
+        if (!Entries) { setNestProgress([]); return; }
+
+        // Group entries by compartment
+        const CompMap = new Map<string, { label: string; unit_name: string; ewd: { check_date: string; egg_count: number; young_count: number; nestling_age_days: number | null }[] }>();
+        for (const E of Entries) {
+          const Chk = Checks.find(c => c.id === E.nest_check_id);
+          if (!Chk) continue;
+          const comp = E.compartments as any;
+          if (!comp) continue;
+          if (!CompMap.has(E.compartment_id)) {
+            CompMap.set(E.compartment_id, {
+              label:     comp.cavity_label as string,
+              unit_name: (comp.housing_units as any)?.name as string ?? '',
+              ewd:       [],
+            });
+          }
+          CompMap.get(E.compartment_id)!.ewd.push({
+            check_date:       Chk.check_date,
+            egg_count:        E.egg_count ?? 0,
+            young_count:      E.young_count ?? 0,
+            nestling_age_days: E.nestling_age_days,
+          });
+        }
+
+        // Compute projections per compartment
+        const Progress: CompartmentProgress[] = [];
+        for (const [CompId, Data] of CompMap) {
+          if (!Data.ewd.some(e => e.egg_count > 0 || e.young_count > 0)) continue;
+
+          const EWD = [...Data.ewd].sort((a, b) => a.check_date.localeCompare(b.check_date));
+          let FirstEggMin: string | null = null, FirstEggMax: string | null = null;
+          let ProjHatchMin: string | null = null, ProjHatchMax: string | null = null;
+          let ActualHatch: string | null = null, ProjFledge: string | null = null;
+
+          const FirstWithEggs = EWD.find(e => e.egg_count > 0);
+          if (FirstWithEggs) {
+            const LastEmpty    = [...EWD].filter(e => e.egg_count === 0 && e.check_date < FirstWithEggs.check_date).pop();
+            const LatestFirst  = addDays(FirstWithEggs.check_date, -(FirstWithEggs.egg_count - 1));
+            const EarliestFirst = LastEmpty ? addDays(LastEmpty.check_date, 1) : null;
+            const MinFirst     = (EarliestFirst && EarliestFirst <= LatestFirst) ? EarliestFirst : LatestFirst;
+            FirstEggMin = MinFirst; FirstEggMax = LatestFirst;
+            const MaxEggs = Math.max(...EWD.map(e => e.egg_count));
+            ProjHatchMin = addDays(MinFirst,    MaxEggs - 1 + 15);
+            ProjHatchMax = addDays(LatestFirst, MaxEggs - 1 + 15);
+          }
+
+          const Anchor = EWD.find(e => e.young_count > 0 && (e.nestling_age_days ?? 0) > 0);
+          if (Anchor) {
+            const [ay, am, ad] = Anchor.check_date.split('-').map(Number);
+            const Hatch = new Date(ay, am - 1, ad);
+            Hatch.setDate(Hatch.getDate() - Anchor.nestling_age_days!);
+            ActualHatch = `${Hatch.getFullYear()}-${String(Hatch.getMonth() + 1).padStart(2, '0')}-${String(Hatch.getDate()).padStart(2, '0')}`;
+            ProjFledge  = addDays(ActualHatch, 26);
+          }
+
+          Progress.push({ compartment_id: CompId, label: Data.label, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge });
+        }
+
+        setNestProgress(Progress.sort((a, b) => {
+          const u = a.unit_name.localeCompare(b.unit_name);
+          return u !== 0 ? u : a.label.localeCompare(b.label);
+        }));
+      }
+      loadAll();
     }, [SeasonId, SiteId, Year])
   );
 
@@ -176,6 +290,19 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                 </>
               )}
 
+              {/* ── Nest progress ── */}
+              {NestProgress.length > 0 && (
+                <>
+                  <Text variant="labelLarge" style={styles.SectionHeader}>Nest Progress</Text>
+                  {NestProgress.map((P) => (
+                    <View key={P.compartment_id} style={styles.ProgressRow}>
+                      <Text style={styles.ProgressTitle}>{P.unit_name} · {P.label}</Text>
+                      <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
+                    </View>
+                  ))}
+                </>
+              )}
+
               {/* ── Nest checks header ── */}
               <Text variant="labelLarge" style={styles.SectionHeader}>Nest checks</Text>
               {!ChecksLoading && NestChecks.length === 0 && (
@@ -244,6 +371,9 @@ const styles = StyleSheet.create({
   Input:         { marginBottom: 8 },
   SaveDatesBtn:  { alignSelf: 'flex-start', marginBottom: 16 },
   Card:          { marginBottom: 8 },
+  ProgressRow:   { marginBottom: 6 },
+  ProgressTitle: { fontSize: 13, fontWeight: '500', color: '#222' },
+  ProgressDates: { fontSize: 12, color: '#555' },
   EmptyText:     { color: '#666', marginBottom: 16 },
   FAB:           { position: 'absolute', right: 16, bottom: 16 },
   DialogInput:   { marginBottom: 8 },
