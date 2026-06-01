@@ -35,10 +35,11 @@ function todayString(): string {
 export default function SeasonDetailScreen({ navigation, route }: Props) {
   const { SeasonId, SiteId, Year } = route.params;
 
-  const [FirstAsySeen, setFirstAsySeen]       = useState('');
-  const [FirstSyMaleSeen, setFirstSyMaleSeen] = useState('');
-  const [DatesLoading, setDatesLoading]       = useState(false);
-  const [DatesError, setDatesError]           = useState('');
+  const [FirstAsySeen, setFirstAsySeen]           = useState('');
+  const [FirstSyMaleSeen, setFirstSyMaleSeen]     = useState('');
+  const [DatesLoading, setDatesLoading]           = useState(false);
+  const [DatesError, setDatesError]               = useState('');
+  const [ArrivalDatesExpanded, setArrivalDatesExpanded] = useState(false);
 
   const [NestChecks, setNestChecks]   = useState<NestCheck[]>([]);
   const [ChecksLoading, setChecksLoading] = useState(true);
@@ -135,32 +136,45 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           ListHeaderComponent={(
             <View>
               {/* ── Arrival dates ── */}
-              <Text variant="labelLarge" style={styles.SectionHeader}>Site arrival dates</Text>
-              <Text variant="bodySmall" style={styles.Hint}>
-                ASY = After Second Year (adult).  SY = Second Year (yearling male).
-              </Text>
-              <DateInput
-                label="First ASY seen"
-                value={FirstAsySeen}
-                onChange={setFirstAsySeen}
-                style={styles.Input}
-              />
-              <DateInput
-                label="First SY male seen"
-                value={FirstSyMaleSeen}
-                onChange={setFirstSyMaleSeen}
-                style={styles.Input}
-              />
-              {DatesError ? <HelperText type="error" visible>{DatesError}</HelperText> : null}
               <Button
-                mode="outlined"
+                mode="text"
                 compact
-                loading={DatesLoading}
-                onPress={handleSaveDates}
-                style={styles.SaveDatesBtn}
+                icon={ArrivalDatesExpanded ? 'chevron-up' : 'chevron-down'}
+                contentStyle={styles.ExpandBtnContent}
+                onPress={() => setArrivalDatesExpanded(!ArrivalDatesExpanded)}
+                style={styles.ExpandBtn}
               >
-                Save dates
+                Arrival Dates
               </Button>
+              {ArrivalDatesExpanded && (
+                <>
+                  <Text variant="bodySmall" style={styles.Hint}>
+                    ASY = After Second Year (adult).  SY = Second Year (yearling male).
+                  </Text>
+                  <DateInput
+                    label="First ASY seen"
+                    value={FirstAsySeen}
+                    onChange={setFirstAsySeen}
+                    style={styles.Input}
+                  />
+                  <DateInput
+                    label="First SY male seen"
+                    value={FirstSyMaleSeen}
+                    onChange={setFirstSyMaleSeen}
+                    style={styles.Input}
+                  />
+                  {DatesError ? <HelperText type="error" visible>{DatesError}</HelperText> : null}
+                  <Button
+                    mode="outlined"
+                    compact
+                    loading={DatesLoading}
+                    onPress={handleSaveDates}
+                    style={styles.SaveDatesBtn}
+                  >
+                    Save dates
+                  </Button>
+                </>
+              )}
 
               {/* ── Nest checks header ── */}
               <Text variant="labelLarge" style={styles.SectionHeader}>Nest checks</Text>
@@ -223,7 +237,9 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   Container:     { flex: 1 },
   List:          { padding: 16, paddingBottom: 80 },
-  SectionHeader: { marginTop: 16, marginBottom: 4 },
+  SectionHeader:   { marginTop: 16, marginBottom: 4 },
+  ExpandBtn:       { alignSelf: 'flex-start', marginTop: 8 },
+  ExpandBtnContent:{ flexDirection: 'row-reverse' },
   Hint:          { color: '#666', marginBottom: 8 },
   Input:         { marginBottom: 8 },
   SaveDatesBtn:  { alignSelf: 'flex-start', marginBottom: 16 },
