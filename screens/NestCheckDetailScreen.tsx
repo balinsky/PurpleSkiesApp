@@ -36,6 +36,7 @@ const SpeciesLabel: Record<string, string> = {
 function buildEntrySummary(entry: {
   species: string; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean;
   egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null;
+  male_age?: string | null; female_age?: string | null;
 }): string {
   if (entry.is_empty_cavity) return 'Empty cavity';
   if (!entry.has_nest) return 'No nest';
@@ -55,6 +56,10 @@ function buildEntrySummary(entry: {
     }
   }
   if (entry.nest_discarded) Parts.push('discarded');
+  if (IsPM) {
+    const AgeParts = [entry.male_age && `♂ ${entry.male_age}`, entry.female_age && `♀ ${entry.female_age}`].filter(Boolean);
+    if (AgeParts.length > 0) Parts.push(AgeParts.join(' '));
+  }
   return Parts.join(' · ');
 }
 
@@ -138,6 +143,13 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       return Days > 0 ? Days : null;
     }
 
+    const { data: NestSeasonRows } = await supabase
+      .from('nest_seasons')
+      .select('compartment_id, male_age, female_age')
+      .eq('site_season_id', SeasonId);
+    const AgeMap = new Map<string, { male_age: string | null; female_age: string | null }>();
+    (NestSeasonRows ?? []).forEach((NS) => AgeMap.set(NS.compartment_id, NS));
+
     const EntryMap = new Map<string, NonNullable<typeof Entries>[number]>();
     (Entries ?? []).forEach((E) => EntryMap.set(E.compartment_id, E));
 
@@ -163,6 +175,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
             entry_summary: Entry ? buildEntrySummary({
               ...Entry,
               nestling_age_days: effectiveAge(C.id, Entry.nestling_age_days),
+              ...AgeMap.get(C.id),
             }) : null,
           };
         }),

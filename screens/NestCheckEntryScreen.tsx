@@ -368,10 +368,26 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     if (Err) { setErrorMessage(Err.message); return false; }
 
     if (IsPM) {
-      await supabase.from('nest_seasons').upsert(
-        { compartment_id: CompartmentId, site_season_id: SeasonId, male_age: MaleAge, female_age: FemaleAge },
-        { onConflict: 'compartment_id,site_season_id' }
-      );
+      const { data: Existing, error: SelectErr } = await supabase
+        .from('nest_seasons')
+        .select('id')
+        .eq('compartment_id', CompartmentId)
+        .eq('site_season_id', SeasonId)
+        .maybeSingle();
+
+      let AgeErr;
+      if (SelectErr) {
+        AgeErr = SelectErr;
+      } else if (Existing) {
+        ({ error: AgeErr } = await supabase.from('nest_seasons')
+          .update({ male_age: MaleAge, female_age: FemaleAge })
+          .eq('id', Existing.id));
+      } else {
+        ({ error: AgeErr } = await supabase.from('nest_seasons')
+          .insert({ compartment_id: CompartmentId, site_season_id: SeasonId, male_age: MaleAge, female_age: FemaleAge }));
+      }
+
+      if (AgeErr) { setErrorMessage(`Adult ages: ${AgeErr.message}`); return false; }
     }
 
     return true;
@@ -697,15 +713,6 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
         {/* ── Actions ─────────────────────────────────────────────── */}
         <View style={styles.Actions}>
-          {ExistingEntryId && (
-            <Button
-              mode="outlined" textColor="red"
-              style={[styles.ActionBtn, styles.DeleteBtn]}
-              onPress={() => setDeleteVisible(true)}
-            >
-              Delete entry
-            </Button>
-          )}
           <View style={styles.SaveRow}>
             <Button mode="contained" loading={Saving} onPress={handleSave} style={styles.ActionBtn}>
               {ExistingEntryId ? 'Update' : 'Save'}
@@ -716,6 +723,15 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               </Button>
             )}
           </View>
+          {ExistingEntryId && (
+            <Button
+              mode="outlined" textColor="red"
+              style={[styles.ActionBtn, styles.DeleteBtn]}
+              onPress={() => setDeleteVisible(true)}
+            >
+              Delete entry
+            </Button>
+          )}
         </View>
 
       </ScrollView>
