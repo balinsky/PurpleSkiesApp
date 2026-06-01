@@ -87,7 +87,10 @@ function Counter({
 
 // ── Screen ─────────────────────────────────────────────────────────────────
 export default function NestCheckEntryScreen({ navigation, route }: Props) {
-  const { CheckId, CheckDate, SiteId, CompartmentId, ExistingEntryId } = route.params;
+  const { CheckId, CheckDate, SeasonId, SiteId, CompartmentId, ExistingEntryId, AllCompartments, CompartmentIndex } = route.params;
+  const NextCompartment = (AllCompartments && CompartmentIndex !== undefined && CompartmentIndex < AllCompartments.length - 1)
+    ? AllCompartments[CompartmentIndex + 1]
+    : null;
   const { CompactMode, toggleCompactMode } = useSettings();
   function L(full: string, compact: string) { return CompactMode ? compact : full; }
 
@@ -184,11 +187,10 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       setPriorEggsSeen(OtherEntries.some(e => (e.egg_count ?? 0) > 0));
       setPriorYoungSeen(OtherEntries.some(e => (e.young_count ?? 0) > 0));
 
-      // Prev entry: most recent check strictly before the current date
-      const PrevCheck = [...SeasonChecks].reverse().find(c => c.check_date < CheckDate);
-      if (PrevCheck) {
-        const E = OtherEntries.find(e => e.nest_check_id === PrevCheck.id);
-        if (E) setPrevEntry({ ...E, check_date: PrevCheck.check_date });
+      // Prev entry: most recent check strictly before the current date that has data for this compartment
+      for (const Check of [...SeasonChecks].reverse().filter(c => c.check_date < CheckDate)) {
+        const E = OtherEntries.find(e => e.nest_check_id === Check.id);
+        if (E) { setPrevEntry({ ...E, check_date: Check.check_date }); break; }
       }
 
       // Entries with dates, sorted ascending — used for egg/hatch date calculations
@@ -293,7 +295,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   }
 
   // ── Save ───────────────────────────────────────────────────────────────
-  async function handleSave() {
+  async function performSave(): Promise<boolean> {
     setSaving(true);
     setErrorMessage('');
 
@@ -301,12 +303,12 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       if (YoungCount > 0 && EggCount === 0 && !PriorEggsSeen) {
         setErrorMessage('Eggs must be recorded before young can appear. Record a check showing eggs first.');
         setSaving(false);
-        return;
+        return false;
       }
       if (FledgedCount > 0 && YoungCount === 0 && !PriorYoungSeen) {
         setErrorMessage('Young must be present before fledging can occur. No young have been recorded for this compartment yet.');
         setSaving(false);
-        return;
+        return false;
       }
     }
 
@@ -341,8 +343,29 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     }
 
     setSaving(false);
-    if (Err) { setErrorMessage(Err.message); return; }
-    navigation.goBack();
+    if (Err) { setErrorMessage(Err.message); return false; }
+    return true;
+  }
+
+  async function handleSave() {
+    if (await performSave()) navigation.goBack();
+  }
+
+  async function handleSaveAndNext() {
+    if (!await performSave()) return;
+    if (NextCompartment) {
+      navigation.replace('NestCheckEntry', {
+        CheckId, CheckDate, SeasonId, SiteId,
+        CompartmentId:    NextCompartment.id,
+        CompartmentLabel: NextCompartment.cavity_label,
+        UnitName:         NextCompartment.unit_name,
+        ExistingEntryId:  NextCompartment.entry_id,
+        AllCompartments,
+        CompartmentIndex: CompartmentIndex! + 1,
+      });
+    } else {
+      navigation.goBack();
+    }
   }
 
   // ── Delete entry ───────────────────────────────────────────────────────
@@ -456,6 +479,15 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         {/* ── Purple Martin form ───────────────────────────────────── */}
         {!IsEmpty && IsPM && (
           <>
+            {EggCount === 0 && YoungCount === 0 && (
+              <Checkbox.Item
+                label={L('Nest (no eggs)', 'N')}
+                status={HasNestOnly ? 'checked' : 'unchecked'}
+                onPress={() => { const N = !HasNestOnly; setHasNestOnly(N); if (N) setIsEmpty(false); }}
+                style={styles.CheckboxItem}
+              />
+            )}
+
             <View style={styles.CountersRow}>
               <Counter
                 label={L('Eggs', 'E')} value={EggCount}
@@ -468,15 +500,6 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 prevValue={PrevEntry?.young_count}
               />
             </View>
-
-            {EggCount === 0 && YoungCount === 0 && (
-              <Checkbox.Item
-                label={L('Nest (no eggs)', 'N')}
-                status={HasNestOnly ? 'checked' : 'unchecked'}
-                onPress={() => { const N = !HasNestOnly; setHasNestOnly(N); if (N) setIsEmpty(false); }}
-                style={styles.CheckboxItem}
-              />
-            )}
 
             {EggCount > 0 && (
               <Counter label={L('Discarded eggs', 'ED')} value={DiscardedEggs} onChange={setDiscardedEggs} />
@@ -613,9 +636,16 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               Delete entry
             </Button>
           )}
-          <Button mode="contained" loading={Saving} onPress={handleSave} style={styles.ActionBtn}>
-            {ExistingEntryId ? 'Update' : 'Save'}
-          </Button>
+          <View style={styles.SaveRow}>
+            <Button mode="contained" loading={Saving} onPress={handleSave} style={styles.ActionBtn}>
+              {ExistingEntryId ? 'Update' : 'Save'}
+            </Button>
+            {NextCompartment && (
+              <Button mode="outlined" loading={Saving} onPress={handleSaveAndNext} style={styles.ActionBtn}>
+                Save & Next
+              </Button>
+            )}
+          </View>
         </View>
 
       </ScrollView>
@@ -668,7 +698,8 @@ const styles = StyleSheet.create({
   ExpandBtnContent:  { flexDirection: 'row-reverse' },
   ExpandedSection:   { paddingLeft: 8 },
   NotesInput:        { marginTop: 8 },
-  Actions:           { flexDirection: 'row', gap: 12, marginTop: 20 },
+  Actions:           { marginTop: 20, gap: 8 },
+  SaveRow:           { flexDirection: 'row', gap: 12 },
   ActionBtn:         { flex: 1 },
   DeleteBtn:         { borderColor: 'red' },
 });

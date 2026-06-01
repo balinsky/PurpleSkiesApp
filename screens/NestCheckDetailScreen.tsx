@@ -197,6 +197,9 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
   }
 
   function navigateToEntry(item: CompartmentRow) {
+    const AllCompartments = Sections.flatMap(s => s.data).map(c => ({
+      id: c.id, cavity_label: c.cavity_label, unit_name: c.unit_name, entry_id: c.entry_id,
+    }));
     navigation.navigate('NestCheckEntry', {
       CheckId,
       CheckDate,
@@ -206,6 +209,8 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       CompartmentLabel: item.cavity_label,
       UnitName:         item.unit_name,
       ExistingEntryId:  item.entry_id,
+      AllCompartments,
+      CompartmentIndex: AllCompartments.findIndex(c => c.id === item.id),
     });
   }
 
