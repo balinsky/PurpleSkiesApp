@@ -119,6 +119,8 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   // ── Previous check & hatch date ───────────────────────────────────────
   const [PrevEntry, setPrevEntry] = useState<PrevEntry | null>(null);
   const [CalculatedNestlingAge, setCalculatedNestlingAge] = useState<number | null>(null);
+  const [PriorEggsSeen, setPriorEggsSeen]   = useState(false);
+  const [PriorYoungSeen, setPriorYoungSeen] = useState(false);
 
   // ── Loading / saving / deleting ───────────────────────────────────────
   const [InitLoading, setInitLoading]     = useState(!!ExistingEntryId);
@@ -167,6 +169,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         .eq('compartment_id', CompartmentId);
 
       if (!OtherEntries) return;
+
+      setPriorEggsSeen(OtherEntries.some(e => (e.egg_count ?? 0) > 0));
+      setPriorYoungSeen(OtherEntries.some(e => (e.young_count ?? 0) > 0));
 
       // Prev entry: most recent check strictly before the current date
       const PrevCheck = [...SeasonChecks].reverse().find(c => c.check_date < CheckDate);
@@ -247,6 +252,19 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   async function handleSave() {
     setSaving(true);
     setErrorMessage('');
+
+    if (!ExistingEntryId && IsPM) {
+      if (YoungCount > 0 && EggCount === 0 && !PriorEggsSeen) {
+        setErrorMessage('Eggs must be recorded before young can appear. Record a check showing eggs first.');
+        setSaving(false);
+        return;
+      }
+      if (FledgedCount > 0 && YoungCount === 0 && !PriorYoungSeen) {
+        setErrorMessage('Young must be present before fledging can occur. No young have been recorded for this compartment yet.');
+        setSaving(false);
+        return;
+      }
+    }
 
     const Payload = {
       nest_check_id:      CheckId,
