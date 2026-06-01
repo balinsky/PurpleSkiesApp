@@ -64,7 +64,9 @@ function Counter({
         />
         <IconButton icon="plus" size={18} onPress={() => onChange(value + 1)} style={styles.StepBtn} />
       </View>
-      {prevValue != null && <Text style={styles.PrevVal}>prev: {prevValue}</Text>}
+      {prevValue != null && (
+        <Text style={styles.PrevVal} onPress={() => onChange(prevValue)}>prev: {prevValue}</Text>
+      )}
     </View>
   );
 }
