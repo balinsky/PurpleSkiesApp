@@ -1,25 +1,39 @@
-import ExcelJS from 'exceljs';
+import XLSX from 'xlsx-js-style';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Share } from 'react-native';
 import { supabase } from './supabase';
 
-// ── Color constants (ARGB, alpha always FF) ───────────────────────────────────
-const C = {
-  PURPLE: 'FFCC99FF',  // header row
-  GRAY:   'FFC0C0C0',  // site/season info
-  PINK:   'FFFF99CC',  // age codes
-  CYAN:   'FFCCFFFF',  // house codes
-  PEACH:  'FFFFCC99',  // hole type codes
-  YELLOW: 'FFFFFF99',  // martin codes
+// ── Style helpers ─────────────────────────────────────────────────────────────
+// xlsx-js-style uses 6-char RGB (no #), ARGB is not needed
+const solidFill = (rgb: string) => ({ patternType: 'solid', fgColor: { rgb } });
+
+const S = {
+  header:    { fill: solidFill('CC99FF'), font: { bold: true,  name: 'Arial' } },
+  grayBold:  { fill: solidFill('C0C0C0'), font: { bold: true,  name: 'Arial' } },
+  gray:      { fill: solidFill('C0C0C0'), font: { bold: false, name: 'Arial' } },
+  boldOnly:  {                            font: { bold: true,  name: 'Arial' } },
+  pink:      { fill: solidFill('FF99CC'), font: { bold: false, name: 'Arial' } },
+  cyanBold:  { fill: solidFill('CCFFFF'), font: { bold: true,  name: 'Arial' } },
+  cyan:      { fill: solidFill('CCFFFF'), font: { bold: false, name: 'Arial' } },
+  peachBold: { fill: solidFill('FFCC99'), font: { bold: true,  name: 'Arial' } },
+  peach:     { fill: solidFill('FFCC99'), font: { bold: false, name: 'Arial' } },
+  yellowBold:{ fill: solidFill('FFFF99'), font: { bold: true,  name: 'Arial' } },
+  yellow:    { fill: solidFill('FFFF99'), font: { bold: false, name: 'Arial' } },
 };
 
-function fill(argb: string): ExcelJS.FillPattern {
-  return { type: 'pattern', pattern: 'solid', fgColor: { argb } };
+// ── Worksheet cell helpers ─────────────────────────────────────────────────────
+function setCell(ws: any, c: number, r: number, v: string, s?: object) {
+  const addr = XLSX.utils.encode_cell({ c, r });
+  ws[addr] = { t: 's', v, ...(s ? { s } : {}) };
+  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1');
+  if (c > range.e.c) range.e.c = c;
+  if (r > range.e.r) range.e.r = r;
+  ws['!ref'] = XLSX.utils.encode_range(range);
 }
 
-function styled(cell: ExcelJS.Cell, argb: string, bold = false) {
-  cell.fill = fill(argb);
-  cell.font = { bold, name: 'Arial' };
+function applyStyle(ws: any, c: number, r: number, s: object) {
+  const addr = XLSX.utils.encode_cell({ c, r });
+  if (ws[addr]) ws[addr].s = s;
 }
 
 // ── Data helpers ───────────────────────────────────────────────────────────────
@@ -62,20 +76,9 @@ function checkCode(entry: EntryData | null): string {
 }
 
 // ── Info / legend block ────────────────────────────────────────────────────────
-// ExcelJS uses 1-based row/col indices. Info block original positions (0-indexed)
-// map to (0-indexed + 1) in ExcelJS.
-function addInfoBlock(ws: ExcelJS.Worksheet, colA: number, year: number, siteName: string) {
-  // colA is 0-indexed from our logic; ExcelJS needs 1-indexed
-  const ca = colA + 1;
-  const cb = ca + 1;
+function addInfoBlock(ws: any, colA: number, year: number, siteName: string) {
+  const colB = colA + 1;
 
-  function ic(r0: number, col: number, value: string, argb: string, bold = false) {
-    const cell = ws.getCell(r0 + 1, col);  // r0 is 0-indexed
-    cell.value = value;
-    styled(cell, argb, bold);
-  }
-
-  // Site/season info (rows 2–8, gray)
   const siteRows: [number, string, string][] = [
     [2, 'Season:',        String(year)],
     [3, 'Name:',          ''],
@@ -86,16 +89,11 @@ function addInfoBlock(ws: ExcelJS.Worksheet, colA: number, year: number, siteNam
     [8, 'Site location:', siteName],
   ];
   for (const [r, label, val] of siteRows) {
-    ic(r, ca, label, C.GRAY, true);
-    ic(r, cb, val,   C.GRAY, false);
+    setCell(ws, colA, r, label, S.grayBold);
+    setCell(ws, colB, r, val,   S.gray);
   }
 
-  // Age Codes (row 10 bold header, rows 11–19 pink data)
-  {
-    const cell = ws.getCell(11, ca);
-    cell.value = 'Age Codes';
-    cell.font = { bold: true, name: 'Arial' };
-  }
+  setCell(ws, colA, 10, 'Age Codes', S.boldOnly);
   const ageCodes: [string, string][] = [
     ['ASY/ASY', 'Adult male / adult female'],
     ['ASY/SY',  'Adult male / subadult female'],
@@ -108,13 +106,12 @@ function addInfoBlock(ws: ExcelJS.Worksheet, colA: number, year: number, siteNam
     ['UNK/UNK', 'Unknown male / unknown female'],
   ];
   for (let i = 0; i < ageCodes.length; i++) {
-    ic(11 + i, ca, ageCodes[i][0], C.PINK);
-    ic(11 + i, cb, ageCodes[i][1], C.PINK);
+    setCell(ws, colA, 11 + i, ageCodes[i][0], S.pink);
+    setCell(ws, colB, 11 + i, ageCodes[i][1], S.pink);
   }
 
-  // House Codes (row 21 bold header, rows 22–26 cyan data)
-  ic(21, ca, 'House Code',  C.CYAN, true);
-  ic(21, cb, 'Description', C.CYAN, true);
+  setCell(ws, colA, 21, 'House Code',  S.cyanBold);
+  setCell(ws, colB, 21, 'Description', S.cyanBold);
   const houseCodes: [string, string][] = [
     ['WH', 'Wooden House'],
     ['MH', 'Metal House'],
@@ -123,13 +120,12 @@ function addInfoBlock(ws: ExcelJS.Worksheet, colA: number, year: number, siteNam
     ['AG', 'Artificial Gourd'],
   ];
   for (let i = 0; i < houseCodes.length; i++) {
-    ic(22 + i, ca, houseCodes[i][0], C.CYAN);
-    ic(22 + i, cb, houseCodes[i][1], C.CYAN);
+    setCell(ws, colA, 22 + i, houseCodes[i][0], S.cyan);
+    setCell(ws, colB, 22 + i, houseCodes[i][1], S.cyan);
   }
 
-  // Hole Type Codes (row 29 bold header, rows 30–33 peach data)
-  ic(29, ca, 'Hole Type Code', C.PEACH, true);
-  ic(29, cb, 'Description',    C.PEACH, true);
+  setCell(ws, colA, 29, 'Hole Type Code', S.peachBold);
+  setCell(ws, colB, 29, 'Description',    S.peachBold);
   const holeCodes: [string, string][] = [
     ['RH', 'Round Hole'],
     ['CH', 'Crescent Hole, including Clinger entrance'],
@@ -137,13 +133,12 @@ function addInfoBlock(ws: ExcelJS.Worksheet, colA: number, year: number, siteNam
     ['OH', 'Obround Hole'],
   ];
   for (let i = 0; i < holeCodes.length; i++) {
-    ic(30 + i, ca, holeCodes[i][0], C.PEACH);
-    ic(30 + i, cb, holeCodes[i][1], C.PEACH);
+    setCell(ws, colA, 30 + i, holeCodes[i][0], S.peach);
+    setCell(ws, colB, 30 + i, holeCodes[i][1], S.peach);
   }
 
-  // Martin Codes (row 36 bold header, rows 37–53 yellow data)
-  ic(36, ca, 'Martin Codes', C.YELLOW, true);
-  ic(36, cb, '',             C.YELLOW, true);
+  setCell(ws, colA, 36, 'Martin Codes', S.yellowBold);
+  setCell(ws, colB, 36, '',             S.yellowBold);
   const martinCodes = [
     'X=Empty Cavity', 'N=Nest', 'E=Egg(s)', 'Y=Young (living)',
     '3do=Young 3 days old', 'HD=Hatching Day', 'DY=Dead Young',
@@ -152,7 +147,7 @@ function addInfoBlock(ws: ExcelJS.Worksheet, colA: number, year: number, siteNam
     'TS=Tree Swallow', 'BB=Bluebird', 'HW=House Wren',
   ];
   for (let i = 0; i < martinCodes.length; i++) {
-    ic(37 + i, ca, martinCodes[i], C.YELLOW);
+    setCell(ws, colA, 37 + i, martinCodes[i], S.yellow);
   }
 }
 
@@ -226,37 +221,17 @@ export async function exportSeasonXls(
     return u !== 0 ? u : a.label.localeCompare(b.label);
   });
 
-  // ── Build workbook ─────────────────────────────────────────────────
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet(`${Year} Nest Data`);
-
-  // Column widths
-  ws.getColumn(1).width = 12;   // Housing Type
-  ws.getColumn(2).width = 10;   // Hole Type
-  ws.getColumn(3).width = 10;   // Cavity number
-  ws.getColumn(4).width = 12;   // Age
-  ws.getColumn(5).width = 16;   // First Egg
-  ws.getColumn(6).width = 12;   // Total Eggs
-  ws.getColumn(7).width = 16;   // Proj Hatch
-  ws.getColumn(8).width = 14;   // Actual Hatch
-  ws.getColumn(9).width = 20;   // Fledge
-  for (let i = 0; i < Checks.length; i++) ws.getColumn(10 + i).width = 8;
-  ws.getColumn(10 + Checks.length).width = 6;
-  ws.getColumn(11 + Checks.length).width = 6;
-  ws.getColumn(12 + Checks.length).width = 6;
-
-  // Header row (purple, bold)
-  const headerValues = [
+  // ── Build worksheet ────────────────────────────────────────────────
+  const HeaderRow = [
     'Housing Type', 'Hole Type', 'Cavity number', 'Male/Female Age',
     'Date First Egg is Laid', 'Total # Eggs Laid', 'Projected Hatch Date',
     'Actual Hatch Date', 'Earliest Possible Fledge Date',
     ...Checks.map(c => fmtDate(c.check_date)),
     'Egg #', 'Hatch #', 'Fledge #',
   ];
-  const headerRow = ws.addRow(headerValues);
-  headerRow.eachCell({ includeEmpty: true }, cell => styled(cell, C.PURPLE, true));
 
-  // Data rows
+  const DataRows: (string | number)[][] = [];
+
   for (const [CompId, Data] of SortedComps) {
     const Ages = AgeMap.get(CompId);
     const AgeStr = Ages ? [Ages.male_age, Ages.female_age].filter(Boolean).join('/') : '';
@@ -291,7 +266,7 @@ export async function exportSeasonXls(
 
     HatchCount = EWD.length > 0 ? Math.max(...EWD.map(({ entry }) => entry?.young_count ?? 0)) : 0;
 
-    ws.addRow([
+    DataRows.push([
       Data.housing_type, Data.hole_type, Data.label, AgeStr,
       FirstEggDate, MaxEggs || '', ProjHatch, ActualHatch, ProjFledge,
       ...Checks.map(c => checkCode(Data.byCheck.get(c.id) ?? null)),
@@ -299,24 +274,33 @@ export async function exportSeasonXls(
     ]);
   }
 
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([HeaderRow, ...DataRows]);
+
+  ws['!cols'] = [
+    { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 },
+    { wch: 16 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 20 },
+    ...Checks.map(() => ({ wch: 8 })),
+    { wch: 6 }, { wch: 6 }, { wch: 6 },
+  ];
+
+  // Style header row
+  for (let c = 0; c < HeaderRow.length; c++) {
+    applyStyle(ws, c, 0, S.header);
+  }
+
   // Info / legend block (2 cols after Fledge #)
-  const InfoCol0 = 9 + Checks.length + 5;  // 0-indexed; addInfoBlock converts to 1-indexed
-  addInfoBlock(ws, InfoCol0, Year, SiteName);
+  const InfoCol = 9 + Checks.length + 5;
+  addInfoBlock(ws, InfoCol, Year, SiteName);
+
+  XLSX.utils.book_append_sheet(wb, ws, `${Year} Nest Data`);
 
   // ── Write & share ──────────────────────────────────────────────────
   const SafeName = SiteName.replace(/[^a-zA-Z0-9_-]/g, '_');
   const FilePath = `${FileSystem.documentDirectory}PurpleSkies_${SafeName}_${Year}.xlsx`;
+  const Base64 = XLSX.write(wb, { type: 'base64', bookType: 'xlsx', cellStyles: true });
 
-  const arrayBuffer = await wb.xlsx.writeBuffer() as ArrayBuffer;
-  const uint8 = new Uint8Array(arrayBuffer);
-  const CHUNK = 0x8000;
-  let binary = '';
-  for (let i = 0; i < uint8.length; i += CHUNK) {
-    binary += String.fromCharCode(...uint8.subarray(i, Math.min(i + CHUNK, uint8.length)));
-  }
-  const base64 = btoa(binary);
-
-  await FileSystem.writeAsStringAsync(FilePath, base64, {
+  await FileSystem.writeAsStringAsync(FilePath, Base64, {
     encoding: FileSystem.EncodingType.Base64,
   });
 
