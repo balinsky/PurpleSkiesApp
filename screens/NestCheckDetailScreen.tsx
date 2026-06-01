@@ -81,6 +81,54 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       .select('id, compartment_id, species, is_empty_cavity, has_nest, egg_count, young_count, nestling_age_days')
       .eq('nest_check_id', CheckId);
 
+    // Build a hatch-date map (compartment_id → hatch date string) from prior checks
+    // so we can compute nestling age on this check date even when it wasn't stored.
+    const HatchDateMap = new Map<string, string>();
+    const Year = CheckDate.substring(0, 4);
+    const { data: PriorChecks } = await supabase
+      .from('nest_checks')
+      .select('id, check_date')
+      .eq('site_id', SiteId)
+      .gte('check_date', `${Year}-01-01`)
+      .lt('check_date', CheckDate)
+      .order('check_date', { ascending: true });
+
+    if (PriorChecks && PriorChecks.length > 0) {
+      const { data: Anchors } = await supabase
+        .from('nest_check_entries')
+        .select('compartment_id, nest_check_id, nestling_age_days')
+        .in('nest_check_id', PriorChecks.map(c => c.id))
+        .gt('young_count', 0)
+        .not('nestling_age_days', 'is', null);
+
+      if (Anchors) {
+        for (const Chk of PriorChecks) {
+          const A = Anchors.find(e => e.nest_check_id === Chk.id && (e.nestling_age_days ?? 0) > 0);
+          if (A && !HatchDateMap.has(A.compartment_id)) {
+            const [ay, am, ad] = Chk.check_date.split('-').map(Number);
+            const Hatch = new Date(ay, am - 1, ad);
+            Hatch.setDate(Hatch.getDate() - A.nestling_age_days!);
+            HatchDateMap.set(
+              A.compartment_id,
+              `${Hatch.getFullYear()}-${String(Hatch.getMonth() + 1).padStart(2, '0')}-${String(Hatch.getDate()).padStart(2, '0')}`
+            );
+          }
+        }
+      }
+    }
+
+    function effectiveAge(compartmentId: string, stored: number | null): number | null {
+      if (stored !== null) return stored;
+      const HatchDate = HatchDateMap.get(compartmentId);
+      if (!HatchDate) return null;
+      const [hy, hm, hd] = HatchDate.split('-').map(Number);
+      const [cy, cm, cd] = CheckDate.split('-').map(Number);
+      const Days = Math.round(
+        (new Date(cy, cm - 1, cd).getTime() - new Date(hy, hm - 1, hd).getTime()) / 86400000
+      );
+      return Days > 0 ? Days : null;
+    }
+
     const EntryMap = new Map<string, NonNullable<typeof Entries>[number]>();
     (Entries ?? []).forEach((E) => EntryMap.set(E.compartment_id, E));
 
@@ -103,7 +151,10 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
             unit_id:       Unit.id,
             unit_name:     Unit.name,
             entry_id:      Entry?.id ?? null,
-            entry_summary: Entry ? buildEntrySummary(Entry) : null,
+            entry_summary: Entry ? buildEntrySummary({
+              ...Entry,
+              nestling_age_days: effectiveAge(C.id, Entry.nestling_age_days),
+            }) : null,
           };
         }),
     }));
