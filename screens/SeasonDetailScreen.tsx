@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Card, Dialog, FAB, HelperText, IconButton, List, Portal, Text, TextInput } from 'react-native-paper';
+import { exportSeasonXls } from '../lib/exportXls';
 import { Calendar } from 'react-native-calendars';
 import DateInput from '../components/DateInput';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -89,6 +90,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   const [ArrivalDatesExpanded, setArrivalDatesExpanded] = useState(false);
 
 
+  const [Exporting, setExporting]         = useState(false);
+
   const [NestChecks, setNestChecks]       = useState<NestCheck[]>([]);
   const [ChecksLoading, setChecksLoading] = useState(true);
   const [NestProgress, setNestProgress]         = useState<CompartmentProgress[]>([]);
@@ -103,15 +106,28 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   useEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <IconButton
-          icon={SeasonCalendarView ? 'format-list-bulleted' : 'calendar-month'}
-          size={22}
-          onPress={toggleSeasonCalendarView}
-          style={{ marginRight: 4 }}
-        />
+        <View style={{ flexDirection: 'row' }}>
+          <IconButton
+            icon="share-variant"
+            size={22}
+            disabled={Exporting}
+            onPress={async () => {
+              setExporting(true);
+              const Err = await exportSeasonXls(SeasonId, SiteId, Year);
+              setExporting(false);
+              if (Err) Alert.alert('Export failed', Err);
+            }}
+          />
+          <IconButton
+            icon={SeasonCalendarView ? 'format-list-bulleted' : 'calendar-month'}
+            size={22}
+            onPress={toggleSeasonCalendarView}
+            style={{ marginRight: 4 }}
+          />
+        </View>
       ),
     });
-  }, [SeasonCalendarView]);
+  }, [SeasonCalendarView, Exporting]);
 
   useFocusEffect(
     useCallback(() => {
