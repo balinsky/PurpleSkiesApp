@@ -384,7 +384,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           .eq('id', Existing.id));
       } else {
         ({ error: AgeErr } = await supabase.from('nest_seasons')
-          .insert({ compartment_id: CompartmentId, site_season_id: SeasonId, male_age: MaleAge, female_age: FemaleAge }));
+          .insert({ compartment_id: CompartmentId, site_season_id: SeasonId, year: parseInt(CheckDate.substring(0, 4), 10), male_age: MaleAge, female_age: FemaleAge }));
       }
 
       if (AgeErr) { setErrorMessage(`Adult ages: ${AgeErr.message}`); return false; }
