@@ -50,6 +50,13 @@ function addDays(dateStr: string, days: number): string {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }
 
+function computeConfirmedAge(others: (string | null)[], current: string | null): string | null {
+  const Counts: Record<string, number> = {};
+  for (const O of [...others, current]) if (O) Counts[O] = (Counts[O] ?? 0) + 1;
+  for (const [Age, N] of Object.entries(Counts)) if (N >= 3) return Age;
+  return null;
+}
+
 // ── Counter ────────────────────────────────────────────────────────────────
 function Counter({
   label, value, onChange, prevValue,
@@ -118,8 +125,10 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [NestReplaced, setNestReplaced]   = useState(false);
 
   // ── Adult bird ages ───────────────────────────────────────────────────
-  const [MaleAge, setMaleAge]                     = useState<'SY' | 'ASY' | 'UNK' | null>(null);
-  const [FemaleAge, setFemaleAge]                 = useState<'SY' | 'ASY' | 'UNK' | null>(null);
+  const [ObservedMaleAge, setObservedMaleAge]     = useState<'SY' | 'ASY' | 'UNK' | null>(null);
+  const [ObservedFemaleAge, setObservedFemaleAge] = useState<'SY' | 'ASY' | 'UNK' | null>(null);
+  const [OtherMaleObs, setOtherMaleObs]           = useState<(string | null)[]>([]);
+  const [OtherFemaleObs, setOtherFemaleObs]       = useState<(string | null)[]>([]);
   const [AdultAgesExpanded, setAdultAgesExpanded] = useState(false);
 
   // ── Dead adult (expandable) ───────────────────────────────────────────
@@ -183,7 +192,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
       const { data: OtherEntries } = await supabase
         .from('nest_check_entries')
-        .select('nest_check_id, species, is_empty_cavity, has_nest, egg_count, young_count, nestling_age_days')
+        .select('nest_check_id, species, is_empty_cavity, has_nest, egg_count, young_count, nestling_age_days, observed_male_age, observed_female_age')
         .in('nest_check_id', SeasonChecks.map(c => c.id))
         .eq('compartment_id', CompartmentId);
 
@@ -191,6 +200,12 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
       setPriorEggsSeen(OtherEntries.some(e => (e.egg_count ?? 0) > 0));
       setPriorYoungSeen(OtherEntries.some(e => (e.young_count ?? 0) > 0));
+
+      const MaleObs = OtherEntries.map(e => (e.observed_male_age as string | null) ?? null);
+      const FemaleObs = OtherEntries.map(e => (e.observed_female_age as string | null) ?? null);
+      setOtherMaleObs(MaleObs);
+      setOtherFemaleObs(FemaleObs);
+      if (MaleObs.some(Boolean) || FemaleObs.some(Boolean)) setAdultAgesExpanded(true);
 
       // Prev entry: most recent check strictly before the current date that has data for this compartment
       for (const Check of [...SeasonChecks].reverse().filter(c => c.check_date < CheckDate)) {
@@ -280,26 +295,13 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         if (E.dead_adult_male || E.dead_adult_female) setDeadAdultExpanded(true);
         setNotes(E.notes ?? '');
         if (E.notes) setNotesExpanded(true);
+        const OM = (E.observed_male_age as 'SY' | 'ASY' | 'UNK' | null) ?? null;
+        const OF = (E.observed_female_age as 'SY' | 'ASY' | 'UNK' | null) ?? null;
+        setObservedMaleAge(OM); setObservedFemaleAge(OF);
+        if (OM || OF) setAdultAgesExpanded(true);
         setInitLoading(false);
       });
   }, [ExistingEntryId]);
-
-  // Load adult ages for this compartment/season
-  useEffect(() => {
-    supabase
-      .from('nest_seasons')
-      .select('male_age, female_age')
-      .eq('compartment_id', CompartmentId)
-      .eq('site_season_id', SeasonId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!data) return;
-        const M = data.male_age as 'SY' | 'ASY' | 'UNK' | null;
-        const F = data.female_age as 'SY' | 'ASY' | 'UNK' | null;
-        setMaleAge(M); setFemaleAge(F);
-        if (M || F) setAdultAgesExpanded(true);
-      });
-  }, []);
 
   function handleSpeciesChange(Val: string) {
     setSpeciesVal(Val);
@@ -352,9 +354,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       dead_young_count:   IsPM && YoungCount > 0 && HasDeadYoung ? DeadYoungCount : 0,
       dead_adult_male:    DeadAdultMale,
       dead_adult_female:  DeadAdultFemale,
-      fledged_count:      IsPM && HasNest ? FledgedCount : 0,
-      renesting_attempt:  IsPM && HasNest ? Renesting : false,
-      notes:              Notes.trim() || null,
+      fledged_count:        IsPM && HasNest ? FledgedCount : 0,
+      renesting_attempt:    IsPM && HasNest ? Renesting : false,
+      notes:                Notes.trim() || null,
+      observed_male_age:    IsPM ? ObservedMaleAge : null,
+      observed_female_age:  IsPM ? ObservedFemaleAge : null,
     };
 
     let Err;
@@ -368,6 +372,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     if (Err) { setErrorMessage(Err.message); return false; }
 
     if (IsPM) {
+      const ConfirmedMale   = computeConfirmedAge(OtherMaleObs,   ObservedMaleAge);
+      const ConfirmedFemale = computeConfirmedAge(OtherFemaleObs, ObservedFemaleAge);
+
       const { data: Existing, error: SelectErr } = await supabase
         .from('nest_seasons')
         .select('id')
@@ -380,11 +387,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         AgeErr = SelectErr;
       } else if (Existing) {
         ({ error: AgeErr } = await supabase.from('nest_seasons')
-          .update({ male_age: MaleAge, female_age: FemaleAge })
+          .update({ male_age: ConfirmedMale, female_age: ConfirmedFemale })
           .eq('id', Existing.id));
       } else {
         ({ error: AgeErr } = await supabase.from('nest_seasons')
-          .insert({ compartment_id: CompartmentId, site_season_id: SeasonId, year: parseInt(CheckDate.substring(0, 4), 10), male_age: MaleAge, female_age: FemaleAge }));
+          .insert({ compartment_id: CompartmentId, site_season_id: SeasonId, year: parseInt(CheckDate.substring(0, 4), 10), male_age: ConfirmedMale, female_age: ConfirmedFemale }));
       }
 
       if (AgeErr) { setErrorMessage(`Adult ages: ${AgeErr.message}`); return false; }
@@ -623,44 +630,61 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         <Divider style={styles.Divider} />
 
         {/* ── Adult bird ages (expandable, PM only) ───────────────── */}
-        {IsPM && (
-          <>
-            <Button
-              mode="text" compact
-              icon={AdultAgesExpanded ? 'chevron-up' : 'chevron-down'}
-              contentStyle={styles.ExpandBtnContent}
-              onPress={() => setAdultAgesExpanded(!AdultAgesExpanded)}
-              style={styles.ExpandBtn}
-            >
-              {L('Adult ages', 'Ages')}
-              {(MaleAge || FemaleAge)
-                ? ` · ${[MaleAge && `♂ ${MaleAge}`, FemaleAge && `♀ ${FemaleAge}`].filter(Boolean).join('  ')}`
-                : ''}
-            </Button>
-            {AdultAgesExpanded && (
-              <View style={styles.ExpandedSection}>
-                {([['Male', MaleAge, setMaleAge], ['Female', FemaleAge, setFemaleAge]] as [string, typeof MaleAge, (v: typeof MaleAge) => void][]).map(([Sex, Val, Set]) => (
-                  <View key={Sex} style={styles.AgeRow}>
-                    <Text style={styles.AgeSexLabel}>{Sex}</Text>
-                    <View style={styles.AgeChips}>
-                      {(['SY', 'ASY', 'UNK'] as const).map(Age => (
-                        <Button
-                          key={Age} compact
-                          mode={Val === Age ? 'contained' : 'outlined'}
-                          onPress={() => Set(Val === Age ? null : Age)}
-                          style={styles.AgeChip}
-                          labelStyle={styles.AgeChipLabel}
-                        >
-                          {Age}
-                        </Button>
-                      ))}
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-          </>
-        )}
+        {IsPM && (() => {
+          const ConfirmedMale   = computeConfirmedAge(OtherMaleObs,   ObservedMaleAge);
+          const ConfirmedFemale = computeConfirmedAge(OtherFemaleObs, ObservedFemaleAge);
+          const AgeLabel = [ConfirmedMale && `♂ ${ConfirmedMale}`, ConfirmedFemale && `♀ ${ConfirmedFemale}`].filter(Boolean).join('  ');
+          return (
+            <>
+              <Button
+                mode="text" compact
+                icon={AdultAgesExpanded ? 'chevron-up' : 'chevron-down'}
+                contentStyle={styles.ExpandBtnContent}
+                onPress={() => setAdultAgesExpanded(!AdultAgesExpanded)}
+                style={styles.ExpandBtn}
+              >
+                {L('Adult ages', 'Ages')}{AgeLabel ? ` · ${AgeLabel}` : ''}
+              </Button>
+              {AdultAgesExpanded && (
+                <View style={styles.ExpandedSection}>
+                  {([
+                    ['Male',   ObservedMaleAge,   setObservedMaleAge,   OtherMaleObs],
+                    ['Female', ObservedFemaleAge,  setObservedFemaleAge, OtherFemaleObs],
+                  ] as [string, 'SY'|'ASY'|'UNK'|null, (v:'SY'|'ASY'|'UNK'|null)=>void, (string|null)[]][])
+                  .map(([Sex, Val, Set, Others]) => {
+                    const Confirmed = computeConfirmedAge(Others, Val);
+                    const Count = [...Others, Val].filter(Boolean).length;
+                    return (
+                      <View key={Sex} style={styles.AgeRow}>
+                        <Text style={styles.AgeSexLabel}>{Sex}</Text>
+                        <View>
+                          <View style={styles.AgeChips}>
+                            {(['SY', 'ASY', 'UNK'] as const).map(Age => (
+                              <Button
+                                key={Age} compact
+                                mode={Val === Age ? 'contained' : 'outlined'}
+                                onPress={() => Set(Val === Age ? null : Age)}
+                                style={styles.AgeChip}
+                                labelStyle={styles.AgeChipLabel}
+                              >
+                                {Age}
+                              </Button>
+                            ))}
+                          </View>
+                          {Confirmed
+                            ? <Text style={styles.AgeConfirmed}>Confirmed ✓</Text>
+                            : Count > 0
+                            ? <Text style={styles.AgeCount}>{Count}/3 observations</Text>
+                            : null}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </>
+          );
+        })()}
 
         {/* ── Dead adult (expandable) ──────────────────────────────── */}
         <Button
@@ -789,6 +813,8 @@ const styles = StyleSheet.create({
   AgeChips:          { flexDirection: 'row', gap: 6 },
   AgeChip:           { alignSelf: 'flex-start' },
   AgeChipLabel:      { fontSize: 12, marginHorizontal: 6, marginVertical: 2 },
+  AgeConfirmed:      { fontSize: 11, color: '#2e7d32', fontWeight: '500', marginTop: 3 },
+  AgeCount:          { fontSize: 11, color: '#888', marginTop: 3 },
   Actions:           { marginTop: 20, gap: 8 },
   SaveRow:           { flexDirection: 'row', gap: 12 },
   ActionBtn:         { flex: 1 },
