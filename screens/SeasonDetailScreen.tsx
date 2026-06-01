@@ -83,7 +83,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
   const [NestChecks, setNestChecks]       = useState<NestCheck[]>([]);
   const [ChecksLoading, setChecksLoading] = useState(true);
-  const [NestProgress, setNestProgress]   = useState<CompartmentProgress[]>([]);
+  const [NestProgress, setNestProgress]         = useState<CompartmentProgress[]>([]);
+  const [NestProgressExpanded, setNestProgressExpanded] = useState(false);
 
   // ── Add check dialog ───────────────────────────────────────────────
   const [AddCheckVisible, setAddCheckVisible]   = useState(false);
@@ -293,8 +294,17 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
               {/* ── Nest progress ── */}
               {NestProgress.length > 0 && (
                 <>
-                  <Text variant="labelLarge" style={styles.SectionHeader}>Nest Progress</Text>
-                  {NestProgress.map((P) => (
+                  <Button
+                    mode="text"
+                    compact
+                    icon={NestProgressExpanded ? 'chevron-up' : 'chevron-down'}
+                    contentStyle={styles.ExpandBtnContent}
+                    onPress={() => setNestProgressExpanded(!NestProgressExpanded)}
+                    style={styles.ExpandBtn}
+                  >
+                    Nest Progress
+                  </Button>
+                  {NestProgressExpanded && NestProgress.map((P) => (
                     <View key={P.compartment_id} style={styles.ProgressRow}>
                       <Text style={styles.ProgressTitle}>{P.unit_name} · {P.label}</Text>
                       <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
