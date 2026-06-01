@@ -3,6 +3,47 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Share } from 'react-native';
 import { supabase } from './supabase';
 
+// ── Style constants ────────────────────────────────────────────────────────────
+function solid(rgb: string, bold = false): object {
+  return {
+    fill: { patternType: 'solid', fgColor: { rgb }, bgColor: { indexed: 64 } },
+    ...(bold ? { font: { bold: true, name: 'Arial' } } : { font: { name: 'Arial' } }),
+  };
+}
+
+const S = {
+  header:    solid('CC99FF', true),   // light purple, bold
+  grayBold:  solid('C0C0C0', true),   // gray, bold  (info labels)
+  gray:      solid('C0C0C0', false),  // gray, normal (info values)
+  boldOnly:  { font: { bold: true, name: 'Arial' } },
+  pink:      solid('FF99CC', false),  // age codes
+  cyanBold:  solid('CCFFFF', true),   // house code header
+  cyan:      solid('CCFFFF', false),  // house code data
+  peachBold: solid('FFCC99', true),   // hole type header
+  peach:     solid('FFCC99', false),  // hole type data
+  yellowBold:solid('FFFF99', true),   // martin codes header
+  yellow:    solid('FFFF99', false),  // martin codes data
+};
+
+// ── Worksheet helpers ──────────────────────────────────────────────────────────
+function setCell(ws: XLSX.WorkSheet, c: number, r: number, v: string, s?: object) {
+  const addr = XLSX.utils.encode_cell({ c, r });
+  ws[addr] = { t: 's', v, ...(s ? { s } : {}) };
+  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1');
+  if (c > range.e.c) range.e.c = c;
+  if (r > range.e.r) range.e.r = r;
+  ws['!ref'] = XLSX.utils.encode_range(range);
+}
+
+function styleRow0(ws: XLSX.WorkSheet, numCols: number) {
+  for (let c = 0; c < numCols; c++) {
+    const addr = XLSX.utils.encode_cell({ c, r: 0 });
+    if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+    (ws[addr] as any).s = S.header;
+  }
+}
+
+// ── Data helpers ───────────────────────────────────────────────────────────────
 type EntryData = {
   species: string | null;
   egg_count: number;
@@ -41,33 +82,27 @@ function checkCode(entry: EntryData | null): string {
   return 'N';
 }
 
-function setInfoCell(ws: XLSX.WorkSheet, c: number, r: number, v: string) {
-  const addr = XLSX.utils.encode_cell({ c, r });
-  ws[addr] = { t: 's', v };
-  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1');
-  if (c > range.e.c) range.e.c = c;
-  if (r > range.e.r) range.e.r = r;
-  ws['!ref'] = XLSX.utils.encode_range(range);
-}
-
+// ── Info / legend block ────────────────────────────────────────────────────────
 function addInfoBlock(ws: XLSX.WorkSheet, colA: number, year: number, siteName: string) {
   const colB = colA + 1;
 
+  // Site / season info (gray, rows 2–8)
   const siteInfo: [number, string, string][] = [
-    [2, 'Season:  ', String(year)],
-    [3, 'Name:', ''],
-    [4, 'Address:', ''],
-    [5, 'City:', ''],
-    [6, 'State:', ''],
-    [7, 'Zip:', ''],
+    [2, 'Season:',        String(year)],
+    [3, 'Name:',          ''],
+    [4, 'Address:',       ''],
+    [5, 'City:',          ''],
+    [6, 'State:',         ''],
+    [7, 'Zip:',           ''],
     [8, 'Site location:', siteName],
   ];
   for (const [row, label, val] of siteInfo) {
-    setInfoCell(ws, colA, row, label);
-    if (val) setInfoCell(ws, colB, row, val);
+    setCell(ws, colA, row, label, S.grayBold);
+    setCell(ws, colB, row, val,   S.gray);
   }
 
-  setInfoCell(ws, colA, 10, 'Age Codes');
+  // Age Codes (header bold, data pink)
+  setCell(ws, colA, 10, 'Age Codes', S.boldOnly);
   const ageCodes: [string, string][] = [
     ['ASY/ASY', 'Adult male / adult female'],
     ['ASY/SY',  'Adult male / subadult female'],
@@ -80,12 +115,13 @@ function addInfoBlock(ws: XLSX.WorkSheet, colA: number, year: number, siteName: 
     ['UNK/UNK', 'Unknown male / unknown female'],
   ];
   for (let i = 0; i < ageCodes.length; i++) {
-    setInfoCell(ws, colA, 11 + i, ageCodes[i][0]);
-    setInfoCell(ws, colB, 11 + i, ageCodes[i][1]);
+    setCell(ws, colA, 11 + i, ageCodes[i][0], S.pink);
+    setCell(ws, colB, 11 + i, ageCodes[i][1], S.pink);
   }
 
-  setInfoCell(ws, colA, 21, 'House Code');
-  setInfoCell(ws, colB, 21, 'Description');
+  // House Codes (header cyan bold, data cyan)
+  setCell(ws, colA, 21, 'House Code',  S.cyanBold);
+  setCell(ws, colB, 21, 'Description', S.cyanBold);
   const houseCodes: [string, string][] = [
     ['WH', 'Wooden House'],
     ['MH', 'Metal House'],
@@ -94,12 +130,13 @@ function addInfoBlock(ws: XLSX.WorkSheet, colA: number, year: number, siteName: 
     ['AG', 'Artificial Gourd'],
   ];
   for (let i = 0; i < houseCodes.length; i++) {
-    setInfoCell(ws, colA, 22 + i, houseCodes[i][0]);
-    setInfoCell(ws, colB, 22 + i, houseCodes[i][1]);
+    setCell(ws, colA, 22 + i, houseCodes[i][0], S.cyan);
+    setCell(ws, colB, 22 + i, houseCodes[i][1], S.cyan);
   }
 
-  setInfoCell(ws, colA, 29, 'Hole Type Code');
-  setInfoCell(ws, colB, 29, 'Description');
+  // Hole Type Codes (header peach bold, data peach)
+  setCell(ws, colA, 29, 'Hole Type Code', S.peachBold);
+  setCell(ws, colB, 29, 'Description',    S.peachBold);
   const holeCodes: [string, string][] = [
     ['RH', 'Round Hole'],
     ['CH', 'Crescent Hole, including Clinger entrance'],
@@ -107,11 +144,13 @@ function addInfoBlock(ws: XLSX.WorkSheet, colA: number, year: number, siteName: 
     ['OH', 'Obround Hole'],
   ];
   for (let i = 0; i < holeCodes.length; i++) {
-    setInfoCell(ws, colA, 30 + i, holeCodes[i][0]);
-    setInfoCell(ws, colB, 30 + i, holeCodes[i][1]);
+    setCell(ws, colA, 30 + i, holeCodes[i][0], S.peach);
+    setCell(ws, colB, 30 + i, holeCodes[i][1], S.peach);
   }
 
-  setInfoCell(ws, colA, 36, 'Martin Codes');
+  // Martin Codes (header yellow bold, data yellow — single column)
+  setCell(ws, colA, 36, 'Martin Codes', S.yellowBold);
+  setCell(ws, colB, 36, '',             S.yellowBold);
   const martinCodes = [
     'X=Empty Cavity', 'N=Nest', 'E=Egg(s)', 'Y=Young (living)',
     '3do=Young 3 days old', 'HD=Hatching Day', 'DY=Dead Young',
@@ -120,16 +159,16 @@ function addInfoBlock(ws: XLSX.WorkSheet, colA: number, year: number, siteName: 
     'TS=Tree Swallow', 'BB=Bluebird', 'HW=House Wren',
   ];
   for (let i = 0; i < martinCodes.length; i++) {
-    setInfoCell(ws, colA, 37 + i, martinCodes[i]);
+    setCell(ws, colA, 37 + i, martinCodes[i], S.yellow);
   }
 }
 
+// ── Main export ────────────────────────────────────────────────────────────────
 export async function exportSeasonXls(
   SeasonId: string,
   SiteId: string,
   Year: number,
 ): Promise<string | null> {
-  // ── Fetch data ─────────────────────────────────────────────────────
   const [{ data: Checks }, { data: SiteData }] = await Promise.all([
     supabase
       .from('nest_checks')
@@ -156,17 +195,14 @@ export async function exportSeasonXls(
 
   if (!Entries) return 'Failed to load nest data.';
 
-  // ── Build compartment map ──────────────────────────────────────────
   const AgeMap = new Map<string, { male_age: string | null; female_age: string | null }>();
   if (NestSeasons) {
     for (const NS of NestSeasons) AgeMap.set(NS.compartment_id, NS);
   }
 
   type CompData = {
-    unit_name: string;
-    label: string;
-    housing_type: string;
-    hole_type: string;
+    unit_name: string; label: string;
+    housing_type: string; hole_type: string;
     byCheck: Map<string, EntryData>;
   };
   const CompMap = new Map<string, CompData>();
@@ -197,7 +233,6 @@ export async function exportSeasonXls(
     return u !== 0 ? u : a.label.localeCompare(b.label);
   });
 
-  // ── Header row ─────────────────────────────────────────────────────
   const HeaderRow = [
     'Housing Type', 'Hole Type', 'Cavity number', 'Male/Female Age',
     'Date First Egg is Laid', 'Total # Eggs Laid', 'Projected Hatch Date',
@@ -206,27 +241,19 @@ export async function exportSeasonXls(
     'Egg #', 'Hatch #', 'Fledge #',
   ];
 
-  // ── Data rows ──────────────────────────────────────────────────────
   const DataRows = SortedComps.map(([CompId, Data]) => {
     const Ages = AgeMap.get(CompId);
-    const AgeStr = Ages
-      ? [Ages.male_age, Ages.female_age].filter(Boolean).join('/')
-      : '';
+    const AgeStr = Ages ? [Ages.male_age, Ages.female_age].filter(Boolean).join('/') : '';
 
     const EWD = Checks.map(c => ({ date: c.check_date, entry: Data.byCheck.get(c.id) ?? null }))
       .filter(({ entry }) => entry?.species === 'PM');
 
-    let FirstEggDate = '';
-    let MaxEggs = 0;
-    let ProjHatch = '';
-    let ActualHatch = '';
-    let ProjFledge = '';
-    let HatchCount = 0;
+    let FirstEggDate = '', MaxEggs = 0, ProjHatch = '', ActualHatch = '', ProjFledge = '', HatchCount = 0;
 
     const FirstWithEggs = EWD.find(({ entry }) => (entry?.egg_count ?? 0) > 0);
     if (FirstWithEggs?.entry) {
       const LastEmpty = [...EWD]
-        .filter(({ date }) => (Data.byCheck.get(Checks.find(c => c.check_date === date)?.id ?? '')?.egg_count ?? 0) === 0 && date < FirstWithEggs.date)
+        .filter(({ entry, date }) => (entry?.egg_count ?? 0) === 0 && date < FirstWithEggs.date)
         .pop();
       MaxEggs = Math.max(...EWD.map(({ entry }) => entry?.egg_count ?? 0));
       const LatestFirst = addDays(FirstWithEggs.date, -(FirstWithEggs.entry.egg_count - 1));
@@ -249,19 +276,10 @@ export async function exportSeasonXls(
     HatchCount = EWD.length > 0 ? Math.max(...EWD.map(({ entry }) => entry?.young_count ?? 0)) : 0;
 
     return [
-      Data.housing_type,
-      Data.hole_type,
-      Data.label,
-      AgeStr,
-      FirstEggDate,
-      MaxEggs || '',
-      ProjHatch,
-      ActualHatch,
-      ProjFledge,
+      Data.housing_type, Data.hole_type, Data.label, AgeStr,
+      FirstEggDate, MaxEggs || '', ProjHatch, ActualHatch, ProjFledge,
       ...Checks.map(c => checkCode(Data.byCheck.get(c.id) ?? null)),
-      MaxEggs || '',
-      HatchCount || '',
-      '',
+      MaxEggs || '', HatchCount || '', '',
     ];
   });
 
@@ -269,16 +287,15 @@ export async function exportSeasonXls(
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([HeaderRow, ...DataRows]);
 
-  const colWidths = [
+  ws['!cols'] = [
     { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 },
     { wch: 16 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 20 },
     ...Checks.map(() => ({ wch: 8 })),
     { wch: 6 }, { wch: 6 }, { wch: 6 },
   ];
-  ws['!cols'] = colWidths;
 
-  // ── Info block: 2 columns after Fledge # ──────────────────────────
-  // Fledge # is at index 9 + Checks.length + 2, so info block starts at + 2 more
+  styleRow0(ws, HeaderRow.length);
+
   const InfoCol = 9 + Checks.length + 5;
   addInfoBlock(ws, InfoCol, Year, SiteName);
 
