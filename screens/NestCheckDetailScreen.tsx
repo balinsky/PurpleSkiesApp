@@ -211,9 +211,17 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
           </Card>
         )}
         ListEmptyComponent={(
-          <Text variant="bodyMedium" style={styles.EmptyText}>
-            No compartments found for this site.
-          </Text>
+          <View style={styles.EmptyContainer}>
+            <Text variant="bodyMedium" style={styles.EmptyText}>
+              No housing units or compartments have been set up for this site yet.
+            </Text>
+            <Button
+              mode="outlined"
+              onPress={() => navigation.navigate('CreateHousingUnit', { SiteId })}
+            >
+              Add Housing Unit
+            </Button>
+          </View>
         )}
       />
 
@@ -269,6 +277,7 @@ const styles = StyleSheet.create({
   EnteredText:      { color: '#2e7d32' },
   PendingText:      { color: '#999' },
   RowIcon:          { marginRight: 4 },
-  EmptyText:        { color: '#666', padding: 16 },
+  EmptyContainer:   { padding: 16, alignItems: 'flex-start' },
+  EmptyText:        { color: '#666', marginBottom: 12 },
   DialogInput:      { marginBottom: 8 },
 });

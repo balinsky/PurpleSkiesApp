@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, TextInput as RNTextInput, View } from 'react-native';
 import {
   Button, Checkbox, Dialog, Divider, HelperText,
   IconButton, Portal, RadioButton, Text, TextInput,
@@ -54,18 +54,25 @@ function Counter({
       {label !== '' && <Text style={styles.CounterLabel}>{label}</Text>}
       <View style={styles.CounterControls}>
         <IconButton icon="minus" size={18} onPress={() => onChange(Math.max(0, value - 1))} style={styles.StepBtn} />
-        <TextInput
+        <RNTextInput
           value={String(value)}
           onChangeText={(T) => { const N = parseInt(T, 10); onChange(isNaN(N) || N < 0 ? 0 : N); }}
           keyboardType="numeric"
-          dense
-          mode="outlined"
+          selectTextOnFocus
           style={styles.CounterInput}
         />
         <IconButton icon="plus" size={18} onPress={() => onChange(value + 1)} style={styles.StepBtn} />
       </View>
       {prevValue != null && (
-        <Text style={styles.PrevVal} onPress={() => onChange(prevValue)}>prev: {prevValue}</Text>
+        <Button
+          mode="outlined"
+          compact
+          onPress={() => onChange(prevValue)}
+          style={styles.PrevBtn}
+          labelStyle={styles.PrevBtnLabel}
+        >
+          prev: {prevValue}
+        </Button>
       )}
     </View>
   );
@@ -500,8 +507,13 @@ const styles = StyleSheet.create({
   CounterLabel:      { fontSize: 13, color: '#444', marginBottom: 2 },
   CounterControls:   { flexDirection: 'row', alignItems: 'center' },
   StepBtn:           { margin: 0 },
-  CounterInput:      { width: 52, textAlign: 'center' },
-  PrevVal:           { fontSize: 11, color: '#aaa', marginTop: 2 },
+  CounterInput: {
+    width: 44, fontSize: 22, fontWeight: '600', textAlign: 'center',
+    borderWidth: 1.5, borderColor: '#888', borderRadius: 4,
+    paddingHorizontal: 4, paddingVertical: 4, color: '#000',
+  },
+  PrevBtn:           { marginTop: 6, alignSelf: 'center' },
+  PrevBtnLabel:      { fontSize: 12, marginVertical: 2, marginHorizontal: 4 },
   CheckboxItem:      { paddingVertical: 0 },
   DeadYoungRow:      { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   ExpandBtn:         { alignSelf: 'flex-start', marginTop: 4 },

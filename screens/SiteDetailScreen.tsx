@@ -221,14 +221,20 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
             ))
           )}
           {!HasCurrentSeason && (
-            <Button
-              mode="outlined"
-              style={styles.SectionButton}
-              loading={StartingSeasonLoading}
-              onPress={handleStartSeason}
-            >
-              Start {CurrentYear} Season
-            </Button>
+            HousingUnits.length === 0 ? (
+              <HelperText type="info" visible style={styles.SectionButton}>
+                Add at least one housing unit before starting a season.
+              </HelperText>
+            ) : (
+              <Button
+                mode="outlined"
+                style={styles.SectionButton}
+                loading={StartingSeasonLoading}
+                onPress={handleStartSeason}
+              >
+                Start {CurrentYear} Season
+              </Button>
+            )
           )}
         </List.Section>
 

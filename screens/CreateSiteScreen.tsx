@@ -71,7 +71,7 @@ export default function CreateSiteScreen({ navigation }: Props) {
             The Purple Martin Conservation Association (PMCA) tracks population trends across North America.
             Filling in complete site details makes it easy to submit your season's data to{' '}
             <Text style={styles.Email}>research@purplemartin.org</Text>{' '}
-            at the end of the season — and every nest check you record contributes to continental science.
+            at the end of the season — and every nest check you record contributes to science.
           </Text>
         </Card.Content>
       </Card>
