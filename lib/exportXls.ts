@@ -11,8 +11,8 @@ const hdrAlign = { wrapText: true,  horizontal: 'center', vertical: 'bottom' };
 const hdrAlign2 = { wrapText: false, horizontal: 'center', vertical: 'bottom' };
 
 const S = {
-  header:      { fill: solidFill('CC99FF'), font: { bold: true,  name: 'Arial' }, alignment: hdrAlign  },
-  headerLight: { fill: solidFill('CC99FF'), font: { bold: false, name: 'Arial' }, alignment: hdrAlign2 },
+  header:      { fill: solidFill('CC99FF'), font: { bold: true,  name: 'Arial', sz: 11 }, alignment: hdrAlign  },
+  headerLight: { fill: solidFill('CC99FF'), font: { bold: false, name: 'Arial', sz: 11 }, alignment: hdrAlign2 },
   grayBold:  { fill: solidFill('C0C0C0'), font: { bold: true,  name: 'Arial' } },
   gray:      { fill: solidFill('C0C0C0'), font: { bold: false, name: 'Arial' } },
   boldOnly:  {                            font: { bold: true,  name: 'Arial' } },
@@ -325,7 +325,7 @@ export async function exportSeasonXls(
   }
 
   // Info / legend block (2 cols after Fledge #)
-  const InfoCol = 9 + Checks.length + 5;
+  const InfoCol = 9 + Checks.length + 4;
   addInfoBlock(ws, InfoCol, Year, SiteName);
 
   XLSX.utils.book_append_sheet(wb, ws, `${Year} Nest Data`);
