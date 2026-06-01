@@ -1,11 +1,13 @@
-import React, { useCallback, useState } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
-import { Button, Card, Dialog, FAB, HelperText, List, Portal, Text, TextInput } from 'react-native-paper';
+import React, { useCallback, useEffect, useState } from 'react';
+import { FlatList, ScrollView, StyleSheet, View } from 'react-native';
+import { Button, Card, Dialog, FAB, HelperText, IconButton, List, Portal, Text, TextInput } from 'react-native-paper';
+import { Calendar } from 'react-native-calendars';
 import DateInput from '../components/DateInput';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { AppStackParamList } from '../App';
+import { useSettings } from '../contexts/SettingsContext';
 
 type NestCheck = {
   id: string;
@@ -74,12 +76,14 @@ function todayString(): string {
 
 export default function SeasonDetailScreen({ navigation, route }: Props) {
   const { SeasonId, SiteId, Year } = route.params;
+  const { SeasonCalendarView, toggleSeasonCalendarView } = useSettings();
 
   const [FirstAsySeen, setFirstAsySeen]           = useState('');
   const [FirstSyMaleSeen, setFirstSyMaleSeen]     = useState('');
   const [DatesLoading, setDatesLoading]           = useState(false);
   const [DatesError, setDatesError]               = useState('');
   const [ArrivalDatesExpanded, setArrivalDatesExpanded] = useState(false);
+
 
   const [NestChecks, setNestChecks]       = useState<NestCheck[]>([]);
   const [ChecksLoading, setChecksLoading] = useState(true);
@@ -91,6 +95,19 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   const [NewCheckDate, setNewCheckDate]         = useState('');
   const [AddCheckLoading, setAddCheckLoading]   = useState(false);
   const [AddCheckError, setAddCheckError]       = useState('');
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <IconButton
+          icon={SeasonCalendarView ? 'format-list-bulleted' : 'calendar-month'}
+          size={22}
+          onPress={toggleSeasonCalendarView}
+          style={{ marginRight: 4 }}
+        />
+      ),
+    });
+  }, [SeasonCalendarView]);
 
   useFocusEffect(
     useCallback(() => {
@@ -241,9 +258,35 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
     });
   }
 
+  const MarkedDates = Object.fromEntries(
+    NestChecks.map(c => [c.check_date, { selected: true, selectedColor: '#7b1fa2' }])
+  );
+  const InitialDate = NestChecks.length > 0 ? NestChecks[0].check_date : undefined;
+
   return (
     <>
       <View style={styles.Container}>
+        {SeasonCalendarView ? (
+          <ScrollView contentContainerStyle={styles.CalendarScroll}>
+            <Calendar
+              initialDate={InitialDate}
+              markedDates={MarkedDates}
+              onDayPress={(day) => {
+                const Check = NestChecks.find(c => c.check_date === day.dateString);
+                if (Check) {
+                  navigation.navigate('NestCheckDetail', {
+                    CheckId: Check.id, CheckDate: Check.check_date,
+                    SiteId, SeasonId, Year,
+                  });
+                }
+              }}
+              theme={{
+                todayTextColor: '#6750a4',
+                arrowColor: '#6750a4',
+              }}
+            />
+          </ScrollView>
+        ) : (
         <FlatList
           data={NestChecks}
           keyExtractor={(item) => item.id}
@@ -341,6 +384,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             </Card>
           )}
         />
+        )}
 
         <FAB
           icon="plus"
@@ -372,7 +416,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  Container:     { flex: 1 },
+  Container:      { flex: 1 },
+  CalendarScroll: { padding: 8 },
   List:          { padding: 16, paddingBottom: 80 },
   SectionHeader:   { marginTop: 16, marginBottom: 4 },
   ExpandBtn:       { alignSelf: 'flex-start', marginTop: 8 },
