@@ -300,6 +300,69 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                 arrowColor: '#6750a4',
               }}
             />
+
+            {/* ── Arrival dates ── */}
+            <Button
+              mode="text"
+              compact
+              icon={ArrivalDatesExpanded ? 'chevron-up' : 'chevron-down'}
+              contentStyle={styles.ExpandBtnContent}
+              onPress={() => setArrivalDatesExpanded(!ArrivalDatesExpanded)}
+              style={styles.ExpandBtn}
+            >
+              Arrival Dates
+            </Button>
+            {ArrivalDatesExpanded && (
+              <>
+                <Text variant="bodySmall" style={styles.Hint}>
+                  ASY = After Second Year (adult).  SY = Second Year (yearling male).
+                </Text>
+                <DateInput
+                  label="First ASY seen"
+                  value={FirstAsySeen}
+                  onChange={setFirstAsySeen}
+                  style={styles.Input}
+                />
+                <DateInput
+                  label="First SY male seen"
+                  value={FirstSyMaleSeen}
+                  onChange={setFirstSyMaleSeen}
+                  style={styles.Input}
+                />
+                {DatesError ? <HelperText type="error" visible>{DatesError}</HelperText> : null}
+                <Button
+                  mode="outlined"
+                  compact
+                  loading={DatesLoading}
+                  onPress={handleSaveDates}
+                  style={styles.SaveDatesBtn}
+                >
+                  Save dates
+                </Button>
+              </>
+            )}
+
+            {/* ── Nest progress ── */}
+            {NestProgress.length > 0 && (
+              <>
+                <Button
+                  mode="text"
+                  compact
+                  icon={NestProgressExpanded ? 'chevron-up' : 'chevron-down'}
+                  contentStyle={styles.ExpandBtnContent}
+                  onPress={() => setNestProgressExpanded(!NestProgressExpanded)}
+                  style={styles.ExpandBtn}
+                >
+                  Nest Progress
+                </Button>
+                {NestProgressExpanded && NestProgress.map((P) => (
+                  <View key={P.compartment_id} style={styles.ProgressRow}>
+                    <Text style={styles.ProgressTitle}>{P.unit_name} · {P.label}</Text>
+                    <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
+                  </View>
+                ))}
+              </>
+            )}
           </ScrollView>
         ) : (
         <FlatList
@@ -432,7 +495,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   Container:      { flex: 1 },
-  CalendarScroll: { padding: 8 },
+  CalendarScroll: { padding: 16, paddingBottom: 80 },
   List:          { padding: 16, paddingBottom: 80 },
   SectionHeader:   { marginTop: 16, marginBottom: 4 },
   ExpandBtn:       { alignSelf: 'flex-start', marginTop: 8 },
