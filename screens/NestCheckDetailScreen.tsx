@@ -63,6 +63,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
 
   const [Sections, setSections] = useState<Section[]>([]);
   const [Loading, setLoading]   = useState(true);
+  const [QuickSaving, setQuickSaving] = useState<string | null>(null);
 
   // ── Edit date ──────────────────────────────────────────────────────
   const [EditDateVisible, setEditDateVisible]   = useState(false);
@@ -204,6 +205,27 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     navigation.goBack();
   }
 
+  async function handleQuick(item: CompartmentRow, type: 'empty' | 'pm_nest') {
+    const Key = `${item.id}:${type}`;
+    setQuickSaving(Key);
+    const Payload = {
+      nest_check_id: CheckId, compartment_id: item.id,
+      species: 'PM', is_empty_cavity: type === 'empty', has_nest: type === 'pm_nest',
+      nest_discarded: false, nest_replaced: false,
+      egg_count: 0, discarded_eggs: 0, young_count: 0,
+      nestling_age_days: null, nestling_age_notes: null,
+      dead_young_count: 0, dead_adult_male: false, dead_adult_female: false,
+      fledged_count: 0, renesting_attempt: false, notes: null,
+    };
+    if (item.entry_id) {
+      await supabase.from('nest_check_entries').update(Payload).eq('id', item.entry_id);
+    } else {
+      await supabase.from('nest_check_entries').insert(Payload);
+    }
+    setQuickSaving(null);
+    loadData();
+  }
+
   function navigateToEntry(item: CompartmentRow) {
     const AllCompartments = Sections.flatMap(s => s.data).map(c => ({
       id: c.id, cavity_label: c.cavity_label, unit_name: c.unit_name, entry_id: c.entry_id,
@@ -276,6 +298,26 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
                 />
               )}
             />
+            <Card.Actions style={styles.QuickActions}>
+              <Button
+                compact mode="outlined"
+                style={styles.QuickBtn}
+                loading={QuickSaving === `${item.id}:empty`}
+                disabled={QuickSaving !== null}
+                onPress={() => handleQuick(item, 'empty')}
+              >
+                Empty
+              </Button>
+              <Button
+                compact mode="outlined"
+                style={styles.QuickBtn}
+                loading={QuickSaving === `${item.id}:pm_nest`}
+                disabled={QuickSaving !== null}
+                onPress={() => handleQuick(item, 'pm_nest')}
+              >
+                PM Nest
+              </Button>
+            </Card.Actions>
           </Card>
         )}
         ListEmptyComponent={(
@@ -342,6 +384,8 @@ const styles = StyleSheet.create({
   DeleteBtn:        { borderColor: 'red' },
   SectionHeader:    { marginTop: 16, marginBottom: 6, paddingHorizontal: 4 },
   Card:             { marginBottom: 8 },
+  QuickActions:     { paddingHorizontal: 8, paddingBottom: 6, gap: 8, justifyContent: 'flex-start' },
+  QuickBtn:         { alignSelf: 'flex-start' },
   EnteredText:      { color: '#2e7d32' },
   PendingText:      { color: '#999' },
   RowIcon:          { marginRight: 4 },
