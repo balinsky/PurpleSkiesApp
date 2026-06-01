@@ -97,6 +97,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [YoungCount, setYoungCount]           = useState(0);
   const [DiscardedEggs, setDiscardedEggs]     = useState(0);
   const [NestlingAgeDays, setNestlingAgeDays] = useState(0);
+  const [IsHatchingDay, setIsHatchingDay]     = useState(false);
   const [HasDeadYoung, setHasDeadYoung]       = useState(false);
   const [DeadYoungCount, setDeadYoungCount]   = useState(0);
   const [FledgedCount, setFledgedCount]       = useState(0);
@@ -115,8 +116,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [NotesExpanded, setNotesExpanded] = useState(false);
   const [Notes, setNotes]               = useState('');
 
-  // ── Previous check ────────────────────────────────────────────────────
+  // ── Previous check & hatch date ───────────────────────────────────────
   const [PrevEntry, setPrevEntry] = useState<PrevEntry | null>(null);
+  const [CalculatedNestlingAge, setCalculatedNestlingAge] = useState<number | null>(null);
 
   // ── Loading / saving / deleting ───────────────────────────────────────
   const [InitLoading, setInitLoading]     = useState(!!ExistingEntryId);
@@ -143,28 +145,57 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     });
   }, [CompactMode]);
 
-  // Fetch previous check entry
+  // Fetch season context: prev-entry banner + hatch-date for nestling age
   useEffect(() => {
-    async function fetchPrev() {
-      const { data: PrevCheck } = await supabase
+    async function fetchSeasonContext() {
+      const Year = CheckDate.substring(0, 4);
+      const { data: SeasonChecks } = await supabase
         .from('nest_checks')
         .select('id, check_date')
         .eq('site_id', SiteId)
-        .lt('check_date', CheckDate)
-        .order('check_date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .gte('check_date', `${Year}-01-01`)
+        .lte('check_date', `${Year}-12-31`)
+        .neq('id', CheckId)
+        .order('check_date', { ascending: true });
+
+      if (!SeasonChecks || SeasonChecks.length === 0) return;
+
+      const { data: OtherEntries } = await supabase
+        .from('nest_check_entries')
+        .select('nest_check_id, species, is_empty_cavity, has_nest, egg_count, young_count, nestling_age_days')
+        .in('nest_check_id', SeasonChecks.map(c => c.id))
+        .eq('compartment_id', CompartmentId);
+
+      if (!OtherEntries) return;
+
+      // Prev entry: most recent check strictly before the current date
+      const PrevCheck = [...SeasonChecks].reverse().find(c => c.check_date < CheckDate);
       if (PrevCheck) {
-        const { data: E } = await supabase
-          .from('nest_check_entries')
-          .select('species, is_empty_cavity, has_nest, egg_count, young_count')
-          .eq('nest_check_id', PrevCheck.id)
-          .eq('compartment_id', CompartmentId)
-          .maybeSingle();
+        const E = OtherEntries.find(e => e.nest_check_id === PrevCheck.id);
         if (E) setPrevEntry({ ...E, check_date: PrevCheck.check_date });
       }
+
+      // Hatch date anchor: earliest check with a recorded nestling age
+      for (const Check of SeasonChecks) {
+        const E = OtherEntries.find(
+          e => e.nest_check_id === Check.id &&
+            (e.young_count ?? 0) > 0 &&
+            (e.nestling_age_days ?? 0) > 0
+        );
+        if (E) {
+          const [ay, am, ad] = Check.check_date.split('-').map(Number);
+          const Hatch = new Date(ay, am - 1, ad);
+          Hatch.setDate(Hatch.getDate() - E.nestling_age_days!);
+          const [cy, cm, cd] = CheckDate.split('-').map(Number);
+          const DiffDays = Math.round(
+            (new Date(cy, cm - 1, cd).getTime() - Hatch.getTime()) / 86400000
+          );
+          if (DiffDays > 0) setCalculatedNestlingAge(DiffDays);
+          break;
+        }
+      }
     }
-    fetchPrev();
+    fetchSeasonContext();
   }, []);
 
   // Load existing entry
@@ -180,6 +211,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         setYoungCount(E.young_count ?? 0);
         setHasNestOnly(E.has_nest && E.egg_count === 0 && E.young_count === 0);
         setDiscardedEggs(E.discarded_eggs ?? 0);
+        setIsHatchingDay(E.nestling_age_days === 0);
         setNestlingAgeDays(E.nestling_age_days ?? 0);
         setHasDeadYoung((E.dead_young_count ?? 0) > 0);
         setDeadYoungCount(E.dead_young_count ?? 0);
@@ -201,7 +233,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     setSpeciesExpanded(false);
     if (Val !== 'PM') {
       setEggCount(0); setYoungCount(0); setDiscardedEggs(0);
-      setNestlingAgeDays(0); setHasDeadYoung(false); setDeadYoungCount(0);
+      setNestlingAgeDays(0); setIsHatchingDay(false); setHasDeadYoung(false); setDeadYoungCount(0);
       setFledgedCount(0); setRenesting(false);
       setNestReplaced(false);
       setIsEmpty(false); setHasNestOnly(false);
@@ -227,7 +259,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       egg_count:          IsPM && !IsEmpty ? EggCount : 0,
       discarded_eggs:     IsPM && EggCount > 0 ? DiscardedEggs : 0,
       young_count:        IsPM && !IsEmpty ? YoungCount : 0,
-      nestling_age_days:  IsPM && YoungCount > 0 && NestlingAgeDays > 0 ? NestlingAgeDays : null,
+      nestling_age_days:  IsPM && YoungCount > 0
+        ? (CalculatedNestlingAge ?? (IsHatchingDay ? 0 : (NestlingAgeDays > 0 ? NestlingAgeDays : null)))
+        : null,
       nestling_age_notes: null,
       dead_young_count:   IsPM && YoungCount > 0 && HasDeadYoung ? DeadYoungCount : 0,
       dead_adult_male:    DeadAdultMale,
@@ -282,6 +316,13 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         {PrevSummary && (
           <Text style={styles.PrevBanner}>
             Last check ({formatDate(PrevEntry!.check_date)}): {PrevSummary}
+          </Text>
+        )}
+
+        {/* ── Nestling age (auto-calculated from hatch date) ──────── */}
+        {CalculatedNestlingAge !== null && (
+          <Text style={styles.HatchBanner}>
+            Nestling age: {CalculatedNestlingAge} days
           </Text>
         )}
 
@@ -354,7 +395,21 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
             {YoungCount > 0 && (
               <>
-                <Counter label={L('Nestling age (days)', 'Age')} value={NestlingAgeDays} onChange={setNestlingAgeDays} />
+                {CalculatedNestlingAge !== null ? (
+                  <Text style={styles.CalcAge}>{L('Nestling age', 'Age')}: {CalculatedNestlingAge} days</Text>
+                ) : (
+                  <>
+                    <Checkbox.Item
+                      label={L('Hatching Day (HD)', 'HD')}
+                      status={IsHatchingDay ? 'checked' : 'unchecked'}
+                      onPress={() => setIsHatchingDay(!IsHatchingDay)}
+                      style={styles.CheckboxItem}
+                    />
+                    {!IsHatchingDay && (
+                      <Counter label={L('Nestling age (days)', 'Age')} value={NestlingAgeDays} onChange={setNestlingAgeDays} />
+                    )}
+                  </>
+                )}
                 <View style={styles.DeadYoungRow}>
                   <Checkbox.Item
                     label={L('Dead young', 'DY')}
@@ -497,7 +552,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   Loading:           { flex: 1, justifyContent: 'center', alignItems: 'center' },
   Container:         { padding: 16, paddingBottom: 40 },
-  PrevBanner:        { color: '#888', fontStyle: 'italic', marginBottom: 12 },
+  PrevBanner:        { color: '#888', fontStyle: 'italic', marginBottom: 4 },
+  HatchBanner:       { color: '#444', fontWeight: '500', marginBottom: 12 },
+  CalcAge:           { fontSize: 14, color: '#333', fontWeight: '500', marginVertical: 4 },
   SpeciesRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   SpeciesCurrent:    { fontWeight: '600', fontSize: 15 },
   SpeciesBtnContent: { flexDirection: 'row-reverse' },
