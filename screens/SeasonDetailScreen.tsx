@@ -48,22 +48,26 @@ type CompartmentProgress = {
   proj_hatch_max: string | null;
   actual_hatch: string | null;
   proj_fledge: string | null;
+  male_age: string | null;
+  female_age: string | null;
 };
 
 function progressLine(P: CompartmentProgress): string {
+  const AgeParts = [P.male_age && `♂ ${P.male_age}`, P.female_age && `♀ ${P.female_age}`].filter(Boolean).join('  ');
+  const Age = AgeParts ? `  ·  ${AgeParts}` : '';
   if (P.actual_hatch) {
     const fledge = P.proj_fledge ? `  ·  Fledge ${shortDate(P.proj_fledge)}` : '';
-    return `Hatched ${shortDate(P.actual_hatch)}${fledge}`;
+    return `Hatched ${shortDate(P.actual_hatch)}${fledge}${Age}`;
   }
-  if (!P.first_egg_min) return '';
+  if (!P.first_egg_min) return AgeParts;
   const eggStr = P.first_egg_min === P.first_egg_max
     ? shortDate(P.first_egg_min)
     : `${shortDate(P.first_egg_min)}–${shortDate(P.first_egg_max!)}`;
-  if (!P.proj_hatch_min) return `1st egg: ${eggStr}`;
+  if (!P.proj_hatch_min) return `1st egg: ${eggStr}${Age}`;
   const hatchStr = P.proj_hatch_min === P.proj_hatch_max
     ? shortDate(P.proj_hatch_min)
     : `${shortDate(P.proj_hatch_min)}–${shortDate(P.proj_hatch_max!)}`;
-  return `1st egg: ${eggStr}  ·  Hatch: ~${hatchStr}`;
+  return `1st egg: ${eggStr}  ·  Hatch: ~${hatchStr}${Age}`;
 }
 
 function todayString(): string {
@@ -145,6 +149,16 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
         if (!Entries) { setNestProgress([]); return; }
 
+        // Adult ages per compartment for this season
+        const { data: NestSeasonRows } = await supabase
+          .from('nest_seasons')
+          .select('compartment_id, male_age, female_age')
+          .eq('site_season_id', SeasonId);
+        const AgeMap = new Map<string, { male_age: string | null; female_age: string | null }>();
+        if (NestSeasonRows) {
+          for (const NS of NestSeasonRows) AgeMap.set(NS.compartment_id, NS);
+        }
+
         // Group entries by compartment
         const CompMap = new Map<string, { label: string; unit_name: string; ewd: { check_date: string; egg_count: number; young_count: number; nestling_age_days: number | null }[] }>();
         for (const E of Entries) {
@@ -198,7 +212,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             ProjFledge  = addDays(ActualHatch, 26);
           }
 
-          Progress.push({ compartment_id: CompId, label: Data.label, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge });
+          const Ages = AgeMap.get(CompId);
+          Progress.push({ compartment_id: CompId, label: Data.label, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null });
         }
 
         setNestProgress(Progress.sort((a, b) => {

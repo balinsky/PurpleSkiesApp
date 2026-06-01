@@ -117,6 +117,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [NestDiscarded, setNestDiscarded] = useState(false);
   const [NestReplaced, setNestReplaced]   = useState(false);
 
+  // ── Adult bird ages ───────────────────────────────────────────────────
+  const [MaleAge, setMaleAge]                     = useState<'SY' | 'ASY' | 'UNK' | null>(null);
+  const [FemaleAge, setFemaleAge]                 = useState<'SY' | 'ASY' | 'UNK' | null>(null);
+  const [AdultAgesExpanded, setAdultAgesExpanded] = useState(false);
+
   // ── Dead adult (expandable) ───────────────────────────────────────────
   const [DeadAdultExpanded, setDeadAdultExpanded] = useState(false);
   const [DeadAdultMale, setDeadAdultMale]         = useState(false);
@@ -279,6 +284,23 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       });
   }, [ExistingEntryId]);
 
+  // Load adult ages for this compartment/season
+  useEffect(() => {
+    supabase
+      .from('nest_seasons')
+      .select('male_age, female_age')
+      .eq('compartment_id', CompartmentId)
+      .eq('site_season_id', SeasonId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data) return;
+        const M = data.male_age as 'SY' | 'ASY' | 'UNK' | null;
+        const F = data.female_age as 'SY' | 'ASY' | 'UNK' | null;
+        setMaleAge(M); setFemaleAge(F);
+        if (M || F) setAdultAgesExpanded(true);
+      });
+  }, []);
+
   function handleSpeciesChange(Val: string) {
     setSpeciesVal(Val);
     setSpeciesExpanded(false);
@@ -344,6 +366,14 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
     setSaving(false);
     if (Err) { setErrorMessage(Err.message); return false; }
+
+    if (IsPM) {
+      await supabase.from('nest_seasons').upsert(
+        { compartment_id: CompartmentId, site_season_id: SeasonId, male_age: MaleAge, female_age: FemaleAge },
+        { onConflict: 'compartment_id,site_season_id' }
+      );
+    }
+
     return true;
   }
 
@@ -576,6 +606,46 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
         <Divider style={styles.Divider} />
 
+        {/* ── Adult bird ages (expandable, PM only) ───────────────── */}
+        {IsPM && (
+          <>
+            <Button
+              mode="text" compact
+              icon={AdultAgesExpanded ? 'chevron-up' : 'chevron-down'}
+              contentStyle={styles.ExpandBtnContent}
+              onPress={() => setAdultAgesExpanded(!AdultAgesExpanded)}
+              style={styles.ExpandBtn}
+            >
+              {L('Adult ages', 'Ages')}
+              {(MaleAge || FemaleAge)
+                ? ` · ${[MaleAge && `♂ ${MaleAge}`, FemaleAge && `♀ ${FemaleAge}`].filter(Boolean).join('  ')}`
+                : ''}
+            </Button>
+            {AdultAgesExpanded && (
+              <View style={styles.ExpandedSection}>
+                {([['Male', MaleAge, setMaleAge], ['Female', FemaleAge, setFemaleAge]] as [string, typeof MaleAge, (v: typeof MaleAge) => void][]).map(([Sex, Val, Set]) => (
+                  <View key={Sex} style={styles.AgeRow}>
+                    <Text style={styles.AgeSexLabel}>{Sex}</Text>
+                    <View style={styles.AgeChips}>
+                      {(['SY', 'ASY', 'UNK'] as const).map(Age => (
+                        <Button
+                          key={Age} compact
+                          mode={Val === Age ? 'contained' : 'outlined'}
+                          onPress={() => Set(Val === Age ? null : Age)}
+                          style={styles.AgeChip}
+                          labelStyle={styles.AgeChipLabel}
+                        >
+                          {Age}
+                        </Button>
+                      ))}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </>
+        )}
+
         {/* ── Dead adult (expandable) ──────────────────────────────── */}
         <Button
           mode="text" compact
@@ -698,6 +768,11 @@ const styles = StyleSheet.create({
   ExpandBtnContent:  { flexDirection: 'row-reverse' },
   ExpandedSection:   { paddingLeft: 8 },
   NotesInput:        { marginTop: 8 },
+  AgeRow:            { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  AgeSexLabel:       { width: 56, fontSize: 13, color: '#444' },
+  AgeChips:          { flexDirection: 'row', gap: 6 },
+  AgeChip:           { alignSelf: 'flex-start' },
+  AgeChipLabel:      { fontSize: 12, marginHorizontal: 6, marginVertical: 2 },
   Actions:           { marginTop: 20, gap: 8 },
   SaveRow:           { flexDirection: 'row', gap: 12 },
   ActionBtn:         { flex: 1 },
