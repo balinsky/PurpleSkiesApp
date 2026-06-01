@@ -34,19 +34,27 @@ const SpeciesLabel: Record<string, string> = {
 };
 
 function buildEntrySummary(entry: {
-  species: string; is_empty_cavity: boolean; has_nest: boolean;
-  egg_count: number; young_count: number; nestling_age_days: number | null;
+  species: string; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean;
+  egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null;
 }): string {
   if (entry.is_empty_cavity) return 'Empty cavity';
   if (!entry.has_nest) return 'No nest';
   const IsPM = entry.species === 'PM';
-  const Parts = [SpeciesLabel[entry.species] ?? entry.species];
-  if (IsPM && entry.egg_count > 0)   Parts.push(`${entry.egg_count} eggs`);
-  if (IsPM && entry.young_count > 0) {
-    Parts.push(`${entry.young_count} young`);
-    if (entry.nestling_age_days === 0)        Parts.push('HD');
-    else if (entry.nestling_age_days != null) Parts.push(`${entry.nestling_age_days}do`);
+  const SpeciesName = SpeciesLabel[entry.species] ?? entry.species;
+  const NetEggs = Math.max(0, entry.egg_count - entry.discarded_eggs);
+  const Parts: string[] = [];
+  if (!IsPM || (NetEggs === 0 && entry.young_count === 0)) {
+    Parts.push(`${SpeciesName} nest`);
+  } else {
+    Parts.push(SpeciesName);
+    if (NetEggs > 0) Parts.push(`${NetEggs} eggs`);
+    if (entry.young_count > 0) {
+      Parts.push(`${entry.young_count} young`);
+      if (entry.nestling_age_days === 0)        Parts.push('HD');
+      else if (entry.nestling_age_days != null) Parts.push(`${entry.nestling_age_days}do`);
+    }
   }
+  if (entry.nest_discarded) Parts.push('discarded');
   return Parts.join(' · ');
 }
 
@@ -78,7 +86,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
 
     const { data: Entries } = await supabase
       .from('nest_check_entries')
-      .select('id, compartment_id, species, is_empty_cavity, has_nest, egg_count, young_count, nestling_age_days')
+      .select('id, compartment_id, species, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days')
       .eq('nest_check_id', CheckId);
 
     // Build a hatch-date map (compartment_id → hatch date string) from prior checks
