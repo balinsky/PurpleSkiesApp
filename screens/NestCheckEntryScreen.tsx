@@ -43,6 +43,13 @@ function formatDate(dateStr: string): string {
   return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+function addDays(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + days);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
 // ── Counter ────────────────────────────────────────────────────────────────
 function Counter({
   label, value, onChange, prevValue,
@@ -121,6 +128,10 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [CalculatedNestlingAge, setCalculatedNestlingAge] = useState<number | null>(null);
   const [PriorEggsSeen, setPriorEggsSeen]   = useState(false);
   const [PriorYoungSeen, setPriorYoungSeen] = useState(false);
+  const [FirstEggRange, setFirstEggRange]             = useState<{min: string; max: string} | null>(null);
+  const [ProjectedHatchRange, setProjectedHatchRange] = useState<{min: string; max: string} | null>(null);
+  const [ActualHatchDate, setActualHatchDate]         = useState<string | null>(null);
+  const [ProjectedFledgeDate, setProjectedFledgeDate] = useState<string | null>(null);
 
   // ── Loading / saving / deleting ───────────────────────────────────────
   const [InitLoading, setInitLoading]     = useState(!!ExistingEntryId);
@@ -180,6 +191,36 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         if (E) setPrevEntry({ ...E, check_date: PrevCheck.check_date });
       }
 
+      // Entries with dates, sorted ascending — used for egg/hatch date calculations
+      const EWD = OtherEntries
+        .map(e => {
+          const C = SeasonChecks.find(c => c.id === e.nest_check_id);
+          return C ? { check_date: C.check_date, egg_count: e.egg_count ?? 0, young_count: e.young_count ?? 0, nestling_age_days: e.nestling_age_days } : null;
+        })
+        .filter((e): e is NonNullable<typeof e> => e !== null)
+        .sort((a, b) => a.check_date.localeCompare(b.check_date));
+
+      // First egg date range
+      // latest possible = first-check-with-eggs − (N − 1) days
+      // earliest possible = day after last check that showed 0 eggs
+      const FirstWithEggs = EWD.find(e => e.egg_count > 0);
+      if (FirstWithEggs) {
+        const LastEmpty = [...EWD]
+          .filter(e => e.egg_count === 0 && e.check_date < FirstWithEggs.check_date)
+          .pop();
+        const LatestFirst   = addDays(FirstWithEggs.check_date, -(FirstWithEggs.egg_count - 1));
+        const EarliestFirst = LastEmpty ? addDays(LastEmpty.check_date, 1) : null;
+        // Guard against contradictory data (EarliestFirst > LatestFirst)
+        const MinFirst = (EarliestFirst && EarliestFirst <= LatestFirst) ? EarliestFirst : LatestFirst;
+        setFirstEggRange({ min: MinFirst, max: LatestFirst });
+
+        const MaxEggs = Math.max(...EWD.map(e => e.egg_count));
+        setProjectedHatchRange({
+          min: addDays(MinFirst,    MaxEggs - 1 + 15),
+          max: addDays(LatestFirst, MaxEggs - 1 + 15),
+        });
+      }
+
       // Hatch date anchor: earliest check with a recorded nestling age
       for (const Check of SeasonChecks) {
         const E = OtherEntries.find(
@@ -191,6 +232,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           const [ay, am, ad] = Check.check_date.split('-').map(Number);
           const Hatch = new Date(ay, am - 1, ad);
           Hatch.setDate(Hatch.getDate() - E.nestling_age_days!);
+          const HatchStr = `${Hatch.getFullYear()}-${String(Hatch.getMonth() + 1).padStart(2, '0')}-${String(Hatch.getDate()).padStart(2, '0')}`;
+          setActualHatchDate(HatchStr);
+          setProjectedFledgeDate(addDays(HatchStr, 26));
           const [cy, cm, cd] = CheckDate.split('-').map(Number);
           const DiffDays = Math.round(
             (new Date(cy, cm - 1, cd).getTime() - Hatch.getTime()) / 86400000
@@ -343,6 +387,33 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             Nestling age: {CalculatedNestlingAge} days
           </Text>
         )}
+
+        {/* ── Egg / hatch / fledge date projections ───────────────── */}
+        {ActualHatchDate ? (
+          <View style={styles.DateStats}>
+            <Text style={styles.DateStat}>Hatched: {formatDate(ActualHatchDate)}</Text>
+            {ProjectedFledgeDate && (
+              <Text style={styles.DateStat}>Proj. fledge: {formatDate(ProjectedFledgeDate)}</Text>
+            )}
+          </View>
+        ) : FirstEggRange ? (
+          <View style={styles.DateStats}>
+            <Text style={styles.DateStat}>
+              First egg:{' '}
+              {FirstEggRange.min === FirstEggRange.max
+                ? formatDate(FirstEggRange.min)
+                : `${formatDate(FirstEggRange.min)}–${formatDate(FirstEggRange.max)}`}
+            </Text>
+            {ProjectedHatchRange && (
+              <Text style={styles.DateStat}>
+                Proj. hatch:{' '}
+                {ProjectedHatchRange.min === ProjectedHatchRange.max
+                  ? formatDate(ProjectedHatchRange.min)
+                  : `${formatDate(ProjectedHatchRange.min)}–${formatDate(ProjectedHatchRange.max)}`}
+              </Text>
+            )}
+          </View>
+        ) : null}
 
         {/* ── Species ─────────────────────────────────────────────── */}
         <View style={styles.SpeciesRow}>
@@ -571,7 +642,9 @@ const styles = StyleSheet.create({
   Loading:           { flex: 1, justifyContent: 'center', alignItems: 'center' },
   Container:         { padding: 16, paddingBottom: 40 },
   PrevBanner:        { color: '#888', fontStyle: 'italic', marginBottom: 4 },
-  HatchBanner:       { color: '#444', fontWeight: '500', marginBottom: 12 },
+  HatchBanner:       { color: '#444', fontWeight: '500', marginBottom: 4 },
+  DateStats:         { marginBottom: 12 },
+  DateStat:          { fontSize: 13, color: '#444', marginBottom: 2 },
   CalcAge:           { fontSize: 14, color: '#333', fontWeight: '500', marginVertical: 4 },
   SpeciesRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   SpeciesCurrent:    { fontWeight: '600', fontSize: 15 },
