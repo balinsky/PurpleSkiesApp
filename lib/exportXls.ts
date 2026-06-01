@@ -7,9 +7,12 @@ import { supabase } from './supabase';
 // xlsx-js-style uses 6-char RGB (no #), ARGB is not needed
 const solidFill = (rgb: string) => ({ patternType: 'solid', fgColor: { rgb } });
 
+const hdrAlign = { wrapText: true,  horizontal: 'center', vertical: 'bottom' };
+const hdrAlign2 = { wrapText: false, horizontal: 'center', vertical: 'bottom' };
+
 const S = {
-  header:      { fill: solidFill('CC99FF'), font: { bold: true,  name: 'Arial' } },
-  headerLight: { fill: solidFill('CC99FF'), font: { bold: false, name: 'Arial' } },
+  header:      { fill: solidFill('CC99FF'), font: { bold: true,  name: 'Arial' }, alignment: hdrAlign  },
+  headerLight: { fill: solidFill('CC99FF'), font: { bold: false, name: 'Arial' }, alignment: hdrAlign2 },
   grayBold:  { fill: solidFill('C0C0C0'), font: { bold: true,  name: 'Arial' } },
   gray:      { fill: solidFill('C0C0C0'), font: { bold: false, name: 'Arial' } },
   boldOnly:  {                            font: { bold: true,  name: 'Arial' } },
@@ -296,10 +299,23 @@ export async function exportSeasonXls(
   const ws = XLSX.utils.aoa_to_sheet([HeaderRow1, HeaderRow2, ...DataRows]);
 
   ws['!cols'] = [
-    { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 },
-    { wch: 16 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 20 },
-    ...Checks.map(() => ({ wch: 8 })),
-    { wch: 6 }, { wch: 6 }, { wch: 6 },
+    { wch: 11 },  // Housing Type
+    { wch: 9  },  // Hole Type
+    { wch: 11 },  // Cavity number
+    { wch: 15 },  // Male/Female Age
+    { wch: 14 },  // Date First Egg
+    { wch: 14 },  // Total # Eggs
+    { wch: 13 },  // Projected Hatch
+    { wch: 9  },  // Actual Hatch
+    { wch: 14 },  // Earliest Fledge
+    ...Checks.map(() => ({ wch: 14 })),
+    { wch: 9  },  // Egg #
+    { wch: 9  },  // Hatch #
+    { wch: 11 },  // Fledge #
+  ];
+  ws['!rows'] = [
+    { hpt: 47.2 },  // row 1: tall wrapped header
+    { hpt: 12   },  // row 2: check dates
   ];
 
   // Style both header rows
