@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 import { Button, Card, Dialog, FAB, HelperText, List, Portal, Text, TextInput } from 'react-native-paper';
+import DateInput from '../components/DateInput';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
@@ -138,20 +139,16 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
               <Text variant="bodySmall" style={styles.Hint}>
                 ASY = After Second Year (adult).  SY = Second Year (yearling male).
               </Text>
-              <TextInput
+              <DateInput
                 label="First ASY seen"
                 value={FirstAsySeen}
-                onChangeText={setFirstAsySeen}
-                placeholder="YYYY-MM-DD"
-                maxLength={10}
+                onChange={setFirstAsySeen}
                 style={styles.Input}
               />
-              <TextInput
+              <DateInput
                 label="First SY male seen"
                 value={FirstSyMaleSeen}
-                onChangeText={setFirstSyMaleSeen}
-                placeholder="YYYY-MM-DD"
-                maxLength={10}
+                onChange={setFirstSyMaleSeen}
                 style={styles.Input}
               />
               {DatesError ? <HelperText type="error" visible>{DatesError}</HelperText> : null}
@@ -205,12 +202,10 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         <Dialog visible={AddCheckVisible} onDismiss={() => setAddCheckVisible(false)}>
           <Dialog.Title>New Nest Check</Dialog.Title>
           <Dialog.Content>
-            <TextInput
-              label="Check date *"
+            <DateInput
+              label="Check date"
               value={NewCheckDate}
-              onChangeText={setNewCheckDate}
-              placeholder="YYYY-MM-DD"
-              maxLength={10}
+              onChange={setNewCheckDate}
               style={styles.DialogInput}
             />
             {AddCheckError ? <HelperText type="error" visible>{AddCheckError}</HelperText> : null}

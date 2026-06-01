@@ -8,6 +8,8 @@ import { Session } from '@supabase/supabase-js';
 import { useFonts } from 'expo-font';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { SettingsProvider } from './contexts/SettingsContext';
+import { en, registerTranslation } from 'react-native-paper-dates';
+registerTranslation('en', en);
 import { supabase } from './lib/supabase';
 import LoginScreen from './screens/auth/LoginScreen';
 import SignUpScreen from './screens/auth/SignUpScreen';

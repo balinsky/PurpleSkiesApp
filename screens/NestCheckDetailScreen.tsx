@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { SectionList, StyleSheet, View } from 'react-native';
 import { Button, Card, Dialog, HelperText, IconButton, Portal, Text, TextInput } from 'react-native-paper';
+import DateInput from '../components/DateInput';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
@@ -221,12 +222,10 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
         <Dialog visible={EditDateVisible} onDismiss={() => setEditDateVisible(false)}>
           <Dialog.Title>Edit check date</Dialog.Title>
           <Dialog.Content>
-            <TextInput
+            <DateInput
               label="Check date"
               value={EditDateValue}
-              onChangeText={setEditDateValue}
-              placeholder="YYYY-MM-DD"
-              maxLength={10}
+              onChange={setEditDateValue}
               style={styles.DialogInput}
             />
             {EditDateError ? <HelperText type="error" visible>{EditDateError}</HelperText> : null}
