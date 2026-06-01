@@ -8,7 +8,8 @@ import { supabase } from './supabase';
 const solidFill = (rgb: string) => ({ patternType: 'solid', fgColor: { rgb } });
 
 const S = {
-  header:    { fill: solidFill('CC99FF'), font: { bold: true,  name: 'Arial' } },
+  header:      { fill: solidFill('CC99FF'), font: { bold: true,  name: 'Arial' } },
+  headerLight: { fill: solidFill('CC99FF'), font: { bold: false, name: 'Arial' } },
   grayBold:  { fill: solidFill('C0C0C0'), font: { bold: true,  name: 'Arial' } },
   gray:      { fill: solidFill('C0C0C0'), font: { bold: false, name: 'Arial' } },
   boldOnly:  {                            font: { bold: true,  name: 'Arial' } },
@@ -44,6 +45,16 @@ type EntryData = {
   nestling_age_days: number | null;
   nest_discarded: boolean;
 };
+
+function ordinal(n: number): string {
+  if (n % 100 >= 11 && n % 100 <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1: return `${n}st`;
+    case 2: return `${n}nd`;
+    case 3: return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
 
 function fmtDate(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);
@@ -222,12 +233,19 @@ export async function exportSeasonXls(
   });
 
   // ── Build worksheet ────────────────────────────────────────────────
-  const HeaderRow = [
+  // Row 1: labels + ordinal check placeholders (purple, bold)
+  const HeaderRow1 = [
     'Housing Type', 'Hole Type', 'Cavity number', 'Male/Female Age',
     'Date First Egg is Laid', 'Total # Eggs Laid', 'Projected Hatch Date',
     'Actual Hatch Date', 'Earliest Possible Fledge Date',
-    ...Checks.map(c => fmtDate(c.check_date)),
+    ...Checks.map((_, i) => `Enter date of ${ordinal(i + 1)} nest check here:`),
     'Egg #', 'Hatch #', 'Fledge #',
+  ];
+  // Row 2: blank for A–I, actual dates for check columns, blank for summary (purple, not bold)
+  const HeaderRow2 = [
+    '', '', '', '', '', '', '', '', '',
+    ...Checks.map(c => fmtDate(c.check_date)),
+    '', '', '',
   ];
 
   const DataRows: (string | number)[][] = [];
@@ -275,7 +293,7 @@ export async function exportSeasonXls(
   }
 
   const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([HeaderRow, ...DataRows]);
+  const ws = XLSX.utils.aoa_to_sheet([HeaderRow1, HeaderRow2, ...DataRows]);
 
   ws['!cols'] = [
     { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 },
@@ -284,9 +302,10 @@ export async function exportSeasonXls(
     { wch: 6 }, { wch: 6 }, { wch: 6 },
   ];
 
-  // Style header row
-  for (let c = 0; c < HeaderRow.length; c++) {
+  // Style both header rows
+  for (let c = 0; c < HeaderRow1.length; c++) {
     applyStyle(ws, c, 0, S.header);
+    applyStyle(ws, c, 1, S.headerLight);
   }
 
   // Info / legend block (2 cols after Fledge #)
