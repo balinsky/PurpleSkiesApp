@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "PurpleSkiesApp",
+    "name": "Purple Skies",
     "slug": "PurpleSkiesApp",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,7 +8,10 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.balinsky.purpleskies"
+      "bundleIdentifier": "com.balinsky.purpleskies",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.balinsky.purpleskies",
