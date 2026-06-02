@@ -10,10 +10,17 @@ type Props = {
 };
 
 export default function CreateSiteScreen({ navigation }: Props) {
-  const [SiteName, setSiteName] = useState('');
-  const [SiteLocation, setSiteLocation] = useState('');
-  const [Loading, setLoading] = useState(false);
-  const [ErrorMessage, setErrorMessage] = useState('');
+  const [SiteName, setSiteName]               = useState('');
+  const [SiteLocation, setSiteLocation]       = useState('');
+  const [ContactName, setContactName]         = useState('');
+  const [ContactEmail, setContactEmail]       = useState('');
+  const [ContactPhone, setContactPhone]       = useState('');
+  const [ContactAddress, setContactAddress]   = useState('');
+  const [ContactCity, setContactCity]         = useState('');
+  const [ContactState, setContactState]       = useState('');
+  const [ContactZip, setContactZip]           = useState('');
+  const [Loading, setLoading]                 = useState(false);
+  const [ErrorMessage, setErrorMessage]       = useState('');
 
   async function handleCreate() {
     setErrorMessage('');
@@ -24,8 +31,15 @@ export default function CreateSiteScreen({ navigation }: Props) {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase.from('sites').insert({
-      name: SiteName.trim(),
-      address: SiteLocation.trim() || null,
+      name:            SiteName.trim(),
+      address:         SiteLocation.trim()    || null,
+      contact_name:    ContactName.trim()     || null,
+      contact_email:   ContactEmail.trim()    || null,
+      contact_phone:   ContactPhone.trim()    || null,
+      contact_address: ContactAddress.trim()  || null,
+      contact_city:    ContactCity.trim()     || null,
+      contact_state:   ContactState.trim()    || null,
+      contact_zip:     ContactZip.trim()      || null,
       owner_id: user!.id,
     });
     setLoading(false);
@@ -56,6 +70,54 @@ export default function CreateSiteScreen({ navigation }: Props) {
         The location can be an address or a verbal description, e.g. "Behind the school gymnasium on the east field."
       </HelperText>
 
+      <Text variant="titleSmall" style={styles.SectionLabel}>Contact Information</Text>
+      <TextInput
+        label="Housing provider name"
+        value={ContactName}
+        onChangeText={setContactName}
+        style={styles.Input}
+      />
+      <TextInput
+        label="Email"
+        value={ContactEmail}
+        onChangeText={setContactEmail}
+        keyboardType="email-address"
+        autoCapitalize="none"
+        style={styles.Input}
+      />
+      <TextInput
+        label="Phone"
+        value={ContactPhone}
+        onChangeText={setContactPhone}
+        keyboardType="phone-pad"
+        style={styles.Input}
+      />
+      <TextInput
+        label="Address"
+        value={ContactAddress}
+        onChangeText={setContactAddress}
+        style={styles.Input}
+      />
+      <TextInput
+        label="City"
+        value={ContactCity}
+        onChangeText={setContactCity}
+        style={styles.Input}
+      />
+      <TextInput
+        label="State"
+        value={ContactState}
+        onChangeText={setContactState}
+        style={styles.Input}
+      />
+      <TextInput
+        label="Zip"
+        value={ContactZip}
+        onChangeText={setContactZip}
+        keyboardType="number-pad"
+        style={styles.Input}
+      />
+
       {ErrorMessage ? <HelperText type="error" visible>{ErrorMessage}</HelperText> : null}
 
       <Button mode="contained" onPress={handleCreate} loading={Loading} style={styles.Button}>
@@ -80,10 +142,11 @@ export default function CreateSiteScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  Container: { padding: 16 },
-  Input:     { marginBottom: 8 },
-  Button:    { marginTop: 8, marginBottom: 24 },
-  PmcaCard:  { backgroundColor: '#f0f7ff' },
-  PmcaTitle: { marginBottom: 6 },
-  Email:     { fontWeight: 'bold' },
+  Container:    { padding: 16 },
+  Input:        { marginBottom: 8 },
+  SectionLabel: { marginTop: 16, marginBottom: 8 },
+  Button:       { marginTop: 8, marginBottom: 24 },
+  PmcaCard:     { backgroundColor: '#f0f7ff' },
+  PmcaTitle:    { marginBottom: 6 },
+  Email:        { fontWeight: 'bold' },
 });

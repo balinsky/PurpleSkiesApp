@@ -43,12 +43,19 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
   const [DangerZoneExpanded, setDangerZoneExpanded]   = useState(false);
 
   // ── Edit site ──────────────────────────────────────────────────────
-  const [EditVisible, setEditVisible]   = useState(false);
-  const [EditName, setEditName]         = useState('');
-  const [EditAddress, setEditAddress]   = useState('');
-  const [EditLoading, setEditLoading]   = useState(false);
-  const [EditFetching, setEditFetching] = useState(false);
-  const [EditError, setEditError]       = useState('');
+  const [EditVisible, setEditVisible]           = useState(false);
+  const [EditName, setEditName]                 = useState('');
+  const [EditAddress, setEditAddress]           = useState('');
+  const [EditContactName, setEditContactName]   = useState('');
+  const [EditContactEmail, setEditContactEmail] = useState('');
+  const [EditContactPhone, setEditContactPhone] = useState('');
+  const [EditContactAddr, setEditContactAddr]   = useState('');
+  const [EditContactCity, setEditContactCity]   = useState('');
+  const [EditContactState, setEditContactState] = useState('');
+  const [EditContactZip, setEditContactZip]     = useState('');
+  const [EditLoading, setEditLoading]           = useState(false);
+  const [EditFetching, setEditFetching]         = useState(false);
+  const [EditError, setEditError]               = useState('');
 
   useFocusEffect(
     useCallback(() => {
@@ -106,13 +113,20 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
     setEditVisible(true);
     const { data } = await supabase
       .from('sites')
-      .select('name, address')
+      .select('name, address, contact_name, contact_email, contact_phone, contact_address, contact_city, contact_state, contact_zip')
       .eq('id', SiteId)
       .single();
     setEditFetching(false);
     if (data) {
       setEditName(data.name ?? '');
       setEditAddress(data.address ?? '');
+      setEditContactName(data.contact_name ?? '');
+      setEditContactEmail(data.contact_email ?? '');
+      setEditContactPhone(data.contact_phone ?? '');
+      setEditContactAddr(data.contact_address ?? '');
+      setEditContactCity(data.contact_city ?? '');
+      setEditContactState(data.contact_state ?? '');
+      setEditContactZip(data.contact_zip ?? '');
     }
   }
 
@@ -121,7 +135,17 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
     setEditLoading(true);
     const { error } = await supabase
       .from('sites')
-      .update({ name: EditName.trim(), address: EditAddress.trim() || null })
+      .update({
+        name:            EditName.trim(),
+        address:         EditAddress.trim()      || null,
+        contact_name:    EditContactName.trim()  || null,
+        contact_email:   EditContactEmail.trim() || null,
+        contact_phone:   EditContactPhone.trim() || null,
+        contact_address: EditContactAddr.trim()  || null,
+        contact_city:    EditContactCity.trim()  || null,
+        contact_state:   EditContactState.trim() || null,
+        contact_zip:     EditContactZip.trim()   || null,
+      })
       .eq('id', SiteId);
     setEditLoading(false);
     if (error) { setEditError(error.message); return; }
@@ -290,11 +314,11 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
         {/* ── Edit Site ──────────────────────────────────────────── */}
         <Dialog visible={EditVisible} onDismiss={() => setEditVisible(false)}>
           <Dialog.Title>Edit Site</Dialog.Title>
-          <Dialog.Content>
+          <Dialog.ScrollArea style={styles.DialogScroll}>
             {EditFetching ? (
-              <Text>Loading…</Text>
+              <Text style={styles.DialogLoadingText}>Loading…</Text>
             ) : (
-              <>
+              <ScrollView keyboardShouldPersistTaps="handled">
                 <TextInput
                   label="Site name *"
                   value={EditName}
@@ -312,10 +336,57 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
                 <HelperText type="info" visible>
                   Can be an address or a description, e.g. "East field behind the gymnasium."
                 </HelperText>
+                <Text variant="titleSmall" style={styles.DialogSectionLabel}>Contact Information</Text>
+                <TextInput
+                  label="Housing provider name"
+                  value={EditContactName}
+                  onChangeText={setEditContactName}
+                  style={styles.DialogInput}
+                />
+                <TextInput
+                  label="Email"
+                  value={EditContactEmail}
+                  onChangeText={setEditContactEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  style={styles.DialogInput}
+                />
+                <TextInput
+                  label="Phone"
+                  value={EditContactPhone}
+                  onChangeText={setEditContactPhone}
+                  keyboardType="phone-pad"
+                  style={styles.DialogInput}
+                />
+                <TextInput
+                  label="Address"
+                  value={EditContactAddr}
+                  onChangeText={setEditContactAddr}
+                  style={styles.DialogInput}
+                />
+                <TextInput
+                  label="City"
+                  value={EditContactCity}
+                  onChangeText={setEditContactCity}
+                  style={styles.DialogInput}
+                />
+                <TextInput
+                  label="State"
+                  value={EditContactState}
+                  onChangeText={setEditContactState}
+                  style={styles.DialogInput}
+                />
+                <TextInput
+                  label="Zip"
+                  value={EditContactZip}
+                  onChangeText={setEditContactZip}
+                  keyboardType="number-pad"
+                  style={styles.DialogInput}
+                />
                 {EditError ? <HelperText type="error" visible>{EditError}</HelperText> : null}
-              </>
+              </ScrollView>
             )}
-          </Dialog.Content>
+          </Dialog.ScrollArea>
           <Dialog.Actions>
             <Button onPress={() => setEditVisible(false)}>Cancel</Button>
             <Button loading={EditLoading} disabled={EditFetching} onPress={handleSaveSite}>Save</Button>
@@ -351,6 +422,9 @@ const styles = StyleSheet.create({
   Divider:        { marginTop: 8 },
   DangerActions:  { marginTop: 8, marginBottom: 8 },
   DeleteButton:   { alignSelf: 'flex-start', borderColor: 'red' },
-  ErrorText:      { color: 'red', marginTop: 8 },
-  DialogInput:    { marginBottom: 8 },
+  ErrorText:          { color: 'red', marginTop: 8 },
+  DialogScroll:       { maxHeight: 480 },
+  DialogLoadingText:  { padding: 8 },
+  DialogSectionLabel: { marginTop: 12, marginBottom: 8 },
+  DialogInput:        { marginBottom: 8 },
 });
