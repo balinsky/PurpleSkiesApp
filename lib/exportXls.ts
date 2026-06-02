@@ -109,7 +109,7 @@ type SiteContact = {
 type BandDetail = {
   cavity_label:   string;
   check_date:     string;
-  bird_type:      string;
+  bird_label:     string;
   is_new_banding: boolean;
   band_type:      string;
   band_color:     string | null;
@@ -198,8 +198,7 @@ function addInfoBlock(ws: any, colA: number, year: number, siteName: string, con
     setCell(ws, colB, bandStart + 1, 'Event · Band',         S.greenBold);
     for (let i = 0; i < bandDetails.length; i++) {
       const B = bandDetails[i];
-      const bird  = B.bird_type === 'nestling' ? 'Nestling'
-                  : B.bird_type === 'adult_male' ? 'Adult M' : 'Adult F';
+      const bird  = B.bird_label;
       const event = B.is_new_banding ? 'New' : 'Observed';
       const band  = B.band_type === 'federal'
                   ? `Federal ${B.band_code}`
@@ -247,19 +246,31 @@ export async function exportSeasonXls(
   if (Entries && Entries.length > 0) {
     const { data: BandRows } = await supabase
       .from('bands')
-      .select('nest_check_entry_id, is_new_banding, bird_type, band_type, band_color, band_code')
+      .select('nest_check_entry_id, nestling_id, is_new_banding, bird_type, band_type, band_color, band_code')
       .in('nest_check_entry_id', Entries.map(e => e.id));
     if (BandRows) {
-      for (const B of BandRows) {
+      // Fetch labels for any nestlings referenced
+      const NestlingIds = [...new Set(BandRows.map((B: any) => B.nestling_id).filter(Boolean))];
+      const NestlingLabelMap = new Map<string, string>();
+      if (NestlingIds.length > 0) {
+        const { data: NestlingRows } = await supabase
+          .from('nestlings').select('id, label').in('id', NestlingIds);
+        if (NestlingRows) for (const N of NestlingRows) NestlingLabelMap.set(N.id, N.label);
+      }
+
+      for (const B of BandRows as any[]) {
         BandingSet.add(B.nest_check_entry_id);
         const Entry = Entries.find(e => e.id === B.nest_check_entry_id);
         if (!Entry) continue;
         const Check = Checks.find(c => c.id === Entry.nest_check_id);
         const comp  = Entry.compartments as any;
+        const bird_label = B.nestling_id
+          ? (NestlingLabelMap.get(B.nestling_id) ?? 'Nestling')
+          : B.bird_type === 'adult_male' ? 'Adult M' : 'Adult F';
         BandDetails.push({
           cavity_label:   comp?.cavity_label ?? '',
           check_date:     Check?.check_date  ?? '',
-          bird_type:      B.bird_type,
+          bird_label,
           is_new_banding: B.is_new_banding,
           band_type:      B.band_type,
           band_color:     B.band_color ?? null,

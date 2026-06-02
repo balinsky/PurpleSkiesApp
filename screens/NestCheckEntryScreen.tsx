@@ -24,9 +24,22 @@ type PrevEntry = {
   young_count: number;
 };
 
-type BandRecord = {
+type NestlingBand = {
+  band_type: 'federal' | 'color';
+  band_color: string | null;
+  band_code: string;
+};
+
+type NestlingRecord = {
+  id: string | null;       // null = new this session, not yet in DB
+  label: string;
+  bandsThisCheck: NestlingBand[];
+  totalPriorBands: number;
+};
+
+type AdultBand = {
   is_new_banding: boolean;
-  bird_type: 'nestling' | 'adult_male' | 'adult_female';
+  bird_type: 'adult_male' | 'adult_female';
   band_type: 'federal' | 'color';
   band_color: string | null;
   band_code: string;
@@ -145,15 +158,18 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [DeadAdultFemale, setDeadAdultFemale]     = useState(false);
 
   // ── Banding ───────────────────────────────────────────────────────────
-  const [Bands, setBands]                     = useState<BandRecord[]>([]);
-  const [BandingExpanded, setBandingExpanded] = useState(false);
-  const [AddBandVisible, setAddBandVisible]   = useState(false);
-  const [NewBandIsNew, setNewBandIsNew]       = useState(true);
-  const [NewBandBirdType, setNewBandBirdType] = useState<BandRecord['bird_type']>('nestling');
-  const [NewBandType, setNewBandType]         = useState<BandRecord['band_type']>('federal');
-  const [NewBandColor, setNewBandColor]       = useState('');
-  const [NewBandCode, setNewBandCode]         = useState('');
-  const [NewBandError, setNewBandError]       = useState('');
+  const [Nestlings, setNestlings]                           = useState<NestlingRecord[]>([]);
+  const [AdultBands, setAdultBands]                         = useState<AdultBand[]>([]);
+  const [BandingExpanded, setBandingExpanded]               = useState(false);
+  const [AddNestlingBandVisible, setAddNestlingBandVisible] = useState(false);
+  const [AddNestlingBandIdx, setAddNestlingBandIdx]         = useState<number | null>(null);
+  const [AddAdultBandVisible, setAddAdultBandVisible]       = useState(false);
+  const [NewBandType, setNewBandType]                       = useState<'federal' | 'color'>('federal');
+  const [NewBandColor, setNewBandColor]                     = useState('');
+  const [NewBandCode, setNewBandCode]                       = useState('');
+  const [NewBandError, setNewBandError]                     = useState('');
+  const [NewAdultBirdType, setNewAdultBirdType]             = useState<'adult_male' | 'adult_female'>('adult_male');
+  const [NewAdultIsNew, setNewAdultIsNew]                   = useState(true);
 
   // ── Notes (expandable) ────────────────────────────────────────────────
   const [NotesExpanded, setNotesExpanded] = useState(false);
@@ -292,10 +308,8 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (!ExistingEntryId) return;
     async function loadEntry() {
-      const [{ data: E }, { data: BandData }] = await Promise.all([
-        supabase.from('nest_check_entries').select('*').eq('id', ExistingEntryId!).single(),
-        supabase.from('bands').select('*').eq('nest_check_entry_id', ExistingEntryId!),
-      ]);
+      const { data: E } = await supabase
+        .from('nest_check_entries').select('*').eq('id', ExistingEntryId!).single();
       if (!E) return;
       setSpeciesVal(E.species ?? 'PM');
       setIsEmpty(E.is_empty_cavity ?? false);
@@ -320,20 +334,108 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       const OF = (E.observed_female_age as 'SY' | 'ASY' | 'UNK' | null) ?? null;
       setObservedMaleAge(OM); setObservedFemaleAge(OF);
       if (OM || OF) setAdultAgesExpanded(true);
-      if (BandData && BandData.length > 0) {
-        setBands(BandData.map(B => ({
-          is_new_banding: B.is_new_banding,
-          bird_type:      B.bird_type as BandRecord['bird_type'],
-          band_type:      B.band_type as BandRecord['band_type'],
-          band_color:     B.band_color ?? null,
-          band_code:      B.band_code,
-        })));
-        setBandingExpanded(true);
-      }
       setInitLoading(false);
     }
     loadEntry();
   }, [ExistingEntryId]);
+
+  // Load nestlings for this compartment+season, plus any bands for this entry
+  useEffect(() => {
+    async function loadBandingContext() {
+      const [{ data: NestlingRows }, { data: BandRows }] = await Promise.all([
+        supabase.from('nestlings').select('id, label')
+          .eq('compartment_id', CompartmentId).eq('site_season_id', SeasonId)
+          .order('created_at'),
+        ExistingEntryId
+          ? supabase.from('bands')
+              .select('nestling_id, is_new_banding, bird_type, band_type, band_color, band_code')
+              .eq('nest_check_entry_id', ExistingEntryId)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+
+      const nestlingIds = (NestlingRows ?? []).map(n => n.id);
+      const priorCounts = new Map<string, number>();
+      if (nestlingIds.length > 0) {
+        let q = supabase.from('bands').select('nestling_id').in('nestling_id', nestlingIds);
+        if (ExistingEntryId) q = (q as any).neq('nest_check_entry_id', ExistingEntryId);
+        const { data: PriorBands } = await q;
+        if (PriorBands) for (const B of PriorBands as any[]) {
+          if (B.nestling_id) priorCounts.set(B.nestling_id, (priorCounts.get(B.nestling_id) ?? 0) + 1);
+        }
+      }
+
+      const bands = BandRows ?? [];
+      const records: NestlingRecord[] = (NestlingRows ?? []).map(N => ({
+        id:               N.id,
+        label:            N.label,
+        bandsThisCheck:   bands
+          .filter((B: any) => B.nestling_id === N.id)
+          .map((B: any) => ({ band_type: B.band_type, band_color: B.band_color ?? null, band_code: B.band_code })),
+        totalPriorBands:  priorCounts.get(N.id) ?? 0,
+      }));
+
+      const adultBands: AdultBand[] = bands
+        .filter((B: any) => !B.nestling_id)
+        .map((B: any) => ({
+          is_new_banding: B.is_new_banding,
+          bird_type:      B.bird_type as AdultBand['bird_type'],
+          band_type:      B.band_type as AdultBand['band_type'],
+          band_color:     B.band_color ?? null,
+          band_code:      B.band_code,
+        }));
+
+      setNestlings(records);
+      setAdultBands(adultBands);
+      if (records.length > 0 || adultBands.length > 0) setBandingExpanded(true);
+    }
+    loadBandingContext();
+  }, [CompartmentId, SeasonId, ExistingEntryId]);
+
+  // ── Banding helpers ────────────────────────────────────────────────────
+  function openAddNestlingBand(Idx: number) {
+    setAddNestlingBandIdx(Idx);
+    setNewBandType('federal');
+    setNewBandColor('');
+    setNewBandCode('');
+    setNewBandError('');
+    setAddNestlingBandVisible(true);
+  }
+
+  function handleCancelNestlingBand() {
+    if (AddNestlingBandIdx !== null) {
+      const N = Nestlings[AddNestlingBandIdx];
+      if (N && N.id === null && N.bandsThisCheck.length === 0) {
+        setNestlings(Ns => Ns.filter((_, I) => I !== AddNestlingBandIdx));
+      }
+    }
+    setAddNestlingBandVisible(false);
+  }
+
+  function handleConfirmNestlingBand() {
+    if (!NewBandCode.trim()) { setNewBandError('Please enter a band number or code.'); return; }
+    if (AddNestlingBandIdx === null) return;
+    const Band: NestlingBand = {
+      band_type:  NewBandType,
+      band_color: NewBandType === 'color' ? (NewBandColor.trim() || null) : null,
+      band_code:  NewBandCode.trim().toUpperCase(),
+    };
+    setNestlings(Ns => Ns.map((N, I) =>
+      I === AddNestlingBandIdx ? { ...N, bandsThisCheck: [...N.bandsThisCheck, Band] } : N
+    ));
+    setAddNestlingBandVisible(false);
+  }
+
+  function handleConfirmAdultBand() {
+    if (!NewBandCode.trim()) { setNewBandError('Please enter a band number or code.'); return; }
+    setAdultBands(Ab => [...Ab, {
+      is_new_banding: NewAdultIsNew,
+      bird_type:      NewAdultBirdType,
+      band_type:      NewBandType,
+      band_color:     NewBandType === 'color' ? (NewBandColor.trim() || null) : null,
+      band_code:      NewBandCode.trim().toUpperCase(),
+    }]);
+    setAddAdultBandVisible(false);
+  }
 
   function handleSpeciesChange(Val: string) {
     setSpeciesVal(Val);
@@ -408,18 +510,54 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     if (SaveErr) { setErrorMessage(SaveErr.message); return false; }
 
     if (EntryId) {
+      // Create any new nestlings (those added this session, id === null, with at least one band)
+      const NestlingsToCreate = Nestlings.filter(N => N.id === null && N.bandsThisCheck.length > 0);
+      const NewLabelToId = new Map<string, string>();
+      if (NestlingsToCreate.length > 0) {
+        const { data: Created, error: NestlingErr } = await supabase
+          .from('nestlings')
+          .insert(NestlingsToCreate.map(N => ({
+            compartment_id: CompartmentId,
+            site_season_id: SeasonId,
+            label:          N.label,
+          })))
+          .select('id, label');
+        if (NestlingErr) { setErrorMessage(`Nestlings: ${NestlingErr.message}`); return false; }
+        if (Created) for (const N of Created) NewLabelToId.set(N.label, N.id);
+      }
+
       await supabase.from('bands').delete().eq('nest_check_entry_id', EntryId);
-      if (Bands.length > 0) {
-        const { error: BandErr } = await supabase.from('bands').insert(
-          Bands.map(B => ({
-            nest_check_entry_id: EntryId!,
-            is_new_banding: B.is_new_banding,
-            bird_type:      B.bird_type,
-            band_type:      B.band_type,
-            band_color:     B.band_color,
-            band_code:      B.band_code,
-          }))
-        );
+
+      const BandRows: object[] = [];
+      for (const N of Nestlings) {
+        if (N.bandsThisCheck.length === 0) continue;
+        const NestlingId = N.id ?? NewLabelToId.get(N.label) ?? null;
+        for (const B of N.bandsThisCheck) {
+          BandRows.push({
+            nest_check_entry_id: EntryId,
+            nestling_id:         NestlingId,
+            is_new_banding:      true,
+            bird_type:           'nestling',
+            band_type:           B.band_type,
+            band_color:          B.band_color,
+            band_code:           B.band_code,
+          });
+        }
+      }
+      for (const B of AdultBands) {
+        BandRows.push({
+          nest_check_entry_id: EntryId,
+          nestling_id:         null,
+          is_new_banding:      B.is_new_banding,
+          bird_type:           B.bird_type,
+          band_type:           B.band_type,
+          band_color:          B.band_color,
+          band_code:           B.band_code,
+        });
+      }
+
+      if (BandRows.length > 0) {
+        const { error: BandErr } = await supabase.from('bands').insert(BandRows);
         if (BandErr) { setErrorMessage(`Bands: ${BandErr.message}`); return false; }
       }
     }
@@ -767,49 +905,110 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         )}
 
         {/* ── Banding (expandable) ────────────────────────────────── */}
-        <Button
-          mode="text" compact
-          icon={BandingExpanded ? 'chevron-up' : 'chevron-down'}
-          contentStyle={styles.ExpandBtnContent}
-          onPress={() => setBandingExpanded(!BandingExpanded)}
-          style={styles.ExpandBtn}
-        >
-          {L('Banding (B)', 'B')}{Bands.length > 0 ? ` · ${Bands.length}` : ''}
-        </Button>
-        {BandingExpanded && (
-          <View style={styles.ExpandedSection}>
-            {Bands.map((Band, Idx) => (
-              <View key={Idx} style={styles.BandRow}>
-                <Text style={styles.BandLabel}>
-                  {Band.bird_type === 'nestling' ? 'Nestling' : Band.bird_type === 'adult_male' ? 'Adult ♂' : 'Adult ♀'}
-                  {' · '}{Band.is_new_banding ? 'New' : 'Observed'}
-                  {' · '}{Band.band_type === 'federal' ? 'Federal' : Band.band_color ? `${Band.band_color} ` : ''}
-                  {Band.band_code}
-                </Text>
-                <IconButton
-                  icon="close" size={16}
-                  onPress={() => setBands(B => B.filter((_, I) => I !== Idx))}
-                  style={styles.BandDeleteBtn}
-                />
-              </View>
-            ))}
-            <Button
-              mode="outlined" compact icon="plus"
-              style={styles.AddBandBtn}
-              onPress={() => {
-                setNewBandIsNew(true);
-                setNewBandBirdType('nestling');
-                setNewBandType('federal');
-                setNewBandColor('');
-                setNewBandCode('');
-                setNewBandError('');
-                setAddBandVisible(true);
-              }}
-            >
-              Add band
-            </Button>
-          </View>
-        )}
+        {(() => {
+          const HasBands = Nestlings.some(N => N.bandsThisCheck.length > 0) || AdultBands.length > 0;
+          return (
+            <>
+              <Button
+                mode="text" compact
+                icon={BandingExpanded ? 'chevron-up' : 'chevron-down'}
+                contentStyle={styles.ExpandBtnContent}
+                onPress={() => setBandingExpanded(!BandingExpanded)}
+                style={styles.ExpandBtn}
+              >
+                {L('Banding (B)', 'B')}{HasBands ? ' · B' : ''}
+              </Button>
+              {BandingExpanded && (
+                <View style={styles.ExpandedSection}>
+
+                  {/* Nestlings */}
+                  <Text style={styles.BandSubheader}>Nestlings</Text>
+                  {Nestlings.map((N, NIdx) => (
+                    <View key={NIdx} style={styles.NestlingBlock}>
+                      <View style={styles.NestlingHeader}>
+                        <Text style={styles.NestlingLabel}>{N.label}</Text>
+                        {N.totalPriorBands > 0 && (
+                          <Text style={styles.NestlingPrior}>
+                            {N.totalPriorBands} prior band{N.totalPriorBands !== 1 ? 's' : ''}
+                          </Text>
+                        )}
+                      </View>
+                      {N.bandsThisCheck.map((B, BIdx) => (
+                        <View key={BIdx} style={styles.BandRow}>
+                          <Text style={styles.BandLabel}>
+                            {B.band_type === 'federal' ? 'Federal ' : (B.band_color ? `${B.band_color} ` : 'Color ')}
+                            {B.band_code}
+                          </Text>
+                          <IconButton
+                            icon="close" size={16}
+                            onPress={() => setNestlings(Ns => Ns.map((Nn, I) =>
+                              I === NIdx ? { ...Nn, bandsThisCheck: Nn.bandsThisCheck.filter((_, BI) => BI !== BIdx) } : Nn
+                            ))}
+                            style={styles.BandDeleteBtn}
+                          />
+                        </View>
+                      ))}
+                      <Button
+                        mode="text" compact icon="plus"
+                        style={styles.AddNestlingBandBtn}
+                        labelStyle={styles.AddNestlingBandLabel}
+                        onPress={() => openAddNestlingBand(NIdx)}
+                      >
+                        Add band to {N.label}
+                      </Button>
+                    </View>
+                  ))}
+                  <Button
+                    mode="outlined" compact icon="plus"
+                    style={styles.AddBandBtn}
+                    disabled={Nestlings.length >= YoungCount}
+                    onPress={() => {
+                      const NewLabel = `Nestling ${Nestlings.length + 1}`;
+                      setNestlings(Ns => [...Ns, { id: null, label: NewLabel, bandsThisCheck: [], totalPriorBands: 0 }]);
+                      openAddNestlingBand(Nestlings.length);
+                    }}
+                  >
+                    Band a nestling{YoungCount > 0 ? ` (${YoungCount - Nestlings.length} remaining)` : ''}
+                  </Button>
+
+                  {/* Adults */}
+                  <Text style={[styles.BandSubheader, styles.BandSubheaderSpaced]}>Adults</Text>
+                  {AdultBands.map((B, Idx) => (
+                    <View key={Idx} style={styles.BandRow}>
+                      <Text style={styles.BandLabel}>
+                        {B.bird_type === 'adult_male' ? 'Adult ♂' : 'Adult ♀'}
+                        {' · '}{B.is_new_banding ? 'New' : 'Obs'}
+                        {' · '}{B.band_type === 'federal' ? 'Federal ' : (B.band_color ? `${B.band_color} ` : 'Color ')}
+                        {B.band_code}
+                      </Text>
+                      <IconButton
+                        icon="close" size={16}
+                        onPress={() => setAdultBands(Ab => Ab.filter((_, I) => I !== Idx))}
+                        style={styles.BandDeleteBtn}
+                      />
+                    </View>
+                  ))}
+                  <Button
+                    mode="outlined" compact icon="plus"
+                    style={styles.AddBandBtn}
+                    onPress={() => {
+                      setNewAdultBirdType('adult_male');
+                      setNewAdultIsNew(true);
+                      setNewBandType('federal');
+                      setNewBandColor('');
+                      setNewBandCode('');
+                      setNewBandError('');
+                      setAddAdultBandVisible(true);
+                    }}
+                  >
+                    Add adult band
+                  </Button>
+
+                </View>
+              )}
+            </>
+          );
+        })()}
 
         {/* ── Notes (expandable) ──────────────────────────────────── */}
         <Button
@@ -859,24 +1058,17 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       </ScrollView>
 
       <Portal>
-        {/* ── Add Band ────────────────────────────────────────────── */}
-        <Dialog visible={AddBandVisible} onDismiss={() => setAddBandVisible(false)}>
-          <Dialog.Title>Add Band</Dialog.Title>
+        {/* ── Add Nestling Band ────────────────────────────────────── */}
+        <Dialog visible={AddNestlingBandVisible} onDismiss={handleCancelNestlingBand}>
+          <Dialog.Title>
+            {AddNestlingBandIdx !== null && Nestlings[AddNestlingBandIdx]
+              ? `Band: ${Nestlings[AddNestlingBandIdx].label}`
+              : 'Add Nestling Band'}
+          </Dialog.Title>
           <Dialog.ScrollArea style={styles.BandDialogScroll}>
             <ScrollView keyboardShouldPersistTaps="handled">
-              <Text style={styles.BandFormLabel}>Bird</Text>
-              <RadioButton.Group value={NewBandBirdType} onValueChange={v => setNewBandBirdType(v as BandRecord['bird_type'])}>
-                <RadioButton.Item label="Nestling"    value="nestling"    style={styles.RadioItem} />
-                <RadioButton.Item label="Adult male"  value="adult_male"  style={styles.RadioItem} />
-                <RadioButton.Item label="Adult female" value="adult_female" style={styles.RadioItem} />
-              </RadioButton.Group>
-              <Text style={styles.BandFormLabel}>Event</Text>
-              <RadioButton.Group value={NewBandIsNew ? 'new' : 'observed'} onValueChange={v => setNewBandIsNew(v === 'new')}>
-                <RadioButton.Item label="Newly banded"           value="new"      style={styles.RadioItem} />
-                <RadioButton.Item label="Observed existing band" value="observed" style={styles.RadioItem} />
-              </RadioButton.Group>
               <Text style={styles.BandFormLabel}>Band type</Text>
-              <RadioButton.Group value={NewBandType} onValueChange={v => setNewBandType(v as BandRecord['band_type'])}>
+              <RadioButton.Group value={NewBandType} onValueChange={v => setNewBandType(v as 'federal' | 'color')}>
                 <RadioButton.Item label="Federal (USFWS silver)" value="federal" style={styles.RadioItem} />
                 <RadioButton.Item label="Color band"             value="color"   style={styles.RadioItem} />
               </RadioButton.Group>
@@ -900,18 +1092,53 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             </ScrollView>
           </Dialog.ScrollArea>
           <Dialog.Actions>
-            <Button onPress={() => setAddBandVisible(false)}>Cancel</Button>
-            <Button onPress={() => {
-              if (!NewBandCode.trim()) { setNewBandError('Please enter a band number or code.'); return; }
-              setBands(B => [...B, {
-                is_new_banding: NewBandIsNew,
-                bird_type:      NewBandBirdType,
-                band_type:      NewBandType,
-                band_color:     NewBandType === 'color' ? (NewBandColor.trim() || null) : null,
-                band_code:      NewBandCode.trim().toUpperCase(),
-              }]);
-              setAddBandVisible(false);
-            }}>Add</Button>
+            <Button onPress={handleCancelNestlingBand}>Cancel</Button>
+            <Button onPress={handleConfirmNestlingBand}>Add</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        {/* ── Add Adult Band ───────────────────────────────────────── */}
+        <Dialog visible={AddAdultBandVisible} onDismiss={() => setAddAdultBandVisible(false)}>
+          <Dialog.Title>Add Adult Band</Dialog.Title>
+          <Dialog.ScrollArea style={styles.BandDialogScroll}>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={styles.BandFormLabel}>Bird</Text>
+              <RadioButton.Group value={NewAdultBirdType} onValueChange={v => setNewAdultBirdType(v as AdultBand['bird_type'])}>
+                <RadioButton.Item label="Adult male"   value="adult_male"   style={styles.RadioItem} />
+                <RadioButton.Item label="Adult female" value="adult_female" style={styles.RadioItem} />
+              </RadioButton.Group>
+              <Text style={styles.BandFormLabel}>Event</Text>
+              <RadioButton.Group value={NewAdultIsNew ? 'new' : 'observed'} onValueChange={v => setNewAdultIsNew(v === 'new')}>
+                <RadioButton.Item label="Newly banded"           value="new"      style={styles.RadioItem} />
+                <RadioButton.Item label="Observed existing band" value="observed" style={styles.RadioItem} />
+              </RadioButton.Group>
+              <Text style={styles.BandFormLabel}>Band type</Text>
+              <RadioButton.Group value={NewBandType} onValueChange={v => setNewBandType(v as 'federal' | 'color')}>
+                <RadioButton.Item label="Federal (USFWS silver)" value="federal" style={styles.RadioItem} />
+                <RadioButton.Item label="Color band"             value="color"   style={styles.RadioItem} />
+              </RadioButton.Group>
+              {NewBandType === 'color' && (
+                <TextInput
+                  label="Band color"
+                  value={NewBandColor}
+                  onChangeText={setNewBandColor}
+                  placeholder="e.g. Red, Blue, Green"
+                  style={styles.BandInput}
+                />
+              )}
+              <TextInput
+                label={NewBandType === 'federal' ? 'Band number (e.g. 2841-74209)' : 'Band code (e.g. TX 403)'}
+                value={NewBandCode}
+                onChangeText={setNewBandCode}
+                autoCapitalize="characters"
+                style={styles.BandInput}
+              />
+              {NewBandError ? <HelperText type="error" visible>{NewBandError}</HelperText> : null}
+            </ScrollView>
+          </Dialog.ScrollArea>
+          <Dialog.Actions>
+            <Button onPress={() => setAddAdultBandVisible(false)}>Cancel</Button>
+            <Button onPress={handleConfirmAdultBand}>Add</Button>
           </Dialog.Actions>
         </Dialog>
 
@@ -973,12 +1200,20 @@ const styles = StyleSheet.create({
   SaveRow:           { flexDirection: 'row', gap: 12 },
   ActionBtn:         { flex: 1 },
   DeleteBtn:         { borderColor: 'red' },
-  BandRow:           { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  BandLabel:         { flex: 1, fontSize: 13, color: '#333' },
-  BandDeleteBtn:     { margin: 0 },
-  AddBandBtn:        { alignSelf: 'flex-start', marginTop: 4 },
-  BandDialogScroll:  { maxHeight: 440 },
-  BandFormLabel:     { fontWeight: '600', fontSize: 13, marginTop: 12, marginBottom: 2, paddingHorizontal: 4 },
-  BandInput:         { marginTop: 8, marginBottom: 4 },
-  RadioItem:         { paddingVertical: 0 },
+  BandSubheader:        { fontWeight: '600', fontSize: 13, color: '#444', marginTop: 4, marginBottom: 4 },
+  BandSubheaderSpaced:  { marginTop: 12 },
+  NestlingBlock:        { marginBottom: 8, paddingLeft: 4, borderLeftWidth: 2, borderLeftColor: '#ddd' },
+  NestlingHeader:       { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+  NestlingLabel:        { fontWeight: '600', fontSize: 13, color: '#222' },
+  NestlingPrior:        { fontSize: 11, color: '#888' },
+  AddNestlingBandBtn:   { alignSelf: 'flex-start', marginTop: 2 },
+  AddNestlingBandLabel: { fontSize: 12, marginHorizontal: 4, marginVertical: 2 },
+  BandRow:              { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  BandLabel:            { flex: 1, fontSize: 13, color: '#333' },
+  BandDeleteBtn:        { margin: 0 },
+  AddBandBtn:           { alignSelf: 'flex-start', marginTop: 4 },
+  BandDialogScroll:     { maxHeight: 440 },
+  BandFormLabel:        { fontWeight: '600', fontSize: 13, marginTop: 12, marginBottom: 2, paddingHorizontal: 4 },
+  BandInput:            { marginTop: 8, marginBottom: 4 },
+  RadioItem:            { paddingVertical: 0 },
 });
