@@ -78,7 +78,7 @@ export default function SiteMembersScreen({ navigation, route }: Props) {
     const [{ data: SiteRow }, { data: MemberRows }, { data: InvRows }] = await Promise.all([
       supabase.from('sites').select('owner_id').eq('id', SiteId).single(),
       supabase.from('site_members')
-        .select('id, user_id, role, profiles(email, display_name)')
+        .select('id, user_id, role')
         .eq('site_id', SiteId)
         .order('created_at'),
       supabase.from('invitations')
@@ -91,24 +91,35 @@ export default function SiteMembersScreen({ navigation, route }: Props) {
     const owner = SiteRow?.owner_id === user.id;
     setIsOwner(owner);
 
+    // Fetch profiles for all user_ids in one query
+    const UserIds = [
+      ...(SiteRow?.owner_id ? [SiteRow.owner_id] : []),
+      ...(MemberRows ?? []).map(m => m.user_id),
+    ];
+    const ProfileMap = new Map<string, { email: string; display_name: string | null }>();
+    if (UserIds.length > 0) {
+      const { data: ProfileRows } = await supabase
+        .from('profiles').select('id, email, display_name').in('id', UserIds);
+      for (const P of ProfileRows ?? []) ProfileMap.set(P.id, P);
+    }
+
     const List: Member[] = [];
 
     // Owner entry
     if (SiteRow?.owner_id) {
-      const { data: OwnerProfile } = await supabase
-        .from('profiles').select('email, display_name').eq('id', SiteRow.owner_id).single();
+      const P = ProfileMap.get(SiteRow.owner_id);
       List.push({
         memberId:    'owner',
         userId:      SiteRow.owner_id,
         role:        'owner',
-        email:       OwnerProfile?.email ?? '',
-        displayName: OwnerProfile?.display_name ?? null,
+        email:       P?.email ?? '',
+        displayName: P?.display_name ?? null,
         isOwner:     true,
       });
     }
 
     for (const M of MemberRows ?? []) {
-      const P = M.profiles as any;
+      const P = ProfileMap.get(M.user_id);
       if (M.user_id === user.id) setMyRole(M.role);
       List.push({
         memberId:    M.id,
