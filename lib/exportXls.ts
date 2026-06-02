@@ -90,16 +90,24 @@ function checkCode(entry: EntryData | null): string {
 }
 
 // ── Info / legend block ────────────────────────────────────────────────────────
-function addInfoBlock(ws: any, colA: number, year: number, siteName: string) {
+type SiteContact = {
+  contact_name:    string | null;
+  contact_address: string | null;
+  contact_city:    string | null;
+  contact_state:   string | null;
+  contact_zip:     string | null;
+};
+
+function addInfoBlock(ws: any, colA: number, year: number, siteName: string, contact: SiteContact) {
   const colB = colA + 1;
 
   const siteRows: [number, string, string][] = [
     [2, 'Season:',        String(year)],
-    [3, 'Name:',          ''],
-    [4, 'Address:',       ''],
-    [5, 'City:',          ''],
-    [6, 'State:',         ''],
-    [7, 'Zip:',           ''],
+    [3, 'Name:',          contact.contact_name    ?? ''],
+    [4, 'Address:',       contact.contact_address ?? ''],
+    [5, 'City:',          contact.contact_city    ?? ''],
+    [6, 'State:',         contact.contact_state   ?? ''],
+    [7, 'Zip:',           contact.contact_zip     ?? ''],
     [8, 'Site location:', siteName],
   ];
   for (const [r, label, val] of siteRows) {
@@ -179,11 +187,18 @@ export async function exportSeasonXls(
       .gte('check_date', `${Year}-01-01`)
       .lte('check_date', `${Year}-12-31`)
       .order('check_date', { ascending: true }),
-    supabase.from('sites').select('name').eq('id', SiteId).single(),
+    supabase.from('sites').select('name, contact_name, contact_address, contact_city, contact_state, contact_zip').eq('id', SiteId).single(),
   ]);
 
   if (!Checks || Checks.length === 0) return 'No nest checks found for this season.';
   const SiteName = (SiteData as any)?.name ?? 'Site';
+  const Contact: SiteContact = {
+    contact_name:    (SiteData as any)?.contact_name    ?? null,
+    contact_address: (SiteData as any)?.contact_address ?? null,
+    contact_city:    (SiteData as any)?.contact_city    ?? null,
+    contact_state:   (SiteData as any)?.contact_state   ?? null,
+    contact_zip:     (SiteData as any)?.contact_zip     ?? null,
+  };
 
   const { data: Entries } = await supabase
     .from('nest_check_entries')
@@ -326,7 +341,7 @@ export async function exportSeasonXls(
 
   // Info / legend block (2 cols after Fledge #)
   const InfoCol = 9 + Checks.length + 4;
-  addInfoBlock(ws, InfoCol, Year, SiteName);
+  addInfoBlock(ws, InfoCol, Year, SiteName, Contact);
 
   XLSX.utils.book_append_sheet(wb, ws, `${Year} Nest Data`);
 
