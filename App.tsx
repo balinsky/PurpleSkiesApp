@@ -76,21 +76,6 @@ function AppNavigator() {
   );
 }
 
-async function acceptPendingInvitations(userId: string, email: string) {
-  if (!email) return;
-  const { data: Pending } = await supabase
-    .from('invitations')
-    .select('id, site_id, role')
-    .eq('invited_email', email.toLowerCase())
-    .is('accepted_at', null);
-  for (const Inv of Pending ?? []) {
-    await supabase.from('site_members')
-      .insert({ site_id: Inv.site_id, user_id: userId, role: Inv.role });
-    await supabase.from('invitations')
-      .update({ accepted_at: new Date().toISOString() })
-      .eq('id', Inv.id);
-  }
-}
 
 export default function App() {
   const [Session, setSession] = useState<Session | null>(null);

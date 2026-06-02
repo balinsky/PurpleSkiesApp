@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
-import { Card, FAB, IconButton, Text } from 'react-native-paper';
+import { Button, Card, FAB, IconButton, Text } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
@@ -8,13 +8,29 @@ import { AppStackParamList } from '../App';
 
 type Site = { id: string; name: string; address: string | null };
 
+type PendingInvite = {
+  id:         string;
+  site_id:    string;
+  site_name:  string;
+  role:       string;
+};
+
 type Props = {
   navigation: NativeStackNavigationProp<AppStackParamList, 'Home'>;
 };
 
+const RoleLabel: Record<string, string> = {
+  manager:   'Manager',
+  collector: 'Collector',
+  viewer:    'Viewer',
+};
+
 export default function HomeScreen({ navigation }: Props) {
-  const [Sites, setSites] = useState<Site[]>([]);
-  const [Loading, setLoading] = useState(true);
+  const [Sites, setSites]               = useState<Site[]>([]);
+  const [Loading, setLoading]           = useState(true);
+  const [Invites, setInvites]           = useState<PendingInvite[]>([]);
+  const [Accepting, setAccepting]       = useState<string | null>(null);
+  const [Declining, setDeclining]       = useState<string | null>(null);
 
   useEffect(() => {
     navigation.setOptions({
@@ -31,19 +47,64 @@ export default function HomeScreen({ navigation }: Props) {
 
   useFocusEffect(
     useCallback(() => {
-      async function fetchSites() {
-        setLoading(true);
-        const { data } = await supabase.from('sites').select('id, name, address').order('name');
-        setSites(data ?? []);
-        setLoading(false);
-      }
-      fetchSites();
+      loadAll();
     }, [])
   );
 
+  async function loadAll() {
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    const email = user?.email?.toLowerCase() ?? '';
+
+    const [{ data: SiteData }, { data: InvData }] = await Promise.all([
+      supabase.from('sites').select('id, name, address').order('name'),
+      email
+        ? supabase.from('invitations')
+            .select('id, site_id, role, sites(name)')
+            .eq('invited_email', email)
+            .is('accepted_at', null)
+        : Promise.resolve({ data: [] as any[] }),
+    ]);
+
+    setSites(SiteData ?? []);
+
+    const Pending: PendingInvite[] = (InvData ?? []).map((I: any) => ({
+      id:        I.id,
+      site_id:   I.site_id,
+      site_name: I.sites?.name ?? 'Unknown site',
+      role:      I.role,
+    }));
+    setInvites(Pending);
+    setLoading(false);
+  }
+
+  async function handleAccept(Inv: PendingInvite) {
+    setAccepting(Inv.id);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setAccepting(null); return; }
+    await supabase.from('site_members')
+      .insert({ site_id: Inv.site_id, user_id: user.id, role: Inv.role });
+    await supabase.from('invitations')
+      .update({ accepted_at: new Date().toISOString() })
+      .eq('id', Inv.id);
+    setAccepting(null);
+    loadAll();
+  }
+
+  async function handleDecline(Inv: PendingInvite) {
+    setDeclining(Inv.id);
+    await supabase.from('invitations')
+      .update({ accepted_at: new Date().toISOString() })
+      .eq('id', Inv.id);
+    setDeclining(null);
+    setInvites(Prev => Prev.filter(I => I.id !== Inv.id));
+  }
+
+  const HasContent = Sites.length > 0 || Invites.length > 0;
+
   return (
     <View style={styles.Container}>
-      {!Loading && Sites.length === 0 ? (
+      {!Loading && !HasContent ? (
         <View style={styles.Empty}>
           <Text variant="titleMedium" style={styles.EmptyTitle}>No sites yet</Text>
           <Text variant="bodyMedium" style={styles.EmptyText}>
@@ -55,6 +116,43 @@ export default function HomeScreen({ navigation }: Props) {
           data={Sites}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.List}
+          ListHeaderComponent={Invites.length > 0 ? (
+            <View style={styles.InvitesSection}>
+              <Text variant="labelLarge" style={styles.InvitesHeader}>
+                Pending Invitations
+              </Text>
+              {Invites.map((Inv) => (
+                <Card key={Inv.id} style={styles.InviteCard} mode="contained">
+                  <Card.Content style={styles.InviteContent}>
+                    <View style={styles.InviteInfo}>
+                      <Text variant="titleSmall">{Inv.site_name}</Text>
+                      <Text variant="bodySmall" style={styles.InviteRole}>
+                        Invited as {RoleLabel[Inv.role] ?? Inv.role}
+                      </Text>
+                    </View>
+                    <View style={styles.InviteActions}>
+                      <Button
+                        mode="contained" compact
+                        loading={Accepting === Inv.id}
+                        disabled={!!Accepting || !!Declining}
+                        onPress={() => handleAccept(Inv)}
+                      >
+                        Join
+                      </Button>
+                      <Button
+                        mode="text" compact textColor="#888"
+                        loading={Declining === Inv.id}
+                        disabled={!!Accepting || !!Declining}
+                        onPress={() => handleDecline(Inv)}
+                      >
+                        Decline
+                      </Button>
+                    </View>
+                  </Card.Content>
+                </Card>
+              ))}
+            </View>
+          ) : null}
           renderItem={({ item }) => (
             <Card
               style={styles.Card}
@@ -76,11 +174,18 @@ export default function HomeScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  Container: { flex: 1 },
-  List:      { padding: 16 },
-  Card:      { marginBottom: 12 },
-  Empty:     { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
-  EmptyTitle:{ marginBottom: 8 },
-  EmptyText: { textAlign: 'center', color: '#666' },
-  FAB:       { position: 'absolute', right: 16, bottom: 16 },
+  Container:      { flex: 1 },
+  List:           { padding: 16, paddingBottom: 80 },
+  Card:           { marginBottom: 12 },
+  Empty:          { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
+  EmptyTitle:     { marginBottom: 8 },
+  EmptyText:      { textAlign: 'center', color: '#666' },
+  FAB:            { position: 'absolute', right: 16, bottom: 16 },
+  InvitesSection: { marginBottom: 16 },
+  InvitesHeader:  { marginBottom: 8 },
+  InviteCard:     { marginBottom: 8, backgroundColor: '#f3e8ff' },
+  InviteContent:  { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  InviteInfo:     { flex: 1 },
+  InviteRole:     { color: '#666', marginTop: 2 },
+  InviteActions:  { flexDirection: 'row', alignItems: 'center', gap: 4 },
 });
