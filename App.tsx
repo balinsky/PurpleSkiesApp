@@ -22,6 +22,7 @@ import CreateCompartmentScreen from './screens/CreateCompartmentScreen';
 import SeasonDetailScreen from './screens/SeasonDetailScreen';
 import NestCheckDetailScreen from './screens/NestCheckDetailScreen';
 import NestCheckEntryScreen from './screens/NestCheckEntryScreen';
+import ProfileScreen from './screens/ProfileScreen';
 
 enableScreens();
 
@@ -32,6 +33,7 @@ export type AuthStackParamList = {
 
 export type AppStackParamList = {
   Home: undefined;
+  Profile: undefined;
   CreateSite: undefined;
   SiteDetail: { SiteId: string; SiteName: string };
   CreateHousingUnit: { SiteId: string };
@@ -58,6 +60,7 @@ function AppNavigator() {
   return (
     <AppStack.Navigator>
       <AppStack.Screen name="Home" component={HomeScreen} options={{ title: 'Purple Skies' }} />
+      <AppStack.Screen name="Profile" component={ProfileScreen} options={{ title: 'My Profile' }} />
       <AppStack.Screen name="CreateSite" component={CreateSiteScreen} options={{ title: 'New Site' }} />
       <AppStack.Screen name="SiteDetail" component={SiteDetailScreen} options={({ route }) => ({ title: route.params.SiteName })} />
       <AppStack.Screen name="CreateHousingUnit" component={CreateHousingUnitScreen} options={{ title: 'Add Housing Unit' }} />
