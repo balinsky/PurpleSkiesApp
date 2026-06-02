@@ -13,16 +13,18 @@ const hdrAlign2 = { wrapText: false, horizontal: 'center', vertical: 'bottom' };
 const S = {
   header:      { fill: solidFill('CC99FF'), font: { bold: true,  name: 'Arial', sz: 11 }, alignment: hdrAlign  },
   headerLight: { fill: solidFill('CC99FF'), font: { bold: false, name: 'Arial', sz: 11 }, alignment: hdrAlign2 },
-  grayBold:  { fill: solidFill('C0C0C0'), font: { bold: true,  name: 'Arial' } },
-  gray:      { fill: solidFill('C0C0C0'), font: { bold: false, name: 'Arial' } },
-  boldOnly:  {                            font: { bold: true,  name: 'Arial' } },
-  pink:      { fill: solidFill('FF99CC'), font: { bold: false, name: 'Arial' } },
-  cyanBold:  { fill: solidFill('CCFFFF'), font: { bold: true,  name: 'Arial' } },
-  cyan:      { fill: solidFill('CCFFFF'), font: { bold: false, name: 'Arial' } },
-  peachBold: { fill: solidFill('FFCC99'), font: { bold: true,  name: 'Arial' } },
-  peach:     { fill: solidFill('FFCC99'), font: { bold: false, name: 'Arial' } },
-  yellowBold:{ fill: solidFill('FFFF99'), font: { bold: true,  name: 'Arial' } },
-  yellow:    { fill: solidFill('FFFF99'), font: { bold: false, name: 'Arial' } },
+  grayBold:   { fill: solidFill('C0C0C0'), font: { bold: true,  name: 'Arial' } },
+  gray:       { fill: solidFill('C0C0C0'), font: { bold: false, name: 'Arial' } },
+  boldOnly:   {                            font: { bold: true,  name: 'Arial' } },
+  pink:       { fill: solidFill('FF99CC'), font: { bold: false, name: 'Arial' } },
+  cyanBold:   { fill: solidFill('CCFFFF'), font: { bold: true,  name: 'Arial' } },
+  cyan:       { fill: solidFill('CCFFFF'), font: { bold: false, name: 'Arial' } },
+  peachBold:  { fill: solidFill('FFCC99'), font: { bold: true,  name: 'Arial' } },
+  peach:      { fill: solidFill('FFCC99'), font: { bold: false, name: 'Arial' } },
+  yellowBold: { fill: solidFill('FFFF99'), font: { bold: true,  name: 'Arial' } },
+  yellow:     { fill: solidFill('FFFF99'), font: { bold: false, name: 'Arial' } },
+  greenBold:  { fill: solidFill('CCFFCC'), font: { bold: true,  name: 'Arial' } },
+  green:      { fill: solidFill('CCFFCC'), font: { bold: false, name: 'Arial' } },
 };
 
 // ── Worksheet cell helpers ─────────────────────────────────────────────────────
@@ -104,7 +106,17 @@ type SiteContact = {
   contact_zip:     string | null;
 };
 
-function addInfoBlock(ws: any, colA: number, year: number, siteName: string, contact: SiteContact) {
+type BandDetail = {
+  cavity_label:   string;
+  check_date:     string;
+  bird_type:      string;
+  is_new_banding: boolean;
+  band_type:      string;
+  band_color:     string | null;
+  band_code:      string;
+};
+
+function addInfoBlock(ws: any, colA: number, year: number, siteName: string, contact: SiteContact, bandDetails: BandDetail[]) {
   const colB = colA + 1;
 
   const siteRows: [number, string, string][] = [
@@ -177,6 +189,25 @@ function addInfoBlock(ws: any, colA: number, year: number, siteName: string, con
   for (let i = 0; i < martinCodes.length; i++) {
     setCell(ws, colA, 37 + i, martinCodes[i], S.yellow);
   }
+
+  if (bandDetails.length > 0) {
+    const bandStart = 55;
+    setCell(ws, colA, bandStart,     'Banding Records', S.greenBold);
+    setCell(ws, colB, bandStart,     '',                S.greenBold);
+    setCell(ws, colA, bandStart + 1, 'Cavity · Date · Bird', S.greenBold);
+    setCell(ws, colB, bandStart + 1, 'Event · Band',         S.greenBold);
+    for (let i = 0; i < bandDetails.length; i++) {
+      const B = bandDetails[i];
+      const bird  = B.bird_type === 'nestling' ? 'Nestling'
+                  : B.bird_type === 'adult_male' ? 'Adult M' : 'Adult F';
+      const event = B.is_new_banding ? 'New' : 'Observed';
+      const band  = B.band_type === 'federal'
+                  ? `Federal ${B.band_code}`
+                  : `${B.band_color ? B.band_color + ' ' : ''}${B.band_code}`;
+      setCell(ws, colA, bandStart + 2 + i, `${B.cavity_label} · ${fmtDate(B.check_date)} · ${bird}`, S.green);
+      setCell(ws, colB, bandStart + 2 + i, `${event} · ${band}`, S.green);
+    }
+  }
 }
 
 // ── Main export ────────────────────────────────────────────────────────────────
@@ -212,12 +243,34 @@ export async function exportSeasonXls(
     .in('nest_check_id', Checks.map(c => c.id));
 
   const BandingSet = new Set<string>();
+  const BandDetails: BandDetail[] = [];
   if (Entries && Entries.length > 0) {
     const { data: BandRows } = await supabase
       .from('bands')
-      .select('nest_check_entry_id')
+      .select('nest_check_entry_id, is_new_banding, bird_type, band_type, band_color, band_code')
       .in('nest_check_entry_id', Entries.map(e => e.id));
-    if (BandRows) BandRows.forEach(B => BandingSet.add(B.nest_check_entry_id));
+    if (BandRows) {
+      for (const B of BandRows) {
+        BandingSet.add(B.nest_check_entry_id);
+        const Entry = Entries.find(e => e.id === B.nest_check_entry_id);
+        if (!Entry) continue;
+        const Check = Checks.find(c => c.id === Entry.nest_check_id);
+        const comp  = Entry.compartments as any;
+        BandDetails.push({
+          cavity_label:   comp?.cavity_label ?? '',
+          check_date:     Check?.check_date  ?? '',
+          bird_type:      B.bird_type,
+          is_new_banding: B.is_new_banding,
+          band_type:      B.band_type,
+          band_color:     B.band_color ?? null,
+          band_code:      B.band_code,
+        });
+      }
+      BandDetails.sort((a, b) => {
+        const d = a.check_date.localeCompare(b.check_date);
+        return d !== 0 ? d : a.cavity_label.localeCompare(b.cavity_label);
+      });
+    }
   }
 
   const { data: NestSeasons } = await supabase
@@ -357,7 +410,7 @@ export async function exportSeasonXls(
 
   // Info / legend block (2 cols after Fledge #)
   const InfoCol = 9 + Checks.length + 4;
-  addInfoBlock(ws, InfoCol, Year, SiteName, Contact);
+  addInfoBlock(ws, InfoCol, Year, SiteName, Contact, BandDetails);
 
   XLSX.utils.book_append_sheet(wb, ws, `${Year} Nest Data`);
 
