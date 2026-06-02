@@ -47,6 +47,7 @@ type EntryData = {
   young_count: number;
   nestling_age_days: number | null;
   nest_discarded: boolean;
+  has_banding: boolean;
 };
 
 function ordinal(n: number): string {
@@ -81,12 +82,17 @@ function checkCode(entry: EntryData | null): string {
     ].filter(Boolean).join(' ');
     return parts ? `${entry.species} ${parts}` : entry.species;
   }
+  let code = '';
   if (entry.young_count > 0) {
     const age = entry.nestling_age_days != null ? ` ${entry.nestling_age_days}do` : '';
-    return `${entry.young_count}Y${age}`;
+    code = `${entry.young_count}Y${age}`;
+  } else if (entry.egg_count > 0) {
+    code = `${entry.egg_count}E`;
+  } else {
+    code = 'N';
   }
-  if (entry.egg_count > 0) return `${entry.egg_count}E`;
-  return 'N';
+  if (entry.has_banding) code += ' B';
+  return code;
 }
 
 // ── Info / legend block ────────────────────────────────────────────────────────
@@ -202,8 +208,17 @@ export async function exportSeasonXls(
 
   const { data: Entries } = await supabase
     .from('nest_check_entries')
-    .select('nest_check_id, compartment_id, species, egg_count, young_count, nestling_age_days, nest_discarded, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
+    .select('id, nest_check_id, compartment_id, species, egg_count, young_count, nestling_age_days, nest_discarded, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
     .in('nest_check_id', Checks.map(c => c.id));
+
+  const BandingSet = new Set<string>();
+  if (Entries && Entries.length > 0) {
+    const { data: BandRows } = await supabase
+      .from('bands')
+      .select('nest_check_entry_id')
+      .in('nest_check_entry_id', Entries.map(e => e.id));
+    if (BandRows) BandRows.forEach(B => BandingSet.add(B.nest_check_entry_id));
+  }
 
   const { data: NestSeasons } = await supabase
     .from('nest_seasons')
@@ -242,6 +257,7 @@ export async function exportSeasonXls(
       young_count:       E.young_count ?? 0,
       nestling_age_days: E.nestling_age_days ?? null,
       nest_discarded:    E.nest_discarded ?? false,
+      has_banding:       BandingSet.has(E.id),
     });
   }
 

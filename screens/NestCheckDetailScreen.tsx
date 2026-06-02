@@ -36,7 +36,7 @@ const SpeciesLabel: Record<string, string> = {
 function buildEntrySummary(entry: {
   species: string; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean;
   egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null;
-  male_age?: string | null; female_age?: string | null;
+  male_age?: string | null; female_age?: string | null; has_banding?: boolean;
 }): string {
   if (entry.is_empty_cavity) return 'Empty cavity';
   if (!entry.has_nest) return 'No nest';
@@ -60,6 +60,7 @@ function buildEntrySummary(entry: {
     const AgeParts = [entry.male_age && `♂ ${entry.male_age}`, entry.female_age && `♀ ${entry.female_age}`].filter(Boolean);
     if (AgeParts.length > 0) Parts.push(AgeParts.join(' '));
   }
+  if (entry.has_banding) Parts.push('B');
   return Parts.join(' · ');
 }
 
@@ -94,6 +95,15 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       .from('nest_check_entries')
       .select('id, compartment_id, species, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days')
       .eq('nest_check_id', CheckId);
+
+    const BandingSet = new Set<string>();
+    if (Entries && Entries.length > 0) {
+      const { data: BandRows } = await supabase
+        .from('bands')
+        .select('nest_check_entry_id')
+        .in('nest_check_entry_id', Entries.map(e => e.id));
+      if (BandRows) BandRows.forEach(B => BandingSet.add(B.nest_check_entry_id));
+    }
 
     // Build a hatch-date map (compartment_id → hatch date string) from prior checks
     // so we can compute nestling age on this check date even when it wasn't stored.
@@ -176,6 +186,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
               ...Entry,
               nestling_age_days: effectiveAge(C.id, Entry.nestling_age_days),
               ...AgeMap.get(C.id),
+              has_banding: BandingSet.has(Entry.id),
             }) : null,
           };
         }),
