@@ -80,7 +80,7 @@ export default function SiteMembersScreen({ navigation, route }: Props) {
       supabase.from('site_members')
         .select('id, user_id, role')
         .eq('site_id', SiteId)
-        .order('created_at'),
+        .order('joined_at'),
       supabase.from('invitations')
         .select('id, invited_email, role')
         .eq('site_id', SiteId)
