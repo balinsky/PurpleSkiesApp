@@ -86,14 +86,10 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
-      if (session?.user) void acceptPendingInvitations(session.user.id, session.user.email ?? '');
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (event === 'SIGNED_IN' && session?.user) {
-        void acceptPendingInvitations(session.user.id, session.user.email ?? '');
-      }
     });
 
     return () => subscription.unsubscribe();
