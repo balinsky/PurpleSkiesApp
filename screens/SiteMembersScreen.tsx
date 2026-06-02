@@ -150,6 +150,7 @@ export default function SiteMembersScreen({ navigation, route }: Props) {
     const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase.from('invitations').insert({
       site_id:       SiteId,
+      site_name:     route.params.SiteName,
       invited_email: Email,
       role:          InviteRole,
       invited_by:    user!.id,

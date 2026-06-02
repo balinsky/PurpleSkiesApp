@@ -60,7 +60,7 @@ export default function HomeScreen({ navigation }: Props) {
       supabase.from('sites').select('id, name, address').order('name'),
       email
         ? supabase.from('invitations')
-            .select('id, site_id, role, sites(name)')
+            .select('id, site_id, role, site_name')
             .eq('invited_email', email)
             .is('accepted_at', null)
         : Promise.resolve({ data: [] as any[] }),
@@ -71,7 +71,7 @@ export default function HomeScreen({ navigation }: Props) {
     const Pending: PendingInvite[] = (InvData ?? []).map((I: any) => ({
       id:        I.id,
       site_id:   I.site_id,
-      site_name: I.sites?.name ?? 'Unknown site',
+      site_name: I.site_name ?? 'Unknown site',
       role:      I.role,
     }));
     setInvites(Pending);
