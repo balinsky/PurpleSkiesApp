@@ -23,6 +23,7 @@ import SeasonDetailScreen from './screens/SeasonDetailScreen';
 import NestCheckDetailScreen from './screens/NestCheckDetailScreen';
 import NestCheckEntryScreen from './screens/NestCheckEntryScreen';
 import ProfileScreen from './screens/ProfileScreen';
+import SiteMembersScreen from './screens/SiteMembersScreen';
 
 enableScreens();
 
@@ -34,6 +35,7 @@ export type AuthStackParamList = {
 export type AppStackParamList = {
   Home: undefined;
   Profile: undefined;
+  SiteMembers: { SiteId: string; SiteName: string };
   CreateSite: undefined;
   SiteDetail: { SiteId: string; SiteName: string };
   CreateHousingUnit: { SiteId: string };
@@ -61,6 +63,7 @@ function AppNavigator() {
     <AppStack.Navigator>
       <AppStack.Screen name="Home" component={HomeScreen} options={{ title: 'Purple Skies' }} />
       <AppStack.Screen name="Profile" component={ProfileScreen} options={{ title: 'My Profile' }} />
+      <AppStack.Screen name="SiteMembers" component={SiteMembersScreen} options={{ title: 'Members' }} />
       <AppStack.Screen name="CreateSite" component={CreateSiteScreen} options={{ title: 'New Site' }} />
       <AppStack.Screen name="SiteDetail" component={SiteDetailScreen} options={({ route }) => ({ title: route.params.SiteName })} />
       <AppStack.Screen name="CreateHousingUnit" component={CreateHousingUnitScreen} options={{ title: 'Add Housing Unit' }} />
@@ -73,6 +76,22 @@ function AppNavigator() {
   );
 }
 
+async function acceptPendingInvitations(userId: string, email: string) {
+  if (!email) return;
+  const { data: Pending } = await supabase
+    .from('invitations')
+    .select('id, site_id, role')
+    .eq('invited_email', email.toLowerCase())
+    .is('accepted_at', null);
+  for (const Inv of Pending ?? []) {
+    await supabase.from('site_members')
+      .insert({ site_id: Inv.site_id, user_id: userId, role: Inv.role });
+    await supabase.from('invitations')
+      .update({ accepted_at: new Date().toISOString() })
+      .eq('id', Inv.id);
+  }
+}
+
 export default function App() {
   const [Session, setSession] = useState<Session | null>(null);
   const [Loading, setLoading] = useState(true);
@@ -82,10 +101,14 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
+      if (session?.user) void acceptPendingInvitations(session.user.id, session.user.email ?? '');
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
+      if (event === 'SIGNED_IN' && session?.user) {
+        void acceptPendingInvitations(session.user.id, session.user.email ?? '');
+      }
     });
 
     return () => subscription.unsubscribe();

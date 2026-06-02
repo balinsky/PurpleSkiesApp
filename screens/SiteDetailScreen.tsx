@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Card, Dialog, Divider, HelperText, List, Portal, Text, TextInput } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -41,6 +41,7 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
   const [DeleteError, setDeleteError]                 = useState('');
   const [SiteDetailsExpanded, setSiteDetailsExpanded] = useState(false);
   const [DangerZoneExpanded, setDangerZoneExpanded]   = useState(false);
+  const [UserRole, setUserRole]                       = useState<'owner' | 'manager' | 'collector' | 'viewer' | null>(null);
 
   // ── Edit site ──────────────────────────────────────────────────────
   const [EditVisible, setEditVisible]           = useState(false);
@@ -56,6 +57,19 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
   const [EditLoading, setEditLoading]           = useState(false);
   const [EditFetching, setEditFetching]         = useState(false);
   const [EditError, setEditError]               = useState('');
+
+  useEffect(() => {
+    async function loadRole() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: S } = await supabase.from('sites').select('owner_id').eq('id', SiteId).single();
+      if (S?.owner_id === user.id) { setUserRole('owner'); return; }
+      const { data: Mb } = await supabase
+        .from('site_members').select('role').eq('site_id', SiteId).eq('user_id', user.id).maybeSingle();
+      setUserRole((Mb?.role as any) ?? 'viewer');
+    }
+    loadRole();
+  }, [SiteId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -187,11 +201,13 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
         </Button>
         {SiteDetailsExpanded && (
           <>
-            <View style={styles.SiteActions}>
-              <Button mode="outlined" compact onPress={openEditSite}>
-                Edit site name &amp; location
-              </Button>
-            </View>
+            {(UserRole === 'owner' || UserRole === 'manager') && (
+              <View style={styles.SiteActions}>
+                <Button mode="outlined" compact onPress={openEditSite}>
+                  Edit site name &amp; location
+                </Button>
+              </View>
+            )}
 
             <List.Section>
               <List.Subheader>Housing Units</List.Subheader>
@@ -221,16 +237,32 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
                   </Card>
                 ))
               )}
-              <Button
-                mode="outlined"
-                style={styles.SectionButton}
-                onPress={() => navigation.navigate('CreateHousingUnit', { SiteId })}
-              >
-                Add Housing Unit
-              </Button>
+              {(UserRole === 'owner' || UserRole === 'manager') && (
+                <Button
+                  mode="outlined"
+                  style={styles.SectionButton}
+                  onPress={() => navigation.navigate('CreateHousingUnit', { SiteId })}
+                >
+                  Add Housing Unit
+                </Button>
+              )}
             </List.Section>
           </>
         )}
+
+        <Divider style={styles.Divider} />
+
+        {/* ── Members ───────────────────────────────────────────────── */}
+        <Button
+          mode="text"
+          compact
+          icon="account-group-outline"
+          contentStyle={styles.ExpandBtnContent}
+          onPress={() => navigation.navigate('SiteMembers', { SiteId, SiteName })}
+          style={styles.ExpandBtn}
+        >
+          Members
+        </Button>
 
         <Divider style={styles.Divider} />
 
@@ -282,8 +314,8 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
 
         <Divider style={styles.Divider} />
 
-        {/* ── Danger zone (collapsible) ──────────────────────────── */}
-        <Button
+        {/* ── Danger zone (owner only, collapsible) ─────────────── */}
+        {UserRole === 'owner' && <Button
           mode="text"
           compact
           textColor="red"
@@ -293,7 +325,7 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
           style={styles.ExpandBtn}
         >
           Danger zone
-        </Button>
+        </Button>}
         {DangerZoneExpanded && (
           <View style={styles.DangerActions}>
             <Button

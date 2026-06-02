@@ -33,13 +33,19 @@ export default function ProfileScreen({ navigation }: Props) {
   async function handleSave() {
     setSaveError('');
     setSaveSuccess(false);
-    if (!Name.trim()) { setSaveError('Please enter your name.'); return; }
     setSaving(true);
-    const { error } = await supabase.auth.updateUser({
-      data: { name: Name.trim(), phone: Phone.trim() || null },
+    const { data: { user }, error: AuthErr } = await supabase.auth.updateUser({
+      data: { name: Name.trim() || null, phone: Phone.trim() || null },
     });
+    if (AuthErr) { setSaving(false); setSaveError(AuthErr.message); return; }
+    if (user) {
+      await supabase.from('profiles').upsert({
+        id:           user.id,
+        email:        user.email ?? '',
+        display_name: Name.trim() || null,
+      });
+    }
     setSaving(false);
-    if (error) { setSaveError(error.message); return; }
     setSaveSuccess(true);
   }
 
@@ -59,10 +65,10 @@ export default function ProfileScreen({ navigation }: Props) {
         style={styles.Input}
       />
       <HelperText type="info" visible style={styles.EmailHint}>
-        Email cannot be changed.
+        Email cannot be changed. Name and phone are optional.
       </HelperText>
       <TextInput
-        label="Name *"
+        label="Name"
         value={Name}
         onChangeText={v => { setName(v); setSaveSuccess(false); }}
         autoCapitalize="words"

@@ -19,10 +19,6 @@ export default function SignUpScreen({ navigation }: Props) {
 
   async function handleSignUp() {
     setErrorMessage('');
-    if (!Name.trim()) {
-      setErrorMessage('Please enter your name.');
-      return;
-    }
     setLoading(true);
     const { error } = await supabase.auth.signUp({
       email: Email,
@@ -55,7 +51,7 @@ export default function SignUpScreen({ navigation }: Props) {
     <View style={styles.Container}>
       <Text variant="headlineMedium" style={styles.Title}>Create Account</Text>
       <TextInput
-        label="Your name"
+        label="Your name (optional)"
         value={Name}
         onChangeText={setName}
         autoCapitalize="words"
