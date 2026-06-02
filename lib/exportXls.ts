@@ -50,6 +50,7 @@ type EntryData = {
   nestling_age_days: number | null;
   nest_discarded: boolean;
   has_banding: boolean;
+  fledged_count: number;
 };
 
 function ordinal(n: number): string {
@@ -238,7 +239,7 @@ export async function exportSeasonXls(
 
   const { data: Entries } = await supabase
     .from('nest_check_entries')
-    .select('id, nest_check_id, compartment_id, species, egg_count, young_count, nestling_age_days, nest_discarded, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
+    .select('id, nest_check_id, compartment_id, species, egg_count, young_count, nestling_age_days, nest_discarded, fledged_count, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
     .in('nest_check_id', Checks.map(c => c.id));
 
   const BandingSet = new Set<string>();
@@ -322,6 +323,7 @@ export async function exportSeasonXls(
       nestling_age_days: E.nestling_age_days ?? null,
       nest_discarded:    E.nest_discarded ?? false,
       has_banding:       BandingSet.has(E.id),
+      fledged_count:     (E as any).fledged_count ?? 0,
     });
   }
 
@@ -381,12 +383,13 @@ export async function exportSeasonXls(
     }
 
     HatchCount = EWD.length > 0 ? Math.max(...EWD.map(({ entry }) => entry?.young_count ?? 0)) : 0;
+    const FledgeCount = EWD.reduce((sum, { entry }) => sum + (entry?.fledged_count ?? 0), 0);
 
     DataRows.push([
       Data.housing_type, Data.hole_type, Data.label, AgeStr,
       FirstEggDate, MaxEggs || '', ProjHatch, ActualHatch, ProjFledge,
       ...Checks.map(c => checkCode(Data.byCheck.get(c.id) ?? null)),
-      MaxEggs || '', HatchCount || '', '',
+      MaxEggs || '', HatchCount || '', FledgeCount || '',
     ]);
   }
 
