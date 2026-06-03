@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, TextInput as RNTextInput, View } from 'react-native';
 import {
   Button, Checkbox, Dialog, Divider, HelperText,
@@ -192,6 +192,15 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [Deleting, setDeleting]           = useState(false);
   const [ErrorMessage, setErrorMessage]   = useState('');
 
+  // ── Unsaved-changes guard ─────────────────────────────────────────────
+  const IsDirty = useRef(false);
+  const [IsDirtyState, setIsDirtyState] = useState(false);
+  const [AbandonVisible, setAbandonVisible] = useState(false);
+  function MarkDirty() {
+    if (!IsDirty.current) { IsDirty.current = true; setIsDirtyState(true); }
+  }
+  function ClearDirty() { IsDirty.current = false; setIsDirtyState(false); }
+
   // ── Derived ───────────────────────────────────────────────────────────
   const IsPM    = SpeciesVal === 'PM';
   const HasNest = IsPM ? (!IsEmpty && (EggCount > 0 || YoungCount > 0 || HasNestOnly)) : true;
@@ -209,6 +218,16 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       ),
     });
   }, [CompactMode]);
+
+  // When dirty: disable swipe-back and replace the native header back button
+  useEffect(() => {
+    navigation.setOptions({
+      gestureEnabled: !IsDirtyState,
+      headerLeft: IsDirtyState
+        ? () => <IconButton icon="arrow-left" size={24} onPress={() => setAbandonVisible(true)} />
+        : undefined,
+    });
+  }, [IsDirtyState, navigation]);
 
   // Fetch season context: prev-entry banner + hatch-date for nestling age
   useEffect(() => {
@@ -413,6 +432,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
   function handleConfirmNestlingBand() {
     if (!NewBandCode.trim()) { setNewBandError('Please enter a band number or code.'); return; }
+    MarkDirty();
     if (AddNestlingBandIdx === null) return;
     const Band: NestlingBand = {
       band_type:  NewBandType,
@@ -427,6 +447,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
   function handleConfirmAdultBand() {
     if (!NewBandCode.trim()) { setNewBandError('Please enter a band number or code.'); return; }
+    MarkDirty();
     setAdultBands(Ab => [...Ab, {
       is_new_banding: NewAdultIsNew,
       bird_type:      NewAdultBirdType,
@@ -438,6 +459,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   }
 
   function handleSpeciesChange(Val: string) {
+    MarkDirty();
     setSpeciesVal(Val);
     setSpeciesExpanded(false);
     if (Val !== 'PM') {
@@ -588,6 +610,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       if (AgeErr) { setErrorMessage(`Adult ages: ${AgeErr.message}`); return false; }
     }
 
+    ClearDirty();
     return true;
   }
 
@@ -620,6 +643,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     setDeleting(false);
     if (error) { setErrorMessage(error.message); return; }
     setDeleteVisible(false);
+    ClearDirty();
     navigation.goBack();
   }
 
@@ -712,6 +736,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             label={L('Empty cavity', 'X')}
             status={IsEmpty ? 'checked' : 'unchecked'}
             onPress={() => {
+              MarkDirty();
               const Next = !IsEmpty;
               setIsEmpty(Next);
               if (Next) { setEggCount(0); setYoungCount(0); setHasNestOnly(false); }
@@ -727,7 +752,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               <Checkbox.Item
                 label={L('Nest (no eggs)', 'N')}
                 status={HasNestOnly ? 'checked' : 'unchecked'}
-                onPress={() => { const N = !HasNestOnly; setHasNestOnly(N); if (N) setIsEmpty(false); }}
+                onPress={() => { MarkDirty(); const N = !HasNestOnly; setHasNestOnly(N); if (N) setIsEmpty(false); }}
                 style={styles.CheckboxItem}
               />
             )}
@@ -735,18 +760,18 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             <View style={styles.CountersRow}>
               <Counter
                 label={L('Eggs', 'E')} value={EggCount}
-                onChange={(N) => { setEggCount(N); if (N > 0) setIsEmpty(false); }}
+                onChange={(N) => { MarkDirty(); setEggCount(N); if (N > 0) setIsEmpty(false); }}
                 prevValue={PrevEntry?.egg_count}
               />
               <Counter
                 label={L('Young', 'Y')} value={YoungCount}
-                onChange={(N) => { setYoungCount(N); if (N > 0) setIsEmpty(false); }}
+                onChange={(N) => { MarkDirty(); setYoungCount(N); if (N > 0) setIsEmpty(false); }}
                 prevValue={PrevEntry?.young_count}
               />
             </View>
 
             {EggCount > 0 && (
-              <Counter label={L('Discarded eggs', 'ED')} value={DiscardedEggs} onChange={setDiscardedEggs} />
+              <Counter label={L('Discarded eggs', 'ED')} value={DiscardedEggs} onChange={(N) => { MarkDirty(); setDiscardedEggs(N); }} />
             )}
 
             {YoungCount > 0 && (
@@ -758,11 +783,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                     <Checkbox.Item
                       label={L('Hatching Day (HD)', 'HD')}
                       status={IsHatchingDay ? 'checked' : 'unchecked'}
-                      onPress={() => setIsHatchingDay(!IsHatchingDay)}
+                      onPress={() => { MarkDirty(); setIsHatchingDay(!IsHatchingDay); }}
                       style={styles.CheckboxItem}
                     />
                     {!IsHatchingDay && (
-                      <Counter label={L('Nestling age (days)', 'Age')} value={NestlingAgeDays} onChange={setNestlingAgeDays} />
+                      <Counter label={L('Nestling age (days)', 'Age')} value={NestlingAgeDays} onChange={(N) => { MarkDirty(); setNestlingAgeDays(N); }} />
                     )}
                   </>
                 )}
@@ -770,11 +795,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                   <Checkbox.Item
                     label={L('Dead young', 'DY')}
                     status={HasDeadYoung ? 'checked' : 'unchecked'}
-                    onPress={() => setHasDeadYoung(!HasDeadYoung)}
+                    onPress={() => { MarkDirty(); setHasDeadYoung(!HasDeadYoung); }}
                     style={styles.CheckboxItem}
                   />
                   {HasDeadYoung && (
-                    <Counter label="" value={DeadYoungCount} onChange={setDeadYoungCount} />
+                    <Counter label="" value={DeadYoungCount} onChange={(N) => { MarkDirty(); setDeadYoungCount(N); }} />
                   )}
                 </View>
               </>
@@ -783,11 +808,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             {HasNest && (
               <>
                 <Divider style={styles.Divider} />
-                <Counter label={L('Fledged', 'F')} value={FledgedCount} onChange={setFledgedCount} />
+                <Counter label={L('Fledged', 'F')} value={FledgedCount} onChange={(N) => { MarkDirty(); setFledgedCount(N); }} />
                 <Checkbox.Item
                   label={L('Renesting attempt', 'RA')}
                   status={Renesting ? 'checked' : 'unchecked'}
-                  onPress={() => setRenesting(!Renesting)}
+                  onPress={() => { MarkDirty(); setRenesting(!Renesting); }}
                   style={styles.CheckboxItem}
                 />
               </>
@@ -803,7 +828,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               <Checkbox.Item
                 label={L('Nest discarded', 'ND')}
                 status={NestDiscarded ? 'checked' : 'unchecked'}
-                onPress={() => setNestDiscarded(!NestDiscarded)}
+                onPress={() => { MarkDirty(); setNestDiscarded(!NestDiscarded); }}
                 style={styles.CheckboxItem}
               />
             )}
@@ -811,7 +836,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               <Checkbox.Item
                 label={L('Nest replaced', 'NR')}
                 status={NestReplaced ? 'checked' : 'unchecked'}
-                onPress={() => setNestReplaced(!NestReplaced)}
+                onPress={() => { MarkDirty(); setNestReplaced(!NestReplaced); }}
                 style={styles.CheckboxItem}
               />
             )}
@@ -854,7 +879,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                               <Button
                                 key={Age} compact
                                 mode={Val === Age ? 'contained' : 'outlined'}
-                                onPress={() => Set(Val === Age ? null : Age)}
+                                onPress={() => { MarkDirty(); Set(Val === Age ? null : Age); }}
                                 style={styles.AgeChip}
                                 labelStyle={styles.AgeChipLabel}
                               >
@@ -892,13 +917,13 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             <Checkbox.Item
               label="Dead male"
               status={DeadAdultMale ? 'checked' : 'unchecked'}
-              onPress={() => setDeadAdultMale(!DeadAdultMale)}
+              onPress={() => { MarkDirty(); setDeadAdultMale(!DeadAdultMale); }}
               style={styles.CheckboxItem}
             />
             <Checkbox.Item
               label="Dead female"
               status={DeadAdultFemale ? 'checked' : 'unchecked'}
-              onPress={() => setDeadAdultFemale(!DeadAdultFemale)}
+              onPress={() => { MarkDirty(); setDeadAdultFemale(!DeadAdultFemale); }}
               style={styles.CheckboxItem}
             />
           </View>
@@ -941,9 +966,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                           </Text>
                           <IconButton
                             icon="close" size={16}
-                            onPress={() => setNestlings(Ns => Ns.map((Nn, I) =>
+                            onPress={() => { MarkDirty(); setNestlings(Ns => Ns.map((Nn, I) =>
                               I === NIdx ? { ...Nn, bandsThisCheck: Nn.bandsThisCheck.filter((_, BI) => BI !== BIdx) } : Nn
-                            ))}
+                            )); }}
                             style={styles.BandDeleteBtn}
                           />
                         </View>
@@ -963,6 +988,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                     style={styles.AddBandBtn}
                     disabled={Nestlings.length >= YoungCount}
                     onPress={() => {
+                      MarkDirty();
                       const NewLabel = `Nestling ${Nestlings.length + 1}`;
                       setNestlings(Ns => [...Ns, { id: null, label: NewLabel, bandsThisCheck: [], totalPriorBands: 0 }]);
                       openAddNestlingBand(Nestlings.length);
@@ -983,7 +1009,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                       </Text>
                       <IconButton
                         icon="close" size={16}
-                        onPress={() => setAdultBands(Ab => Ab.filter((_, I) => I !== Idx))}
+                        onPress={() => { MarkDirty(); setAdultBands(Ab => Ab.filter((_, I) => I !== Idx)); }}
                         style={styles.BandDeleteBtn}
                       />
                     </View>
@@ -1023,7 +1049,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         {NotesExpanded && (
           <TextInput
             value={Notes}
-            onChangeText={setNotes}
+            onChangeText={(T) => { MarkDirty(); setNotes(T); }}
             placeholder="Any additional observations"
             multiline
             style={styles.NotesInput}
@@ -1139,6 +1165,21 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           <Dialog.Actions>
             <Button onPress={() => setAddAdultBandVisible(false)}>Cancel</Button>
             <Button onPress={handleConfirmAdultBand}>Add</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        <Dialog visible={AbandonVisible} onDismiss={() => setAbandonVisible(false)}>
+          <Dialog.Title>Discard changes?</Dialog.Title>
+          <Dialog.Content>
+            <Text>You have unsaved changes. Go back and discard them?</Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setAbandonVisible(false)}>Keep editing</Button>
+            <Button textColor="red" onPress={() => {
+              ClearDirty();
+              setAbandonVisible(false);
+              navigation.goBack();
+            }}>Discard</Button>
           </Dialog.Actions>
         </Dialog>
 
