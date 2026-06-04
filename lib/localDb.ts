@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as SQLite from 'expo-sqlite';
 
 let _db: SQLite.SQLiteDatabase | null = null;
@@ -80,6 +81,7 @@ export async function initDb(): Promise<void> {
 }
 
 async function db(): Promise<SQLite.SQLiteDatabase> {
+  if (Platform.OS === 'web') throw new Error('SQLite not available on web');
   if (!_db) await initDb();
   return _db!;
 }

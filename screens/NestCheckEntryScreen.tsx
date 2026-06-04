@@ -278,10 +278,12 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           return { ...E, check_date: C.check_date };
         });
       } catch {
-        // Offline: use local DB cache
-        Entries = await getLocalEntriesForCompartment(
-          CompartmentId, SiteId, parseInt(YearStr, 10), CheckId
-        );
+        // Offline or web: use local DB cache
+        try {
+          Entries = await getLocalEntriesForCompartment(
+            CompartmentId, SiteId, parseInt(YearStr, 10), CheckId
+          );
+        } catch {}
       }
 
       if (Entries.length === 0) return;
@@ -362,9 +364,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           .from('nest_check_entries').select('*').eq('id', ExistingEntryId!).single();
         if (error) throw error;
         E = data;
-        if (E) await cacheEntries([E]);
+        if (E) cacheEntries([E]).catch(() => {});
       } catch {
-        E = await getLocalEntry(ExistingEntryId!);
+        try { E = await getLocalEntry(ExistingEntryId!); } catch {}
       }
       if (!E) return;
       setSpeciesVal(E.species ?? 'PM');
@@ -419,11 +421,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         NestlingRows = SNestlings ?? [];
         BandRows = SBands ?? [];
 
-        await cacheNestlings(NestlingRows.map(N => ({
+        cacheNestlings(NestlingRows.map(N => ({
           id: N.id, compartment_id: CompartmentId, site_season_id: SeasonId, label: N.label,
-        })));
+        }))).catch(() => {});
         if (ExistingEntryId && BandRows.length > 0) {
-          await cacheBands(BandRows.map((B: any) => ({ ...B, nest_check_entry_id: ExistingEntryId })));
+          cacheBands(BandRows.map((B: any) => ({ ...B, nest_check_entry_id: ExistingEntryId }))).catch(() => {});
         }
 
         const nestlingIds = NestlingRows.map(n => n.id);
@@ -436,11 +438,13 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           }
         }
       } catch {
-        NestlingRows = await getLocalNestlings(CompartmentId, SeasonId);
-        BandRows = ExistingEntryId ? await getLocalBands(ExistingEntryId) : [];
-        priorCounts = await getLocalPriorBandCounts(
-          NestlingRows.map(n => n.id), ExistingEntryId ?? null
-        );
+        try {
+          NestlingRows = await getLocalNestlings(CompartmentId, SeasonId);
+          BandRows = ExistingEntryId ? await getLocalBands(ExistingEntryId) : [];
+          priorCounts = await getLocalPriorBandCounts(
+            NestlingRows.map(n => n.id), ExistingEntryId ?? null
+          );
+        } catch {}
       }
 
       const records: NestlingRecord[] = NestlingRows.map(N => ({
@@ -576,11 +580,13 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       observed_female_age: IsPM ? ObservedFemaleAge : null,
     };
 
+    const EntryId = ExistingEntryId ?? makeId();
+
+    // Try local-first (native offline support)
+    let savedLocally = false;
     try {
-      const EntryId = ExistingEntryId ?? makeId();
       await upsertLocalEntry({ id: EntryId, ...EntryPayload });
 
-      // Create any new nestlings (id === null, with at least one band)
       const NewLabelToId = new Map<string, string>();
       for (const N of Nestlings.filter(n => n.id === null && n.bandsThisCheck.length > 0)) {
         const NewId = makeId();
@@ -590,8 +596,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         NewLabelToId.set(N.label, NewId);
       }
 
-      // Replace all bands for this entry
-      const BandRows: {
+      const LocalBandRows: {
         id: string; nestling_id: string | null; is_new_banding: boolean;
         bird_type: string; band_type: string; band_color: string | null; band_code: string;
       }[] = [];
@@ -599,41 +604,90 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         if (N.bandsThisCheck.length === 0) continue;
         const NestlingId = N.id ?? NewLabelToId.get(N.label) ?? null;
         for (const B of N.bandsThisCheck) {
-          BandRows.push({
+          LocalBandRows.push({
             id: makeId(), nestling_id: NestlingId, is_new_banding: true,
             bird_type: 'nestling', band_type: B.band_type, band_color: B.band_color, band_code: B.band_code,
           });
         }
       }
       for (const B of AdultBands) {
-        BandRows.push({
+        LocalBandRows.push({
           id: makeId(), nestling_id: null, is_new_banding: B.is_new_banding,
           bird_type: B.bird_type, band_type: B.band_type, band_color: B.band_color, band_code: B.band_code,
         });
       }
-      await replaceLocalBands(EntryId, BandRows);
+      await replaceLocalBands(EntryId, LocalBandRows);
 
       if (IsPM) {
         const ConfirmedMale   = computeConfirmedAge(OtherMaleObs,   ObservedMaleAge);
         const ConfirmedFemale = computeConfirmedAge(OtherFemaleObs, ObservedFemaleAge);
         await upsertLocalNestSeason({
-          compartment_id: CompartmentId,
-          site_season_id: SeasonId,
+          compartment_id: CompartmentId, site_season_id: SeasonId,
           year: parseInt(CheckDate.substring(0, 4), 10),
-          male_age: ConfirmedMale,
-          female_age: ConfirmedFemale,
+          male_age: ConfirmedMale, female_age: ConfirmedFemale,
         });
       }
 
-      syncNow(); // non-blocking: push to Supabase in background
-      setSaving(false);
-      ClearDirty();
-      return true;
-    } catch (Err: any) {
-      setErrorMessage(Err?.message ?? 'Save failed. Please try again.');
-      setSaving(false);
-      return false;
+      syncNow();
+      savedLocally = true;
+    } catch {}
+
+    if (!savedLocally) {
+      // Web (no SQLite): write directly to Supabase
+      let SaveErr;
+      if (ExistingEntryId) {
+        ({ error: SaveErr } = await supabase.from('nest_check_entries').update(EntryPayload).eq('id', ExistingEntryId));
+      } else {
+        ({ error: SaveErr } = await supabase.from('nest_check_entries').insert({ id: EntryId, ...EntryPayload }));
+      }
+      if (SaveErr) { setErrorMessage(SaveErr.message); setSaving(false); return false; }
+
+      // Nestlings
+      const NewLabelToId = new Map<string, string>();
+      const NestlingsToCreate = Nestlings.filter(N => N.id === null && N.bandsThisCheck.length > 0);
+      if (NestlingsToCreate.length > 0) {
+        const { data: Created, error: NestlingErr } = await supabase
+          .from('nestlings')
+          .insert(NestlingsToCreate.map(N => ({ compartment_id: CompartmentId, site_season_id: SeasonId, label: N.label })))
+          .select('id, label');
+        if (NestlingErr) { setErrorMessage(`Nestlings: ${NestlingErr.message}`); setSaving(false); return false; }
+        if (Created) for (const N of Created) NewLabelToId.set(N.label, N.id);
+      }
+
+      // Bands
+      await supabase.from('bands').delete().eq('nest_check_entry_id', EntryId);
+      const SupaBandRows: object[] = [];
+      for (const N of Nestlings) {
+        if (N.bandsThisCheck.length === 0) continue;
+        const NestlingId = N.id ?? NewLabelToId.get(N.label) ?? null;
+        for (const B of N.bandsThisCheck) {
+          SupaBandRows.push({ nest_check_entry_id: EntryId, nestling_id: NestlingId, is_new_banding: true, bird_type: 'nestling', band_type: B.band_type, band_color: B.band_color, band_code: B.band_code });
+        }
+      }
+      for (const B of AdultBands) {
+        SupaBandRows.push({ nest_check_entry_id: EntryId, nestling_id: null, is_new_banding: B.is_new_banding, bird_type: B.bird_type, band_type: B.band_type, band_color: B.band_color, band_code: B.band_code });
+      }
+      if (SupaBandRows.length > 0) {
+        const { error: BandErr } = await supabase.from('bands').insert(SupaBandRows);
+        if (BandErr) { setErrorMessage(`Bands: ${BandErr.message}`); setSaving(false); return false; }
+      }
+
+      // Nest seasons
+      if (IsPM) {
+        const ConfirmedMale   = computeConfirmedAge(OtherMaleObs,   ObservedMaleAge);
+        const ConfirmedFemale = computeConfirmedAge(OtherFemaleObs, ObservedFemaleAge);
+        const { data: Existing } = await supabase.from('nest_seasons').select('id').eq('compartment_id', CompartmentId).eq('site_season_id', SeasonId).maybeSingle();
+        if (Existing) {
+          await supabase.from('nest_seasons').update({ male_age: ConfirmedMale, female_age: ConfirmedFemale }).eq('id', Existing.id);
+        } else {
+          await supabase.from('nest_seasons').insert({ compartment_id: CompartmentId, site_season_id: SeasonId, year: parseInt(CheckDate.substring(0, 4), 10), male_age: ConfirmedMale, female_age: ConfirmedFemale });
+        }
+      }
     }
+
+    setSaving(false);
+    ClearDirty();
+    return true;
   }
 
   async function handleSave() {

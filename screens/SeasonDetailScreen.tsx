@@ -161,10 +161,13 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             .order('check_date', { ascending: true });
           if (data) {
             Checks = data;
-            await cacheNestChecks(data.map(c => ({ ...c, site_id: SiteId })));
+            // Fire-and-forget: don't block UI on SQLite availability
+            cacheNestChecks(data.map(c => ({ ...c, site_id: SiteId }))).catch(() => {});
           }
         } catch {}
-        if (!Checks) Checks = await getLocalNestChecks(SiteId, Year);
+        if (!Checks) {
+          try { Checks = await getLocalNestChecks(SiteId, Year); } catch {}
+        }
         setNestChecks(Checks ?? []);
         setChecksLoading(false);
 
@@ -289,11 +292,19 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
     const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
     const CheckId = makeId();
 
-    // Write locally first so this works offline
-    await insertLocalNestCheck({ id: CheckId, site_id: SiteId, check_date: DateVal, created_by: user?.id ?? null });
+    // Try local-first (native); fall back to direct Supabase write on web
+    let savedLocally = false;
+    try {
+      await insertLocalNestCheck({ id: CheckId, site_id: SiteId, check_date: DateVal, created_by: user?.id ?? null });
+      savedLocally = true;
+      syncNow().catch(() => {});
+    } catch {}
 
-    // Attempt immediate sync; SyncContext will retry if offline
-    syncNow().catch(() => {});
+    if (!savedLocally) {
+      const { error } = await supabase.from('nest_checks')
+        .insert({ id: CheckId, site_id: SiteId, check_date: DateVal, created_by: user?.id ?? null });
+      if (error) { setAddCheckError(error.message); setAddCheckLoading(false); return; }
+    }
 
     setAddCheckLoading(false);
     setAddCheckVisible(false);

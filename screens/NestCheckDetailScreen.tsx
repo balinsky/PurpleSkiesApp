@@ -164,16 +164,16 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
         .eq('nest_check_id', CheckId);
       if (EntriesError) throw EntriesError;
 
-      // Cache to local DB
-      await cacheUnitsAndCompartments(
+      // Fire-and-forget cache to local DB (non-blocking on web)
+      cacheUnitsAndCompartments(
         (Units ?? []).map(U => ({ id: U.id, name: U.name, site_id: SiteId })),
         (Units ?? []).flatMap(U =>
           ((U.compartments as any[]) ?? []).map((C: any) => ({
             id: C.id, housing_unit_id: U.id, cavity_label: C.cavity_label, sort_order: C.sort_order ?? null,
           }))
         ),
-      );
-      await cacheEntries(Entries ?? []);
+      ).catch(() => {});
+      cacheEntries(Entries ?? []).catch(() => {});
 
       const BandingSet = new Set<string>();
       if (Entries && Entries.length > 0) {
@@ -223,9 +223,9 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
         .from('nest_seasons')
         .select('compartment_id, male_age, female_age')
         .eq('site_season_id', SeasonId);
-      await cacheNestSeasons(
+      cacheNestSeasons(
         (NestSeasonRows ?? []).map(NS => ({ ...NS, site_season_id: SeasonId }))
-      );
+      ).catch(() => {});
 
       const TypedUnits: UnitRow[] = (Units ?? []).map(U => ({
         id: U.id, name: U.name,
@@ -235,12 +235,16 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       }));
       buildSections(TypedUnits, (Entries ?? []) as EntryRow[], BandingSet, HatchDateMap, NestSeasonRows ?? []);
     } catch {
-      // Offline or network error: fall back to local DB
-      const LocalUnits    = await getLocalUnitsWithCompartments(SiteId);
-      const LocalEntries  = (await getLocalEntriesForCheck(CheckId)).map(localEntryToJs);
-      const LocalBandSet  = await getLocalBandEntryIds(LocalEntries.map(E => E.id));
-      const LocalSeasons  = await getLocalNestSeasons(SeasonId);
-      buildSections(LocalUnits, LocalEntries as EntryRow[], LocalBandSet, new Map(), LocalSeasons);
+      // Offline or network error: fall back to local DB (no-op on web — SQLite not available)
+      try {
+        const LocalUnits    = await getLocalUnitsWithCompartments(SiteId);
+        const LocalEntries  = (await getLocalEntriesForCheck(CheckId)).map(localEntryToJs);
+        const LocalBandSet  = await getLocalBandEntryIds(LocalEntries.map(E => E.id));
+        const LocalSeasons  = await getLocalNestSeasons(SeasonId);
+        buildSections(LocalUnits, LocalEntries as EntryRow[], LocalBandSet, new Map(), LocalSeasons);
+      } catch {
+        buildSections([], [], new Set(), new Map(), []);
+      }
     }
   }
 
@@ -281,17 +285,29 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     const Key = `${item.id}:${type}`;
     setQuickSaving(Key);
     const EntryId = item.entry_id ?? makeId();
-    await upsertLocalEntry({
-      id: EntryId, nest_check_id: CheckId, compartment_id: item.id,
-      species: 'PM', is_empty_cavity: type === 'empty', has_nest: type === 'pm_nest',
+    const QuickPayload = {
+      species: 'PM' as const, is_empty_cavity: type === 'empty', has_nest: type === 'pm_nest',
       nest_discarded: false, nest_replaced: false,
       egg_count: 0, discarded_eggs: 0, young_count: 0,
-      nestling_age_days: null, nestling_age_notes: null,
+      nestling_age_days: null, nestling_age_notes: null as null,
       dead_young_count: 0, dead_adult_male: false, dead_adult_female: false,
       fledged_count: 0, renesting_attempt: false, notes: null,
       observed_male_age: null, observed_female_age: null,
-    });
-    syncNow(); // non-blocking: push to Supabase in background
+    };
+    let savedLocally = false;
+    try {
+      await upsertLocalEntry({ id: EntryId, nest_check_id: CheckId, compartment_id: item.id, ...QuickPayload });
+      savedLocally = true;
+      syncNow();
+    } catch {}
+    if (!savedLocally) {
+      // Web: write directly to Supabase
+      if (item.entry_id) {
+        await supabase.from('nest_check_entries').update(QuickPayload).eq('id', item.entry_id);
+      } else {
+        await supabase.from('nest_check_entries').insert({ id: EntryId, nest_check_id: CheckId, compartment_id: item.id, ...QuickPayload });
+      }
+    }
     setQuickSaving(null);
     await loadData();
   }
