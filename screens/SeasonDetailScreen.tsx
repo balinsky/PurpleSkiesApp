@@ -9,6 +9,11 @@ import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { AppStackParamList } from '../App';
 import { useSettings } from '../contexts/SettingsContext';
+import { useSync } from '../contexts/SyncContext';
+import {
+  cacheNestChecks, getLocalNestChecks,
+  insertLocalNestCheck, makeId,
+} from '../lib/localDb';
 
 type NestCheck = {
   id: string;
@@ -82,6 +87,7 @@ function todayString(): string {
 export default function SeasonDetailScreen({ navigation, route }: Props) {
   const { SeasonId, SiteId, Year } = route.params;
   const { SeasonCalendarView, toggleSeasonCalendarView } = useSettings();
+  const { isOnline, syncNow } = useSync();
 
   const [FirstAsySeen, setFirstAsySeen]           = useState('');
   const [FirstSyMaleSeen, setFirstSyMaleSeen]     = useState('');
@@ -143,14 +149,22 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           setFirstSyMaleSeen(SeasonData.date_first_sy_male_seen ?? '');
         }
 
-        // Nest check list
-        const { data: Checks } = await supabase
-          .from('nest_checks')
-          .select('id, check_date')
-          .eq('site_id', SiteId)
-          .gte('check_date', `${Year}-01-01`)
-          .lte('check_date', `${Year}-12-31`)
-          .order('check_date', { ascending: true });
+        // Nest check list — try Supabase, fall back to local cache
+        let Checks: { id: string; check_date: string }[] | null = null;
+        try {
+          const { data } = await supabase
+            .from('nest_checks')
+            .select('id, check_date')
+            .eq('site_id', SiteId)
+            .gte('check_date', `${Year}-01-01`)
+            .lte('check_date', `${Year}-12-31`)
+            .order('check_date', { ascending: true });
+          if (data) {
+            Checks = data;
+            await cacheNestChecks(data.map(c => ({ ...c, site_id: SiteId })));
+          }
+        } catch {}
+        if (!Checks) Checks = await getLocalNestChecks(SiteId, Year);
         setNestChecks(Checks ?? []);
         setChecksLoading(false);
 
@@ -271,18 +285,21 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
       return;
     }
     setAddCheckLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: Check, error } = await supabase
-      .from('nest_checks')
-      .insert({ site_id: SiteId, check_date: DateVal, created_by: user!.id })
-      .select()
-      .single();
+
+    const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+    const CheckId = makeId();
+
+    // Write locally first so this works offline
+    await insertLocalNestCheck({ id: CheckId, site_id: SiteId, check_date: DateVal, created_by: user?.id ?? null });
+
+    // Attempt immediate sync; SyncContext will retry if offline
+    syncNow().catch(() => {});
+
     setAddCheckLoading(false);
-    if (error) { setAddCheckError(error.message); return; }
     setAddCheckVisible(false);
     navigation.navigate('NestCheckDetail', {
-      CheckId:   Check.id,
-      CheckDate: Check.check_date,
+      CheckId,
+      CheckDate: DateVal,
       SiteId,
       SeasonId,
       Year,

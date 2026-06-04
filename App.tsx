@@ -8,6 +8,8 @@ import { Session } from '@supabase/supabase-js';
 import { useFonts } from 'expo-font';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { SettingsProvider } from './contexts/SettingsContext';
+import { SyncProvider } from './contexts/SyncContext';
+import { initDb } from './lib/localDb';
 import { en, registerTranslation } from 'react-native-paper-dates';
 registerTranslation('en', en);
 import { supabase } from './lib/supabase';
@@ -83,6 +85,7 @@ export default function App() {
   const [FontsLoaded] = useFonts(MaterialCommunityIcons.font);
 
   useEffect(() => {
+    initDb().catch(console.error);
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
@@ -101,9 +104,11 @@ export default function App() {
     <SafeAreaProvider>
       <PaperProvider>
         <SettingsProvider>
-          <NavigationContainer>
-            {Session ? <AppNavigator /> : <AuthNavigator />}
-          </NavigationContainer>
+          <SyncProvider>
+            <NavigationContainer>
+              {Session ? <AppNavigator /> : <AuthNavigator />}
+            </NavigationContainer>
+          </SyncProvider>
         </SettingsProvider>
       </PaperProvider>
     </SafeAreaProvider>

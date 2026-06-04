@@ -31,6 +31,9 @@
         "projectId": "4112b508-df08-40cd-a05c-ee6e5d9becf8"
       }
     },
-    "owner": "balinsky"
+    "owner": "balinsky",
+    "plugins": [
+      "expo-sqlite"
+    ]
   }
 }

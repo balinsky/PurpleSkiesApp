@@ -9,6 +9,15 @@ import { RouteProp } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { AppStackParamList } from '../App';
 import { useSettings } from '../contexts/SettingsContext';
+import { useSync } from '../contexts/SyncContext';
+import {
+  getLocalEntriesForCompartment,
+  cacheEntries, getLocalEntry,
+  getLocalNestlings, cacheNestlings,
+  getLocalBands, cacheBands, getLocalPriorBandCounts,
+  upsertLocalEntry, upsertLocalNestling, replaceLocalBands,
+  upsertLocalNestSeason, deleteLocalEntry, makeId,
+} from '../lib/localDb';
 
 type Props = {
   navigation: NativeStackNavigationProp<AppStackParamList, 'NestCheckEntry'>;
@@ -120,6 +129,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     ? AllCompartments[CompartmentIndex + 1]
     : null;
   const { CompactMode, toggleCompactMode } = useSettings();
+  const { isOnline, syncNow } = useSync();
   function L(full: string, compact: string) { return CompactMode ? compact : full; }
 
   // ── Species ──────────────────────────────────────────────────────────
@@ -232,53 +242,78 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   // Fetch season context: prev-entry banner + hatch-date for nestling age
   useEffect(() => {
     async function fetchSeasonContext() {
-      const Year = CheckDate.substring(0, 4);
-      const { data: SeasonChecks } = await supabase
-        .from('nest_checks')
-        .select('id, check_date')
-        .eq('site_id', SiteId)
-        .gte('check_date', `${Year}-01-01`)
-        .lte('check_date', `${Year}-12-31`)
-        .neq('id', CheckId)
-        .order('check_date', { ascending: true });
+      const YearStr = CheckDate.substring(0, 4);
 
-      if (!SeasonChecks || SeasonChecks.length === 0) return;
+      // Flat list of other entries for this compartment in this season, with check_date
+      type SeasonEntry = {
+        check_date: string; species: string;
+        is_empty_cavity: boolean | number; has_nest: boolean | number;
+        egg_count: number; young_count: number; nestling_age_days: number | null;
+        observed_male_age: string | null; observed_female_age: string | null;
+      };
+      let Entries: SeasonEntry[] = [];
 
-      const { data: OtherEntries } = await supabase
-        .from('nest_check_entries')
-        .select('nest_check_id, species, is_empty_cavity, has_nest, egg_count, young_count, nestling_age_days, observed_male_age, observed_female_age')
-        .in('nest_check_id', SeasonChecks.map(c => c.id))
-        .eq('compartment_id', CompartmentId);
+      try {
+        const { data: SeasonChecks, error: CErr } = await supabase
+          .from('nest_checks')
+          .select('id, check_date')
+          .eq('site_id', SiteId)
+          .gte('check_date', `${YearStr}-01-01`)
+          .lte('check_date', `${YearStr}-12-31`)
+          .neq('id', CheckId)
+          .order('check_date', { ascending: true });
+        if (CErr) throw CErr;
+        if (!SeasonChecks || SeasonChecks.length === 0) return;
 
-      if (!OtherEntries) return;
+        const { data: OtherEntries, error: EErr } = await supabase
+          .from('nest_check_entries')
+          .select('nest_check_id, species, is_empty_cavity, has_nest, egg_count, young_count, nestling_age_days, observed_male_age, observed_female_age')
+          .in('nest_check_id', SeasonChecks.map(c => c.id))
+          .eq('compartment_id', CompartmentId);
+        if (EErr) throw EErr;
+        if (!OtherEntries) return;
 
-      setPriorEggsSeen(OtherEntries.some(e => (e.egg_count ?? 0) > 0));
-      setPriorYoungSeen(OtherEntries.some(e => (e.young_count ?? 0) > 0));
+        Entries = OtherEntries.map(E => {
+          const C = SeasonChecks.find(c => c.id === E.nest_check_id)!;
+          return { ...E, check_date: C.check_date };
+        });
+      } catch {
+        // Offline: use local DB cache
+        Entries = await getLocalEntriesForCompartment(
+          CompartmentId, SiteId, parseInt(YearStr, 10), CheckId
+        );
+      }
 
-      const MaleObs = OtherEntries.map(e => (e.observed_male_age as string | null) ?? null);
-      const FemaleObs = OtherEntries.map(e => (e.observed_female_age as string | null) ?? null);
+      if (Entries.length === 0) return;
+
+      setPriorEggsSeen(Entries.some(e => (e.egg_count ?? 0) > 0));
+      setPriorYoungSeen(Entries.some(e => (e.young_count ?? 0) > 0));
+
+      const MaleObs   = Entries.map(e => e.observed_male_age ?? null);
+      const FemaleObs = Entries.map(e => e.observed_female_age ?? null);
       setOtherMaleObs(MaleObs);
       setOtherFemaleObs(FemaleObs);
       if (MaleObs.some(Boolean) || FemaleObs.some(Boolean)) setAdultAgesExpanded(true);
 
-      // Prev entry: most recent check strictly before the current date that has data for this compartment
-      for (const Check of [...SeasonChecks].reverse().filter(c => c.check_date < CheckDate)) {
-        const E = OtherEntries.find(e => e.nest_check_id === Check.id);
-        if (E) { setPrevEntry({ ...E, check_date: Check.check_date }); break; }
+      // Prev entry: most recent entry strictly before the current check date
+      const Prev = [...Entries]
+        .filter(e => e.check_date < CheckDate)
+        .sort((a, b) => b.check_date.localeCompare(a.check_date))[0];
+      if (Prev) {
+        setPrevEntry({
+          check_date:       Prev.check_date,
+          species:          Prev.species,
+          is_empty_cavity:  !!Prev.is_empty_cavity,
+          has_nest:         !!Prev.has_nest,
+          egg_count:        Prev.egg_count,
+          young_count:      Prev.young_count,
+        });
       }
 
-      // Entries with dates, sorted ascending — used for egg/hatch date calculations
-      const EWD = OtherEntries
-        .map(e => {
-          const C = SeasonChecks.find(c => c.id === e.nest_check_id);
-          return C ? { check_date: C.check_date, egg_count: e.egg_count ?? 0, young_count: e.young_count ?? 0, nestling_age_days: e.nestling_age_days } : null;
-        })
-        .filter((e): e is NonNullable<typeof e> => e !== null)
-        .sort((a, b) => a.check_date.localeCompare(b.check_date));
+      // Entries sorted ascending for egg/hatch date calculations
+      const EWD = [...Entries].sort((a, b) => a.check_date.localeCompare(b.check_date));
 
       // First egg date range
-      // latest possible = first-check-with-eggs − (N − 1) days
-      // earliest possible = day after last check that showed 0 eggs
       const FirstWithEggs = EWD.find(e => e.egg_count > 0);
       if (FirstWithEggs) {
         const LastEmpty = [...EWD]
@@ -286,7 +321,6 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           .pop();
         const LatestFirst   = addDays(FirstWithEggs.check_date, -(FirstWithEggs.egg_count - 1));
         const EarliestFirst = LastEmpty ? addDays(LastEmpty.check_date, 1) : null;
-        // Guard against contradictory data (EarliestFirst > LatestFirst)
         const MinFirst = (EarliestFirst && EarliestFirst <= LatestFirst) ? EarliestFirst : LatestFirst;
         setFirstEggRange({ min: MinFirst, max: LatestFirst });
 
@@ -298,14 +332,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       }
 
       // Hatch date anchor: earliest check with a recorded nestling age
-      for (const Check of SeasonChecks) {
-        const E = OtherEntries.find(
-          e => e.nest_check_id === Check.id &&
-            (e.young_count ?? 0) > 0 &&
-            (e.nestling_age_days ?? 0) > 0
-        );
-        if (E) {
-          const [ay, am, ad] = Check.check_date.split('-').map(Number);
+      for (const E of EWD) {
+        if ((E.young_count ?? 0) > 0 && (E.nestling_age_days ?? 0) > 0) {
+          const [ay, am, ad] = E.check_date.split('-').map(Number);
           const Hatch = new Date(ay, am - 1, ad);
           Hatch.setDate(Hatch.getDate() - E.nestling_age_days!);
           const HatchStr = `${Hatch.getFullYear()}-${String(Hatch.getMonth() + 1).padStart(2, '0')}-${String(Hatch.getDate()).padStart(2, '0')}`;
@@ -327,25 +356,33 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (!ExistingEntryId) return;
     async function loadEntry() {
-      const { data: E } = await supabase
-        .from('nest_check_entries').select('*').eq('id', ExistingEntryId!).single();
+      let E: any = null;
+      try {
+        const { data, error } = await supabase
+          .from('nest_check_entries').select('*').eq('id', ExistingEntryId!).single();
+        if (error) throw error;
+        E = data;
+        if (E) await cacheEntries([E]);
+      } catch {
+        E = await getLocalEntry(ExistingEntryId!);
+      }
       if (!E) return;
       setSpeciesVal(E.species ?? 'PM');
-      setIsEmpty(E.is_empty_cavity ?? false);
+      setIsEmpty(!!E.is_empty_cavity);
       setEggCount(E.egg_count ?? 0);
       setYoungCount(E.young_count ?? 0);
-      setHasNestOnly(E.has_nest && E.egg_count === 0 && E.young_count === 0);
+      setHasNestOnly(!!E.has_nest && E.egg_count === 0 && E.young_count === 0);
       setDiscardedEggs(E.discarded_eggs ?? 0);
       setIsHatchingDay(E.nestling_age_days === 0);
       setNestlingAgeDays(E.nestling_age_days ?? 0);
       setHasDeadYoung((E.dead_young_count ?? 0) > 0);
       setDeadYoungCount(E.dead_young_count ?? 0);
       setFledgedCount(E.fledged_count ?? 0);
-      setRenesting(E.renesting_attempt ?? false);
-      setNestDiscarded(E.nest_discarded ?? false);
-      setNestReplaced(E.nest_replaced ?? false);
-      setDeadAdultMale(E.dead_adult_male ?? false);
-      setDeadAdultFemale(E.dead_adult_female ?? false);
+      setRenesting(!!E.renesting_attempt);
+      setNestDiscarded(!!E.nest_discarded);
+      setNestReplaced(!!E.nest_replaced);
+      setDeadAdultMale(!!E.dead_adult_male);
+      setDeadAdultFemale(!!E.dead_adult_female);
       if (E.dead_adult_male || E.dead_adult_female) setDeadAdultExpanded(true);
       setNotes(E.notes ?? '');
       if (E.notes) setNotesExpanded(true);
@@ -361,42 +398,64 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   // Load nestlings for this compartment+season, plus any bands for this entry
   useEffect(() => {
     async function loadBandingContext() {
-      const [{ data: NestlingRows }, { data: BandRows }] = await Promise.all([
-        supabase.from('nestlings').select('id, label')
-          .eq('compartment_id', CompartmentId).eq('site_season_id', SeasonId)
-          .order('created_at'),
-        ExistingEntryId
-          ? supabase.from('bands')
-              .select('nestling_id, is_new_banding, bird_type, band_type, band_color, band_code')
-              .eq('nest_check_entry_id', ExistingEntryId)
-          : Promise.resolve({ data: [] as any[] }),
-      ]);
+      let NestlingRows: { id: string; label: string }[] = [];
+      let BandRows: any[] = [];
+      let priorCounts = new Map<string, number>();
 
-      const nestlingIds = (NestlingRows ?? []).map(n => n.id);
-      const priorCounts = new Map<string, number>();
-      if (nestlingIds.length > 0) {
-        let q = supabase.from('bands').select('nestling_id').in('nestling_id', nestlingIds);
-        if (ExistingEntryId) q = (q as any).neq('nest_check_entry_id', ExistingEntryId);
-        const { data: PriorBands } = await q;
-        if (PriorBands) for (const B of PriorBands as any[]) {
-          if (B.nestling_id) priorCounts.set(B.nestling_id, (priorCounts.get(B.nestling_id) ?? 0) + 1);
+      try {
+        const [{ data: SNestlings, error: NErr }, { data: SBands, error: BErr }] = await Promise.all([
+          supabase.from('nestlings').select('id, label')
+            .eq('compartment_id', CompartmentId).eq('site_season_id', SeasonId)
+            .order('created_at'),
+          ExistingEntryId
+            ? supabase.from('bands')
+                .select('nestling_id, is_new_banding, bird_type, band_type, band_color, band_code')
+                .eq('nest_check_entry_id', ExistingEntryId)
+            : Promise.resolve({ data: [] as any[], error: null }),
+        ]);
+        if (NErr) throw NErr;
+        if (BErr) throw BErr;
+
+        NestlingRows = SNestlings ?? [];
+        BandRows = SBands ?? [];
+
+        await cacheNestlings(NestlingRows.map(N => ({
+          id: N.id, compartment_id: CompartmentId, site_season_id: SeasonId, label: N.label,
+        })));
+        if (ExistingEntryId && BandRows.length > 0) {
+          await cacheBands(BandRows.map((B: any) => ({ ...B, nest_check_entry_id: ExistingEntryId })));
         }
+
+        const nestlingIds = NestlingRows.map(n => n.id);
+        if (nestlingIds.length > 0) {
+          let q = supabase.from('bands').select('nestling_id').in('nestling_id', nestlingIds);
+          if (ExistingEntryId) q = (q as any).neq('nest_check_entry_id', ExistingEntryId);
+          const { data: PriorBands } = await q;
+          if (PriorBands) for (const B of PriorBands as any[]) {
+            if (B.nestling_id) priorCounts.set(B.nestling_id, (priorCounts.get(B.nestling_id) ?? 0) + 1);
+          }
+        }
+      } catch {
+        NestlingRows = await getLocalNestlings(CompartmentId, SeasonId);
+        BandRows = ExistingEntryId ? await getLocalBands(ExistingEntryId) : [];
+        priorCounts = await getLocalPriorBandCounts(
+          NestlingRows.map(n => n.id), ExistingEntryId ?? null
+        );
       }
 
-      const bands = BandRows ?? [];
-      const records: NestlingRecord[] = (NestlingRows ?? []).map(N => ({
-        id:               N.id,
-        label:            N.label,
-        bandsThisCheck:   bands
+      const records: NestlingRecord[] = NestlingRows.map(N => ({
+        id:             N.id,
+        label:          N.label,
+        bandsThisCheck: BandRows
           .filter((B: any) => B.nestling_id === N.id)
           .map((B: any) => ({ band_type: B.band_type, band_color: B.band_color ?? null, band_code: B.band_code })),
-        totalPriorBands:  priorCounts.get(N.id) ?? 0,
+        totalPriorBands: priorCounts.get(N.id) ?? 0,
       }));
 
-      const adultBands: AdultBand[] = bands
+      const adultBands: AdultBand[] = BandRows
         .filter((B: any) => !B.nestling_id)
         .map((B: any) => ({
-          is_new_banding: B.is_new_banding,
+          is_new_banding: !!B.is_new_banding,
           bird_type:      B.bird_type as AdultBand['bird_type'],
           band_type:      B.band_type as AdultBand['band_type'],
           band_color:     B.band_color ?? null,
@@ -474,7 +533,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     }
   }
 
-  // ── Save ───────────────────────────────────────────────────────────────
+  // ── Save (local-first; syncs to Supabase in background) ───────────────
   async function performSave(): Promise<boolean> {
     setSaving(true);
     setErrorMessage('');
@@ -492,7 +551,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       }
     }
 
-    const Payload = {
+    const EntryPayload = {
       nest_check_id:      CheckId,
       compartment_id:     CompartmentId,
       species:            SpeciesVal,
@@ -506,112 +565,75 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       nestling_age_days:  IsPM && YoungCount > 0
         ? (CalculatedNestlingAge ?? (IsHatchingDay ? 0 : (NestlingAgeDays > 0 ? NestlingAgeDays : null)))
         : null,
-      nestling_age_notes: null,
+      nestling_age_notes: null as null,
       dead_young_count:   IsPM && YoungCount > 0 && HasDeadYoung ? DeadYoungCount : 0,
       dead_adult_male:    DeadAdultMale,
       dead_adult_female:  DeadAdultFemale,
-      fledged_count:        IsPM && HasNest ? FledgedCount : 0,
-      renesting_attempt:    IsPM && HasNest ? Renesting : false,
-      notes:                Notes.trim() || null,
-      observed_male_age:    IsPM ? ObservedMaleAge : null,
-      observed_female_age:  IsPM ? ObservedFemaleAge : null,
+      fledged_count:      IsPM && HasNest ? FledgedCount : 0,
+      renesting_attempt:  IsPM && HasNest ? Renesting : false,
+      notes:              Notes.trim() || null,
+      observed_male_age:  IsPM ? ObservedMaleAge : null,
+      observed_female_age: IsPM ? ObservedFemaleAge : null,
     };
 
-    let EntryId: string | null = ExistingEntryId ?? null;
-    let SaveErr;
-    if (ExistingEntryId) {
-      ({ error: SaveErr } = await supabase.from('nest_check_entries').update(Payload).eq('id', ExistingEntryId));
-    } else {
-      const { data: NewRow, error: InsErr } = await supabase
-        .from('nest_check_entries').insert(Payload).select('id').single();
-      SaveErr = InsErr;
-      if (NewRow) EntryId = NewRow.id;
-    }
+    try {
+      const EntryId = ExistingEntryId ?? makeId();
+      await upsertLocalEntry({ id: EntryId, ...EntryPayload });
 
-    setSaving(false);
-    if (SaveErr) { setErrorMessage(SaveErr.message); return false; }
-
-    if (EntryId) {
-      // Create any new nestlings (those added this session, id === null, with at least one band)
-      const NestlingsToCreate = Nestlings.filter(N => N.id === null && N.bandsThisCheck.length > 0);
+      // Create any new nestlings (id === null, with at least one band)
       const NewLabelToId = new Map<string, string>();
-      if (NestlingsToCreate.length > 0) {
-        const { data: Created, error: NestlingErr } = await supabase
-          .from('nestlings')
-          .insert(NestlingsToCreate.map(N => ({
-            compartment_id: CompartmentId,
-            site_season_id: SeasonId,
-            label:          N.label,
-          })))
-          .select('id, label');
-        if (NestlingErr) { setErrorMessage(`Nestlings: ${NestlingErr.message}`); return false; }
-        if (Created) for (const N of Created) NewLabelToId.set(N.label, N.id);
+      for (const N of Nestlings.filter(n => n.id === null && n.bandsThisCheck.length > 0)) {
+        const NewId = makeId();
+        await upsertLocalNestling({
+          id: NewId, compartment_id: CompartmentId, site_season_id: SeasonId, label: N.label,
+        });
+        NewLabelToId.set(N.label, NewId);
       }
 
-      await supabase.from('bands').delete().eq('nest_check_entry_id', EntryId);
-
-      const BandRows: object[] = [];
+      // Replace all bands for this entry
+      const BandRows: {
+        id: string; nestling_id: string | null; is_new_banding: boolean;
+        bird_type: string; band_type: string; band_color: string | null; band_code: string;
+      }[] = [];
       for (const N of Nestlings) {
         if (N.bandsThisCheck.length === 0) continue;
         const NestlingId = N.id ?? NewLabelToId.get(N.label) ?? null;
         for (const B of N.bandsThisCheck) {
           BandRows.push({
-            nest_check_entry_id: EntryId,
-            nestling_id:         NestlingId,
-            is_new_banding:      true,
-            bird_type:           'nestling',
-            band_type:           B.band_type,
-            band_color:          B.band_color,
-            band_code:           B.band_code,
+            id: makeId(), nestling_id: NestlingId, is_new_banding: true,
+            bird_type: 'nestling', band_type: B.band_type, band_color: B.band_color, band_code: B.band_code,
           });
         }
       }
       for (const B of AdultBands) {
         BandRows.push({
-          nest_check_entry_id: EntryId,
-          nestling_id:         null,
-          is_new_banding:      B.is_new_banding,
-          bird_type:           B.bird_type,
-          band_type:           B.band_type,
-          band_color:          B.band_color,
-          band_code:           B.band_code,
+          id: makeId(), nestling_id: null, is_new_banding: B.is_new_banding,
+          bird_type: B.bird_type, band_type: B.band_type, band_color: B.band_color, band_code: B.band_code,
+        });
+      }
+      await replaceLocalBands(EntryId, BandRows);
+
+      if (IsPM) {
+        const ConfirmedMale   = computeConfirmedAge(OtherMaleObs,   ObservedMaleAge);
+        const ConfirmedFemale = computeConfirmedAge(OtherFemaleObs, ObservedFemaleAge);
+        await upsertLocalNestSeason({
+          compartment_id: CompartmentId,
+          site_season_id: SeasonId,
+          year: parseInt(CheckDate.substring(0, 4), 10),
+          male_age: ConfirmedMale,
+          female_age: ConfirmedFemale,
         });
       }
 
-      if (BandRows.length > 0) {
-        const { error: BandErr } = await supabase.from('bands').insert(BandRows);
-        if (BandErr) { setErrorMessage(`Bands: ${BandErr.message}`); return false; }
-      }
+      syncNow(); // non-blocking: push to Supabase in background
+      setSaving(false);
+      ClearDirty();
+      return true;
+    } catch (Err: any) {
+      setErrorMessage(Err?.message ?? 'Save failed. Please try again.');
+      setSaving(false);
+      return false;
     }
-
-    if (IsPM) {
-      const ConfirmedMale   = computeConfirmedAge(OtherMaleObs,   ObservedMaleAge);
-      const ConfirmedFemale = computeConfirmedAge(OtherFemaleObs, ObservedFemaleAge);
-
-      const { data: Existing, error: SelectErr } = await supabase
-        .from('nest_seasons')
-        .select('id')
-        .eq('compartment_id', CompartmentId)
-        .eq('site_season_id', SeasonId)
-        .maybeSingle();
-
-      let AgeErr;
-      if (SelectErr) {
-        AgeErr = SelectErr;
-      } else if (Existing) {
-        ({ error: AgeErr } = await supabase.from('nest_seasons')
-          .update({ male_age: ConfirmedMale, female_age: ConfirmedFemale })
-          .eq('id', Existing.id));
-      } else {
-        ({ error: AgeErr } = await supabase.from('nest_seasons')
-          .insert({ compartment_id: CompartmentId, site_season_id: SeasonId, year: parseInt(CheckDate.substring(0, 4), 10), male_age: ConfirmedMale, female_age: ConfirmedFemale }));
-      }
-
-      if (AgeErr) { setErrorMessage(`Adult ages: ${AgeErr.message}`); return false; }
-    }
-
-    ClearDirty();
-    return true;
   }
 
   async function handleSave() {
@@ -638,7 +660,13 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   // ── Delete entry ───────────────────────────────────────────────────────
   async function handleDelete() {
     if (!ExistingEntryId) return;
+    if (!isOnline) {
+      setErrorMessage('Cannot delete while offline. Reconnect and try again.');
+      setDeleteVisible(false);
+      return;
+    }
     setDeleting(true);
+    await deleteLocalEntry(ExistingEntryId);
     const { error } = await supabase.from('nest_check_entries').delete().eq('id', ExistingEntryId);
     setDeleting(false);
     if (error) { setErrorMessage(error.message); return; }

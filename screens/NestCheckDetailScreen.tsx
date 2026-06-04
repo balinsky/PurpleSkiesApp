@@ -6,6 +6,14 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { AppStackParamList } from '../App';
+import { useSync } from '../contexts/SyncContext';
+import {
+  cacheUnitsAndCompartments, getLocalUnitsWithCompartments,
+  cacheEntries, getLocalEntriesForCheck,
+  getLocalBandEntryIds, localEntryToJs,
+  cacheNestSeasons, getLocalNestSeasons,
+  upsertLocalEntry, makeId,
+} from '../lib/localDb';
 
 type CompartmentRow = {
   id: string;
@@ -66,6 +74,7 @@ function buildEntrySummary(entry: {
 
 export default function NestCheckDetailScreen({ navigation, route }: Props) {
   const { CheckId, CheckDate, SiteId, SeasonId, Year } = route.params;
+  const { syncNow, isOnline } = useSync();
 
   const [Sections, setSections] = useState<Section[]>([]);
   const [Loading, setLoading]   = useState(true);
@@ -85,115 +94,154 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
   useFocusEffect(useCallback(() => { loadData(); }, [CheckId, SiteId]));
 
   async function loadData() {
-    const { data: Units } = await supabase
-      .from('housing_units')
-      .select('id, name, compartments(id, cavity_label, sort_order)')
-      .eq('site_id', SiteId)
-      .order('name');
+    type UnitRow = { id: string; name: string; compartments: { id: string; cavity_label: string; sort_order: number | null }[] };
+    type EntryRow = { id: string; compartment_id: string; species: string; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean; egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null };
+    type SeasonRow = { compartment_id: string; male_age: string | null; female_age: string | null };
 
-    const { data: Entries } = await supabase
-      .from('nest_check_entries')
-      .select('id, compartment_id, species, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days')
-      .eq('nest_check_id', CheckId);
+    function buildSections(
+      Units: UnitRow[], Entries: EntryRow[], BandingSet: Set<string>,
+      HatchDateMap: Map<string, string>, SeasonRows: SeasonRow[],
+    ) {
+      function effectiveAge(compartmentId: string, stored: number | null): number | null {
+        if (stored !== null) return stored;
+        const HatchDate = HatchDateMap.get(compartmentId);
+        if (!HatchDate) return null;
+        const [hy, hm, hd] = HatchDate.split('-').map(Number);
+        const [cy, cm, cd] = CheckDate.split('-').map(Number);
+        const Days = Math.round(
+          (new Date(cy, cm - 1, cd).getTime() - new Date(hy, hm - 1, hd).getTime()) / 86400000
+        );
+        return Days > 0 ? Days : null;
+      }
+      const AgeMap = new Map<string, SeasonRow>();
+      SeasonRows.forEach((NS) => AgeMap.set(NS.compartment_id, NS));
+      const EntryMap = new Map<string, EntryRow>();
+      Entries.forEach((E) => EntryMap.set(E.compartment_id, E));
 
-    const BandingSet = new Set<string>();
-    if (Entries && Entries.length > 0) {
-      const { data: BandRows } = await supabase
-        .from('bands')
-        .select('nest_check_entry_id')
-        .in('nest_check_entry_id', Entries.map(e => e.id));
-      if (BandRows) BandRows.forEach(B => BandingSet.add(B.nest_check_entry_id));
+      setSections(Units.map((Unit) => ({
+        title:   Unit.name,
+        unit_id: Unit.id,
+        data: Unit.compartments
+          .slice()
+          .sort((A, B) => {
+            if (A.sort_order !== null && B.sort_order !== null) return A.sort_order - B.sort_order;
+            if (A.sort_order !== null) return -1;
+            if (B.sort_order !== null) return 1;
+            return A.cavity_label.localeCompare(B.cavity_label);
+          })
+          .map((C) => {
+            const Entry = EntryMap.get(C.id) ?? null;
+            return {
+              id:            C.id,
+              cavity_label:  C.cavity_label,
+              sort_order:    C.sort_order,
+              unit_id:       Unit.id,
+              unit_name:     Unit.name,
+              entry_id:      Entry?.id ?? null,
+              entry_summary: Entry ? buildEntrySummary({
+                ...Entry,
+                nestling_age_days: effectiveAge(C.id, Entry.nestling_age_days),
+                ...AgeMap.get(C.id),
+                has_banding: BandingSet.has(Entry.id),
+              }) : null,
+            };
+          }),
+      })));
+      setLoading(false);
     }
 
-    // Build a hatch-date map (compartment_id → hatch date string) from prior checks
-    // so we can compute nestling age on this check date even when it wasn't stored.
-    const HatchDateMap = new Map<string, string>();
-    const Year = CheckDate.substring(0, 4);
-    const { data: PriorChecks } = await supabase
-      .from('nest_checks')
-      .select('id, check_date')
-      .eq('site_id', SiteId)
-      .gte('check_date', `${Year}-01-01`)
-      .lt('check_date', CheckDate)
-      .order('check_date', { ascending: true });
+    try {
+      const { data: Units, error: UnitsError } = await supabase
+        .from('housing_units')
+        .select('id, name, compartments(id, cavity_label, sort_order)')
+        .eq('site_id', SiteId)
+        .order('name');
+      if (UnitsError) throw UnitsError;
 
-    if (PriorChecks && PriorChecks.length > 0) {
-      const { data: Anchors } = await supabase
+      const { data: Entries, error: EntriesError } = await supabase
         .from('nest_check_entries')
-        .select('compartment_id, nest_check_id, nestling_age_days')
-        .in('nest_check_id', PriorChecks.map(c => c.id))
-        .gt('young_count', 0)
-        .not('nestling_age_days', 'is', null);
+        .select('id, compartment_id, species, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days')
+        .eq('nest_check_id', CheckId);
+      if (EntriesError) throw EntriesError;
 
-      if (Anchors) {
-        for (const Chk of PriorChecks) {
-          const A = Anchors.find(e => e.nest_check_id === Chk.id && (e.nestling_age_days ?? 0) > 0);
-          if (A && !HatchDateMap.has(A.compartment_id)) {
-            const [ay, am, ad] = Chk.check_date.split('-').map(Number);
-            const Hatch = new Date(ay, am - 1, ad);
-            Hatch.setDate(Hatch.getDate() - A.nestling_age_days!);
-            HatchDateMap.set(
-              A.compartment_id,
-              `${Hatch.getFullYear()}-${String(Hatch.getMonth() + 1).padStart(2, '0')}-${String(Hatch.getDate()).padStart(2, '0')}`
-            );
+      // Cache to local DB
+      await cacheUnitsAndCompartments(
+        (Units ?? []).map(U => ({ id: U.id, name: U.name, site_id: SiteId })),
+        (Units ?? []).flatMap(U =>
+          ((U.compartments as any[]) ?? []).map((C: any) => ({
+            id: C.id, housing_unit_id: U.id, cavity_label: C.cavity_label, sort_order: C.sort_order ?? null,
+          }))
+        ),
+      );
+      await cacheEntries(Entries ?? []);
+
+      const BandingSet = new Set<string>();
+      if (Entries && Entries.length > 0) {
+        const { data: BandRows } = await supabase
+          .from('bands')
+          .select('nest_check_entry_id')
+          .in('nest_check_entry_id', Entries.map(e => e.id));
+        if (BandRows) BandRows.forEach(B => BandingSet.add(B.nest_check_entry_id));
+      }
+
+      // Build hatch-date map from prior checks so nestling age can be inferred when not stored
+      const HatchDateMap = new Map<string, string>();
+      const YearStr = CheckDate.substring(0, 4);
+      const { data: PriorChecks } = await supabase
+        .from('nest_checks')
+        .select('id, check_date')
+        .eq('site_id', SiteId)
+        .gte('check_date', `${YearStr}-01-01`)
+        .lt('check_date', CheckDate)
+        .order('check_date', { ascending: true });
+
+      if (PriorChecks && PriorChecks.length > 0) {
+        const { data: Anchors } = await supabase
+          .from('nest_check_entries')
+          .select('compartment_id, nest_check_id, nestling_age_days')
+          .in('nest_check_id', PriorChecks.map(c => c.id))
+          .gt('young_count', 0)
+          .not('nestling_age_days', 'is', null);
+
+        if (Anchors) {
+          for (const Chk of PriorChecks) {
+            const A = Anchors.find(e => e.nest_check_id === Chk.id && (e.nestling_age_days ?? 0) > 0);
+            if (A && !HatchDateMap.has(A.compartment_id)) {
+              const [ay, am, ad] = Chk.check_date.split('-').map(Number);
+              const Hatch = new Date(ay, am - 1, ad);
+              Hatch.setDate(Hatch.getDate() - A.nestling_age_days!);
+              HatchDateMap.set(
+                A.compartment_id,
+                `${Hatch.getFullYear()}-${String(Hatch.getMonth() + 1).padStart(2, '0')}-${String(Hatch.getDate()).padStart(2, '0')}`
+              );
+            }
           }
         }
       }
-    }
 
-    function effectiveAge(compartmentId: string, stored: number | null): number | null {
-      if (stored !== null) return stored;
-      const HatchDate = HatchDateMap.get(compartmentId);
-      if (!HatchDate) return null;
-      const [hy, hm, hd] = HatchDate.split('-').map(Number);
-      const [cy, cm, cd] = CheckDate.split('-').map(Number);
-      const Days = Math.round(
-        (new Date(cy, cm - 1, cd).getTime() - new Date(hy, hm - 1, hd).getTime()) / 86400000
+      const { data: NestSeasonRows } = await supabase
+        .from('nest_seasons')
+        .select('compartment_id, male_age, female_age')
+        .eq('site_season_id', SeasonId);
+      await cacheNestSeasons(
+        (NestSeasonRows ?? []).map(NS => ({ ...NS, site_season_id: SeasonId }))
       );
-      return Days > 0 ? Days : null;
+
+      const TypedUnits: UnitRow[] = (Units ?? []).map(U => ({
+        id: U.id, name: U.name,
+        compartments: ((U.compartments as any[]) ?? []).map((C: any) => ({
+          id: C.id, cavity_label: C.cavity_label, sort_order: C.sort_order ?? null,
+        })),
+      }));
+      buildSections(TypedUnits, (Entries ?? []) as EntryRow[], BandingSet, HatchDateMap, NestSeasonRows ?? []);
+    } catch {
+      // Offline or network error: fall back to local DB
+      const LocalUnits    = await getLocalUnitsWithCompartments(SiteId);
+      const LocalEntries  = (await getLocalEntriesForCheck(CheckId)).map(localEntryToJs);
+      const LocalBandSet  = await getLocalBandEntryIds(LocalEntries.map(E => E.id));
+      const LocalSeasons  = await getLocalNestSeasons(SeasonId);
+      buildSections(LocalUnits, LocalEntries as EntryRow[], LocalBandSet, new Map(), LocalSeasons);
     }
-
-    const { data: NestSeasonRows } = await supabase
-      .from('nest_seasons')
-      .select('compartment_id, male_age, female_age')
-      .eq('site_season_id', SeasonId);
-    const AgeMap = new Map<string, { male_age: string | null; female_age: string | null }>();
-    (NestSeasonRows ?? []).forEach((NS) => AgeMap.set(NS.compartment_id, NS));
-
-    const EntryMap = new Map<string, NonNullable<typeof Entries>[number]>();
-    (Entries ?? []).forEach((E) => EntryMap.set(E.compartment_id, E));
-
-    const Built: Section[] = (Units ?? []).map((Unit) => ({
-      title:   Unit.name,
-      unit_id: Unit.id,
-      data: ((Unit.compartments as any[]) ?? [])
-        .sort((A, B) => {
-          if (A.sort_order !== null && B.sort_order !== null) return A.sort_order - B.sort_order;
-          if (A.sort_order !== null) return -1;
-          if (B.sort_order !== null) return 1;
-          return A.cavity_label.localeCompare(B.cavity_label);
-        })
-        .map((C) => {
-          const Entry = EntryMap.get(C.id) ?? null;
-          return {
-            id:            C.id,
-            cavity_label:  C.cavity_label,
-            sort_order:    C.sort_order,
-            unit_id:       Unit.id,
-            unit_name:     Unit.name,
-            entry_id:      Entry?.id ?? null,
-            entry_summary: Entry ? buildEntrySummary({
-              ...Entry,
-              nestling_age_days: effectiveAge(C.id, Entry.nestling_age_days),
-              ...AgeMap.get(C.id),
-              has_banding: BandingSet.has(Entry.id),
-            }) : null,
-          };
-        }),
-    }));
-
-    setSections(Built);
-    setLoading(false);
   }
 
   // ── Edit date handlers ─────────────────────────────────────────────
@@ -232,22 +280,20 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
   async function handleQuick(item: CompartmentRow, type: 'empty' | 'pm_nest') {
     const Key = `${item.id}:${type}`;
     setQuickSaving(Key);
-    const Payload = {
-      nest_check_id: CheckId, compartment_id: item.id,
+    const EntryId = item.entry_id ?? makeId();
+    await upsertLocalEntry({
+      id: EntryId, nest_check_id: CheckId, compartment_id: item.id,
       species: 'PM', is_empty_cavity: type === 'empty', has_nest: type === 'pm_nest',
       nest_discarded: false, nest_replaced: false,
       egg_count: 0, discarded_eggs: 0, young_count: 0,
       nestling_age_days: null, nestling_age_notes: null,
       dead_young_count: 0, dead_adult_male: false, dead_adult_female: false,
       fledged_count: 0, renesting_attempt: false, notes: null,
-    };
-    if (item.entry_id) {
-      await supabase.from('nest_check_entries').update(Payload).eq('id', item.entry_id);
-    } else {
-      await supabase.from('nest_check_entries').insert(Payload);
-    }
+      observed_male_age: null, observed_female_age: null,
+    });
+    syncNow(); // non-blocking: push to Supabase in background
     setQuickSaving(null);
-    loadData();
+    await loadData();
   }
 
   function navigateToEntry(item: CompartmentRow) {
@@ -287,15 +333,20 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
         contentContainerStyle={styles.List}
         ListHeaderComponent={(
           <View style={styles.Header}>
+            {!isOnline && (
+              <Text variant="bodySmall" style={styles.OfflineBanner}>
+                Offline · showing cached data
+              </Text>
+            )}
             <Text variant="bodyMedium" style={styles.Stats}>
               {TotalCount} compartments · {EnteredCount} entered
             </Text>
             <View style={styles.HeaderBtns}>
-              <Button mode="outlined" compact onPress={openEditDate} style={styles.EditDateBtn}>
+              <Button mode="outlined" compact disabled={!isOnline} onPress={openEditDate} style={styles.EditDateBtn}>
                 Edit date
               </Button>
               <Button
-                mode="outlined" compact textColor="red"
+                mode="outlined" compact textColor="red" disabled={!isOnline}
                 style={[styles.EditDateBtn, styles.DeleteBtn]}
                 onPress={() => { setDeleteError(''); setDeleteVisible(true); }}
               >
@@ -402,6 +453,7 @@ const styles = StyleSheet.create({
   LoadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   List:             { padding: 16, paddingBottom: 32 },
   Header:           { marginBottom: 8 },
+  OfflineBanner:    { color: '#b45309', marginBottom: 6, fontStyle: 'italic' },
   Stats:            { color: '#555', marginBottom: 8 },
   HeaderBtns:       { flexDirection: 'row', gap: 8 },
   EditDateBtn:      { flex: 1 },
