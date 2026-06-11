@@ -334,7 +334,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             ProjHatchMax = addDays(LatestFirst, MaxEggs - 1 + 15);
           }
 
-          const Anchor = EWD.find(e => e.young_count > 0 && (e.nestling_age_days ?? 0) > 0);
+          const Anchor = EWD.find(e => e.young_count > 0 && e.nestling_age_days != null);
           if (Anchor) {
             const [ay, am, ad] = Anchor.check_date.split('-').map(Number);
             const Hatch = new Date(ay, am - 1, ad);
@@ -435,9 +435,10 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   const BandingData = useMemo(() => {
     const counts = new Map<string, number>();
     for (const P of NestProgress) {
-      if (!P.actual_hatch || P.young_count <= 0) continue;
+      const hatch = P.actual_hatch ?? P.proj_hatch_min;
+      if (!hatch || P.young_count <= 0) continue;
       for (let day = BandingMin; day <= BandingMax; day++) {
-        const date = addDays(P.actual_hatch, day);
+        const date = addDays(hatch, day);
         counts.set(date, (counts.get(date) ?? 0) + P.young_count);
       }
     }
