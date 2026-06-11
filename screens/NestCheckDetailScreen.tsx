@@ -78,7 +78,8 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
 
   const [Sections, setSections] = useState<Section[]>([]);
   const [Loading, setLoading]   = useState(true);
-  const [QuickSaving, setQuickSaving] = useState<string | null>(null);
+  const [QuickSaving, setQuickSaving]     = useState<string | null>(null);
+  const [MarkingAllEmpty, setMarkingAllEmpty] = useState(false);
 
   // ── Edit date ──────────────────────────────────────────────────────
   const [EditDateVisible, setEditDateVisible]   = useState(false);
@@ -281,6 +282,45 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     navigation.goBack();
   }
 
+  async function handleMarkAllEmpty() {
+    const Unrecorded = Sections.flatMap(s => s.data).filter(c => c.entry_id === null);
+    if (Unrecorded.length === 0) return;
+    setMarkingAllEmpty(true);
+    const Payload = {
+      species: 'PM' as const, is_empty_cavity: true, has_nest: false,
+      nest_discarded: false, nest_replaced: false,
+      egg_count: 0, discarded_eggs: 0, young_count: 0,
+      nestling_age_days: null, nestling_age_notes: null as null,
+      dead_young_count: 0, dead_adult_male: false, dead_adult_female: false,
+      fledged_count: 0, renesting_attempt: false, notes: null,
+      observed_male_age: null, observed_female_age: null,
+    };
+    let savedLocally = false;
+    try {
+      await Promise.all(Unrecorded.map(item =>
+        upsertLocalEntry({ id: makeId(), nest_check_id: CheckId, compartment_id: item.id, ...Payload })
+      ));
+      savedLocally = true;
+      syncNow();
+    } catch {}
+    if (!savedLocally) {
+      await supabase.from('nest_check_entries').insert(
+        Unrecorded.map(item => ({ id: makeId(), nest_check_id: CheckId, compartment_id: item.id, ...Payload }))
+      );
+    }
+    setMarkingAllEmpty(false);
+    // Optimistic update for all newly-emptied compartments
+    const EmptiedIds = new Set(Unrecorded.map(c => c.id));
+    setSections(prev => prev.map(sec => ({
+      ...sec,
+      data: sec.data.map(row => !EmptiedIds.has(row.id) ? row : {
+        ...row,
+        entry_id: row.entry_id ?? makeId(),
+        entry_summary: 'Empty cavity',
+      }),
+    })));
+  }
+
   async function handleQuick(item: CompartmentRow, type: 'empty' | 'pm_nest') {
     const Key = `${item.id}:${type}`;
     setQuickSaving(Key);
@@ -309,7 +349,15 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       }
     }
     setQuickSaving(null);
-    await loadData();
+    // Optimistic update: avoids racing loadData() against the background sync
+    setSections(prev => prev.map(sec => ({
+      ...sec,
+      data: sec.data.map(row => row.id !== item.id ? row : {
+        ...row,
+        entry_id: EntryId,
+        entry_summary: type === 'empty' ? 'Empty cavity' : 'Purple Martin nest',
+      }),
+    })));
   }
 
   function navigateToEntry(item: CompartmentRow) {
@@ -369,6 +417,18 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
                 Delete check
               </Button>
             </View>
+            {TotalCount > EnteredCount && (
+              <Button
+                mode="contained-tonal"
+                compact
+                loading={MarkingAllEmpty}
+                disabled={MarkingAllEmpty || QuickSaving !== null}
+                onPress={handleMarkAllEmpty}
+                style={styles.MarkAllEmptyBtn}
+              >
+                Mark {TotalCount - EnteredCount} unrecorded as empty
+              </Button>
+            )}
           </View>
         )}
         renderSectionHeader={({ section }) => (
@@ -483,5 +543,6 @@ const styles = StyleSheet.create({
   RowIcon:          { marginRight: 4 },
   EmptyContainer:   { padding: 16, alignItems: 'flex-start' },
   EmptyText:        { color: '#666', marginBottom: 12 },
+  MarkAllEmptyBtn:  { marginTop: 10, alignSelf: 'stretch' },
   DialogInput:      { marginBottom: 8 },
 });

@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Card, Dialog, FAB, HelperText, IconButton, List, Portal, Text, TextInput } from 'react-native-paper';
 import { exportSeasonXls } from '../lib/exportXls';
@@ -56,6 +57,7 @@ type CompartmentProgress = {
   proj_fledge: string | null;
   male_age: string | null;
   female_age: string | null;
+  young_count: number;
 };
 
 function progressLine(P: CompartmentProgress): string {
@@ -84,6 +86,51 @@ function todayString(): string {
   return `${y}-${m}-${d}`;
 }
 
+function BandingHistogram({ bars, today }: {
+  bars: { date: string; count: number }[];
+  today: string;
+}) {
+  if (bars.length === 0) {
+    return (
+      <Text style={{ color: '#888', fontSize: 12, marginBottom: 12, fontStyle: 'italic' }}>
+        No nestlings with known hatch dates yet.
+      </Text>
+    );
+  }
+  const MaxCount = Math.max(...bars.map(b => b.count), 1);
+  const BAR_MAX = 100;
+  const BAR_W   = 44;
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+      <View>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: BAR_MAX + 28 }}>
+          {bars.map(({ date, count }) => {
+            const h = Math.max(4, Math.round((count / MaxCount) * BAR_MAX));
+            const isToday = date === today;
+            return (
+              <View key={date} style={{ width: BAR_W, alignItems: 'center', marginHorizontal: 2 }}>
+                <Text style={{ fontSize: 10, color: '#333', marginBottom: 2 }}>{count}</Text>
+                <View style={{
+                  width: BAR_W - 10, height: h,
+                  backgroundColor: isToday ? '#e65100' : '#7b1fa2',
+                  borderRadius: 3,
+                }} />
+              </View>
+            );
+          })}
+        </View>
+        <View style={{ flexDirection: 'row' }}>
+          {bars.map(({ date }) => (
+            <Text key={date} style={{ width: BAR_W, textAlign: 'center', fontSize: 9, color: '#666', marginHorizontal: 2 }}>
+              {shortDate(date)}
+            </Text>
+          ))}
+        </View>
+      </View>
+    </ScrollView>
+  );
+}
+
 export default function SeasonDetailScreen({ navigation, route }: Props) {
   const { SeasonId, SiteId, Year } = route.params;
   const { SeasonCalendarView, toggleSeasonCalendarView } = useSettings();
@@ -102,6 +149,16 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   const [ChecksLoading, setChecksLoading] = useState(true);
   const [NestProgress, setNestProgress]         = useState<CompartmentProgress[]>([]);
   const [NestProgressExpanded, setNestProgressExpanded] = useState(false);
+
+  type AdultAge = { compartment_id: string; label: string; unit_name: string; male_age: string | null; female_age: string | null };
+  const [AdultAges, setAdultAges]               = useState<AdultAge[]>([]);
+  const [AdultAgesExpanded, setAdultAgesExpanded] = useState(false);
+
+  const [BandingExpanded, setBandingExpanded]   = useState(false);
+  const [BandingMin, setBandingMin]             = useState(14);
+  const [BandingMax, setBandingMax]             = useState(19);
+  const [BandingMinText, setBandingMinText]     = useState('14');
+  const [BandingMaxText, setBandingMaxText]     = useState('19');
 
   // ── Add check dialog ───────────────────────────────────────────────
   const [AddCheckVisible, setAddCheckVisible]   = useState(false);
@@ -134,6 +191,18 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
       ),
     });
   }, [SeasonCalendarView, Exporting]);
+
+  useEffect(() => {
+    AsyncStorage.multiGet([`banding_min_${SiteId}`, `banding_max_${SiteId}`])
+      .then(([[, mn], [, mx]]) => {
+        const minVal = mn ? parseInt(mn, 10) : 14;
+        const maxVal = mx ? parseInt(mx, 10) : 19;
+        setBandingMin(minVal);
+        setBandingMax(maxVal);
+        setBandingMinText(String(minVal));
+        setBandingMaxText(String(maxVal));
+      });
+  }, [SiteId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -173,24 +242,45 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
         if (!Checks || Checks.length === 0) { setNestProgress([]); return; }
 
-        // All PM entries for the season (for nest progress)
-        const { data: Entries } = await supabase
-          .from('nest_check_entries')
-          .select('nest_check_id, compartment_id, egg_count, young_count, nestling_age_days, compartments(cavity_label, housing_units(name))')
-          .in('nest_check_id', Checks.map(c => c.id))
-          .eq('species', 'PM');
+        // Fetch PM entries (nest progress) and nest seasons (adult ages) in parallel
+        const [EntriesResult, NestSeasonsResult] = await Promise.all([
+          supabase
+            .from('nest_check_entries')
+            .select('nest_check_id, compartment_id, egg_count, young_count, nestling_age_days, compartments(cavity_label, housing_units(name))')
+            .in('nest_check_id', Checks.map(c => c.id))
+            .eq('species', 'PM'),
+          supabase
+            .from('nest_seasons')
+            .select('compartment_id, male_age, female_age, compartments(cavity_label, housing_units(name))')
+            .eq('site_season_id', SeasonId),
+        ]);
+        const Entries        = EntriesResult.data;
+        const NestSeasonRows = NestSeasonsResult.data;
 
-        if (!Entries) { setNestProgress([]); return; }
-
-        // Adult ages per compartment for this season
-        const { data: NestSeasonRows } = await supabase
-          .from('nest_seasons')
-          .select('compartment_id, male_age, female_age')
-          .eq('site_season_id', SeasonId);
+        // Adult ages — independent of entries
         const AgeMap = new Map<string, { male_age: string | null; female_age: string | null }>();
         if (NestSeasonRows) {
           for (const NS of NestSeasonRows) AgeMap.set(NS.compartment_id, NS);
         }
+        const Ages: AdultAge[] = (NestSeasonRows ?? [])
+          .filter(NS => NS.male_age || NS.female_age)
+          .map(NS => {
+            const comp = (NS as any).compartments;
+            return {
+              compartment_id: NS.compartment_id,
+              label:     comp?.cavity_label ?? '?',
+              unit_name: comp?.housing_units?.name ?? '',
+              male_age:  NS.male_age,
+              female_age: NS.female_age,
+            };
+          })
+          .sort((a, b) => {
+            const u = a.unit_name.localeCompare(b.unit_name);
+            return u !== 0 ? u : a.label.localeCompare(b.label);
+          });
+        setAdultAges(Ages);
+
+        if (!Entries) { setNestProgress([]); return; }
 
         // Group entries by compartment
         const CompMap = new Map<string, { label: string; unit_name: string; ewd: { check_date: string; egg_count: number; young_count: number; nestling_age_days: number | null }[] }>();
@@ -246,7 +336,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           }
 
           const Ages = AgeMap.get(CompId);
-          Progress.push({ compartment_id: CompId, label: Data.label, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null });
+          const YoungCount = [...EWD].reverse().find(e => e.young_count > 0)?.young_count ?? 0;
+          Progress.push({ compartment_id: CompId, label: Data.label, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount });
         }
 
         setNestProgress(Progress.sort((a, b) => {
@@ -273,6 +364,16 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
     if (error) setDatesError(error.message);
   }
 
+  function saveBandingWindow() {
+    const minVal = parseInt(BandingMinText, 10);
+    const maxVal = parseInt(BandingMaxText, 10);
+    if (isNaN(minVal) || isNaN(maxVal) || minVal < 1 || maxVal < minVal) return;
+    setBandingMin(minVal);
+    setBandingMax(maxVal);
+    AsyncStorage.setItem(`banding_min_${SiteId}`, String(minVal));
+    AsyncStorage.setItem(`banding_max_${SiteId}`, String(maxVal));
+  }
+
   // ── Add nest check ─────────────────────────────────────────────────
   function openAddCheck() {
     setNewCheckDate(todayString());
@@ -280,13 +381,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
     setAddCheckVisible(true);
   }
 
-  async function handleAddCheck() {
-    const DateVal = NewCheckDate.trim();
-    if (!DateVal) { setAddCheckError('Please enter a date.'); return; }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(DateVal)) {
-      setAddCheckError('Use YYYY-MM-DD format, e.g. 2026-06-01.');
-      return;
-    }
+  async function createAndNavigateToCheck(DateVal: string): Promise<void> {
+    if (AddCheckLoading) return;
     setAddCheckLoading(true);
 
     const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
@@ -317,6 +413,30 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
     });
   }
 
+  async function handleAddCheck() {
+    const DateVal = NewCheckDate.trim();
+    if (!DateVal) { setAddCheckError('Please enter a date.'); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(DateVal)) {
+      setAddCheckError('Use YYYY-MM-DD format, e.g. 2026-06-01.');
+      return;
+    }
+    await createAndNavigateToCheck(DateVal);
+  }
+
+  const BandingData = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const P of NestProgress) {
+      if (!P.actual_hatch || P.young_count <= 0) continue;
+      for (let day = BandingMin; day <= BandingMax; day++) {
+        const date = addDays(P.actual_hatch, day);
+        counts.set(date, (counts.get(date) ?? 0) + P.young_count);
+      }
+    }
+    return [...counts.entries()]
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [NestProgress, BandingMin, BandingMax]);
+
   const MarkedDates = Object.fromEntries(
     NestChecks.map(c => [c.check_date, { selected: true, selectedColor: '#7b1fa2' }])
   );
@@ -337,6 +457,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                     CheckId: Check.id, CheckDate: Check.check_date,
                     SiteId, SeasonId, Year,
                   });
+                } else {
+                  createAndNavigateToCheck(day.dateString);
                 }
               }}
               theme={{
@@ -407,6 +529,72 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                 ))}
               </>
             )}
+
+            {/* ── Adult ages ── */}
+            {AdultAges.length > 0 && (
+              <>
+                <Button
+                  mode="text"
+                  compact
+                  icon={AdultAgesExpanded ? 'chevron-up' : 'chevron-down'}
+                  contentStyle={styles.ExpandBtnContent}
+                  onPress={() => setAdultAgesExpanded(!AdultAgesExpanded)}
+                  style={styles.ExpandBtn}
+                >
+                  Adult Ages
+                </Button>
+                {AdultAgesExpanded && AdultAges.map((A) => (
+                  <View key={A.compartment_id} style={styles.ProgressRow}>
+                    <Text style={styles.ProgressTitle}>{A.unit_name} · {A.label}</Text>
+                    <Text style={styles.ProgressDates}>
+                      {[A.male_age && `♂ ${A.male_age}`, A.female_age && `♀ ${A.female_age}`].filter(Boolean).join('  ')}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            )}
+
+            {/* ── Banding ── */}
+            <Button
+              mode="text"
+              compact
+              icon={BandingExpanded ? 'chevron-up' : 'chevron-down'}
+              contentStyle={styles.ExpandBtnContent}
+              onPress={() => setBandingExpanded(!BandingExpanded)}
+              style={styles.ExpandBtn}
+            >
+              Banding
+            </Button>
+            {BandingExpanded && (
+              <>
+                <View style={styles.BandingWindowRow}>
+                  <Text style={styles.BandingWindowLabel}>Window (days):</Text>
+                  <TextInput
+                    mode="outlined"
+                    label="Min"
+                    value={BandingMinText}
+                    onChangeText={setBandingMinText}
+                    keyboardType="number-pad"
+                    style={styles.BandingWindowInput}
+                    dense
+                  />
+                  <Text style={styles.BandingWindowSep}>–</Text>
+                  <TextInput
+                    mode="outlined"
+                    label="Max"
+                    value={BandingMaxText}
+                    onChangeText={setBandingMaxText}
+                    keyboardType="number-pad"
+                    style={styles.BandingWindowInput}
+                    dense
+                  />
+                  <Button compact mode="outlined" onPress={saveBandingWindow} style={styles.BandingWindowSaveBtn}>
+                    Save
+                  </Button>
+                </View>
+                <BandingHistogram bars={BandingData} today={todayString()} />
+              </>
+            )}
           </ScrollView>
         ) : (
         <FlatList
@@ -475,6 +663,72 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                       <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
                     </View>
                   ))}
+                </>
+              )}
+
+              {/* ── Adult ages ── */}
+              {AdultAges.length > 0 && (
+                <>
+                  <Button
+                    mode="text"
+                    compact
+                    icon={AdultAgesExpanded ? 'chevron-up' : 'chevron-down'}
+                    contentStyle={styles.ExpandBtnContent}
+                    onPress={() => setAdultAgesExpanded(!AdultAgesExpanded)}
+                    style={styles.ExpandBtn}
+                  >
+                    Adult Ages
+                  </Button>
+                  {AdultAgesExpanded && AdultAges.map((A) => (
+                    <View key={A.compartment_id} style={styles.ProgressRow}>
+                      <Text style={styles.ProgressTitle}>{A.unit_name} · {A.label}</Text>
+                      <Text style={styles.ProgressDates}>
+                        {[A.male_age && `♂ ${A.male_age}`, A.female_age && `♀ ${A.female_age}`].filter(Boolean).join('  ')}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+
+              {/* ── Banding ── */}
+              <Button
+                mode="text"
+                compact
+                icon={BandingExpanded ? 'chevron-up' : 'chevron-down'}
+                contentStyle={styles.ExpandBtnContent}
+                onPress={() => setBandingExpanded(!BandingExpanded)}
+                style={styles.ExpandBtn}
+              >
+                Banding
+              </Button>
+              {BandingExpanded && (
+                <>
+                  <View style={styles.BandingWindowRow}>
+                    <Text style={styles.BandingWindowLabel}>Window (days):</Text>
+                    <TextInput
+                      mode="outlined"
+                      label="Min"
+                      value={BandingMinText}
+                      onChangeText={setBandingMinText}
+                      keyboardType="number-pad"
+                      style={styles.BandingWindowInput}
+                      dense
+                    />
+                    <Text style={styles.BandingWindowSep}>–</Text>
+                    <TextInput
+                      mode="outlined"
+                      label="Max"
+                      value={BandingMaxText}
+                      onChangeText={setBandingMaxText}
+                      keyboardType="number-pad"
+                      style={styles.BandingWindowInput}
+                      dense
+                    />
+                    <Button compact mode="outlined" onPress={saveBandingWindow} style={styles.BandingWindowSaveBtn}>
+                      Save
+                    </Button>
+                  </View>
+                  <BandingHistogram bars={BandingData} today={todayString()} />
                 </>
               )}
 
@@ -554,4 +808,9 @@ const styles = StyleSheet.create({
   EmptyText:     { color: '#666', marginBottom: 16 },
   FAB:           { position: 'absolute', right: 16, bottom: 16 },
   DialogInput:   { marginBottom: 8 },
+  BandingWindowRow:     { flexDirection: 'row', alignItems: 'center', marginBottom: 8, marginTop: 4, flexWrap: 'wrap' },
+  BandingWindowLabel:   { fontSize: 13, color: '#444', marginRight: 6 },
+  BandingWindowInput:   { width: 64, marginHorizontal: 4 },
+  BandingWindowSep:     { fontSize: 16, color: '#444' },
+  BandingWindowSaveBtn: { marginLeft: 8 },
 });
