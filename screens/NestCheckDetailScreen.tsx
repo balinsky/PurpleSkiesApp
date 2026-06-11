@@ -159,11 +159,26 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
         .order('name');
       if (UnitsError) throw UnitsError;
 
-      const { data: Entries, error: EntriesError } = await supabase
+      const { data: RemoteEntries, error: EntriesError } = await supabase
         .from('nest_check_entries')
         .select('id, compartment_id, species, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days')
         .eq('nest_check_id', CheckId);
       if (EntriesError) throw EntriesError;
+
+      // Overlay locally-pending entries so saves appear immediately before sync completes
+      let Entries: any[] = RemoteEntries ?? [];
+      try {
+        const LocalPending = (await getLocalEntriesForCheck(CheckId))
+          .filter(E => E.sync_status === 'pending')
+          .map(localEntryToJs);
+        if (LocalPending.length > 0) {
+          const PendingByComp = new Map(LocalPending.map(E => [E.compartment_id, E]));
+          Entries = [
+            ...Entries.filter(E => !PendingByComp.has(E.compartment_id)),
+            ...LocalPending,
+          ];
+        }
+      } catch {}
 
       // Fire-and-forget cache to local DB (non-blocking on web)
       cacheUnitsAndCompartments(
