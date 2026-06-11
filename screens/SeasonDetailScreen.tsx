@@ -149,6 +149,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   const [ChecksLoading, setChecksLoading] = useState(true);
   const [NestProgress, setNestProgress]         = useState<CompartmentProgress[]>([]);
   const [NestProgressExpanded, setNestProgressExpanded] = useState(false);
+  const [ColonyStats, setColonyStats]           = useState<{ eggs: number; hatched: number; fledged: number } | null>(null);
 
   type AdultAge = { compartment_id: string; label: string; unit_name: string; male_age: string | null; female_age: string | null };
   const [AdultAges, setAdultAges]               = useState<AdultAge[]>([]);
@@ -246,7 +247,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         const [EntriesResult, NestSeasonsResult] = await Promise.all([
           supabase
             .from('nest_check_entries')
-            .select('nest_check_id, compartment_id, egg_count, young_count, nestling_age_days, compartments(cavity_label, housing_units(name))')
+            .select('nest_check_id, compartment_id, egg_count, young_count, nestling_age_days, fledged_count, dead_young_count, compartments(cavity_label, housing_units(name))')
             .in('nest_check_id', Checks.map(c => c.id))
             .eq('species', 'PM'),
           supabase
@@ -283,7 +284,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         if (!Entries) { setNestProgress([]); return; }
 
         // Group entries by compartment
-        const CompMap = new Map<string, { label: string; unit_name: string; ewd: { check_date: string; egg_count: number; young_count: number; nestling_age_days: number | null }[] }>();
+        const CompMap = new Map<string, { label: string; unit_name: string; ewd: { check_date: string; egg_count: number; young_count: number; nestling_age_days: number | null; fledged_count: number; dead_young_count: number }[] }>();
         for (const E of Entries) {
           const Chk = Checks.find(c => c.id === E.nest_check_id);
           if (!Chk) continue;
@@ -297,17 +298,24 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             });
           }
           CompMap.get(E.compartment_id)!.ewd.push({
-            check_date:       Chk.check_date,
-            egg_count:        E.egg_count ?? 0,
-            young_count:      E.young_count ?? 0,
+            check_date:        Chk.check_date,
+            egg_count:         E.egg_count ?? 0,
+            young_count:       E.young_count ?? 0,
             nestling_age_days: E.nestling_age_days,
+            fledged_count:     (E as any).fledged_count ?? 0,
+            dead_young_count:  (E as any).dead_young_count ?? 0,
           });
         }
 
         // Compute projections per compartment
         const Progress: CompartmentProgress[] = [];
+        let StatEggs = 0, StatHatched = 0, StatFledged = 0;
         for (const [CompId, Data] of CompMap) {
           if (!Data.ewd.some(e => e.egg_count > 0 || e.young_count > 0)) continue;
+
+          StatEggs    += Math.max(0, ...Data.ewd.map(e => e.egg_count));
+          StatHatched += Math.max(0, ...Data.ewd.map(e => e.young_count + e.dead_young_count));
+          StatFledged += Math.max(0, ...Data.ewd.map(e => e.fledged_count));
 
           const EWD = [...Data.ewd].sort((a, b) => a.check_date.localeCompare(b.check_date));
           let FirstEggMin: string | null = null, FirstEggMax: string | null = null;
@@ -344,6 +352,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           const u = a.unit_name.localeCompare(b.unit_name);
           return u !== 0 ? u : a.label.localeCompare(b.label);
         }));
+        setColonyStats(Progress.length > 0 ? { eggs: StatEggs, hatched: StatHatched, fledged: StatFledged } : null);
       }
       loadAll();
     }, [SeasonId, SiteId, Year])
@@ -521,12 +530,32 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                 >
                   Nest Progress
                 </Button>
-                {NestProgressExpanded && NestProgress.map((P) => (
-                  <View key={P.compartment_id} style={styles.ProgressRow}>
-                    <Text style={styles.ProgressTitle}>{P.unit_name} · {P.label}</Text>
-                    <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
-                  </View>
-                ))}
+                {NestProgressExpanded && (
+                  <>
+                    {ColonyStats && (
+                      <View style={styles.ColonyStatsRow}>
+                        <View style={styles.ColonyStat}>
+                          <Text style={styles.ColonyStatNum}>{ColonyStats.eggs}</Text>
+                          <Text style={styles.ColonyStatLabel}>eggs laid</Text>
+                        </View>
+                        <View style={styles.ColonyStat}>
+                          <Text style={styles.ColonyStatNum}>{ColonyStats.hatched}</Text>
+                          <Text style={styles.ColonyStatLabel}>hatched</Text>
+                        </View>
+                        <View style={styles.ColonyStat}>
+                          <Text style={styles.ColonyStatNum}>{ColonyStats.fledged}</Text>
+                          <Text style={styles.ColonyStatLabel}>fledged</Text>
+                        </View>
+                      </View>
+                    )}
+                    {NestProgress.map((P) => (
+                      <View key={P.compartment_id} style={styles.ProgressRow}>
+                        <Text style={styles.ProgressTitle}>{P.unit_name} · {P.label}</Text>
+                        <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
+                      </View>
+                    ))}
+                  </>
+                )}
               </>
             )}
 
@@ -657,12 +686,32 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                   >
                     Nest Progress
                   </Button>
-                  {NestProgressExpanded && NestProgress.map((P) => (
-                    <View key={P.compartment_id} style={styles.ProgressRow}>
-                      <Text style={styles.ProgressTitle}>{P.unit_name} · {P.label}</Text>
-                      <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
-                    </View>
-                  ))}
+                  {NestProgressExpanded && (
+                    <>
+                      {ColonyStats && (
+                        <View style={styles.ColonyStatsRow}>
+                          <View style={styles.ColonyStat}>
+                            <Text style={styles.ColonyStatNum}>{ColonyStats.eggs}</Text>
+                            <Text style={styles.ColonyStatLabel}>eggs laid</Text>
+                          </View>
+                          <View style={styles.ColonyStat}>
+                            <Text style={styles.ColonyStatNum}>{ColonyStats.hatched}</Text>
+                            <Text style={styles.ColonyStatLabel}>hatched</Text>
+                          </View>
+                          <View style={styles.ColonyStat}>
+                            <Text style={styles.ColonyStatNum}>{ColonyStats.fledged}</Text>
+                            <Text style={styles.ColonyStatLabel}>fledged</Text>
+                          </View>
+                        </View>
+                      )}
+                      {NestProgress.map((P) => (
+                        <View key={P.compartment_id} style={styles.ProgressRow}>
+                          <Text style={styles.ProgressTitle}>{P.unit_name} · {P.label}</Text>
+                          <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
+                        </View>
+                      ))}
+                    </>
+                  )}
                 </>
               )}
 
@@ -813,4 +862,8 @@ const styles = StyleSheet.create({
   BandingWindowInput:   { width: 64, marginHorizontal: 4 },
   BandingWindowSep:     { fontSize: 16, color: '#444' },
   BandingWindowSaveBtn: { marginLeft: 8 },
+  ColonyStatsRow:  { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 10, marginTop: 4 },
+  ColonyStat:      { alignItems: 'center' },
+  ColonyStatNum:   { fontSize: 20, fontWeight: '700', color: '#7b1fa2' },
+  ColonyStatLabel: { fontSize: 11, color: '#666', textTransform: 'uppercase', letterSpacing: 0.5 },
 });
