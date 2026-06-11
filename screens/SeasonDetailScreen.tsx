@@ -456,6 +456,22 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
       <View style={styles.Container}>
         {SeasonCalendarView ? (
           <ScrollView contentContainerStyle={styles.CalendarScroll}>
+            {ColonyStats && (
+              <View style={styles.ColonyStatsRow}>
+                <View style={styles.ColonyStat}>
+                  <Text style={styles.ColonyStatNum}>{ColonyStats.eggs}</Text>
+                  <Text style={styles.ColonyStatLabel}>eggs laid</Text>
+                </View>
+                <View style={styles.ColonyStat}>
+                  <Text style={styles.ColonyStatNum}>{ColonyStats.hatched}</Text>
+                  <Text style={styles.ColonyStatLabel}>hatched</Text>
+                </View>
+                <View style={styles.ColonyStat}>
+                  <Text style={styles.ColonyStatNum}>{ColonyStats.fledged}</Text>
+                  <Text style={styles.ColonyStatLabel}>fledged</Text>
+                </View>
+              </View>
+            )}
             <Calendar
               initialDate={InitialDate}
               markedDates={MarkedDates}
@@ -532,22 +548,6 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                 </Button>
                 {NestProgressExpanded && (
                   <>
-                    {ColonyStats && (
-                      <View style={styles.ColonyStatsRow}>
-                        <View style={styles.ColonyStat}>
-                          <Text style={styles.ColonyStatNum}>{ColonyStats.eggs}</Text>
-                          <Text style={styles.ColonyStatLabel}>eggs laid</Text>
-                        </View>
-                        <View style={styles.ColonyStat}>
-                          <Text style={styles.ColonyStatNum}>{ColonyStats.hatched}</Text>
-                          <Text style={styles.ColonyStatLabel}>hatched</Text>
-                        </View>
-                        <View style={styles.ColonyStat}>
-                          <Text style={styles.ColonyStatNum}>{ColonyStats.fledged}</Text>
-                          <Text style={styles.ColonyStatLabel}>fledged</Text>
-                        </View>
-                      </View>
-                    )}
                     {NestProgress.map((P) => (
                       <View key={P.compartment_id} style={styles.ProgressRow}>
                         <Text style={styles.ProgressTitle}>{P.unit_name} · {P.label}</Text>
@@ -632,6 +632,22 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           contentContainerStyle={styles.List}
           ListHeaderComponent={(
             <View>
+              {ColonyStats && (
+                <View style={styles.ColonyStatsRow}>
+                  <View style={styles.ColonyStat}>
+                    <Text style={styles.ColonyStatNum}>{ColonyStats.eggs}</Text>
+                    <Text style={styles.ColonyStatLabel}>eggs laid</Text>
+                  </View>
+                  <View style={styles.ColonyStat}>
+                    <Text style={styles.ColonyStatNum}>{ColonyStats.hatched}</Text>
+                    <Text style={styles.ColonyStatLabel}>hatched</Text>
+                  </View>
+                  <View style={styles.ColonyStat}>
+                    <Text style={styles.ColonyStatNum}>{ColonyStats.fledged}</Text>
+                    <Text style={styles.ColonyStatLabel}>fledged</Text>
+                  </View>
+                </View>
+              )}
               {/* ── Arrival dates ── */}
               <Button
                 mode="text"
@@ -688,22 +704,6 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                   </Button>
                   {NestProgressExpanded && (
                     <>
-                      {ColonyStats && (
-                        <View style={styles.ColonyStatsRow}>
-                          <View style={styles.ColonyStat}>
-                            <Text style={styles.ColonyStatNum}>{ColonyStats.eggs}</Text>
-                            <Text style={styles.ColonyStatLabel}>eggs laid</Text>
-                          </View>
-                          <View style={styles.ColonyStat}>
-                            <Text style={styles.ColonyStatNum}>{ColonyStats.hatched}</Text>
-                            <Text style={styles.ColonyStatLabel}>hatched</Text>
-                          </View>
-                          <View style={styles.ColonyStat}>
-                            <Text style={styles.ColonyStatNum}>{ColonyStats.fledged}</Text>
-                            <Text style={styles.ColonyStatLabel}>fledged</Text>
-                          </View>
-                        </View>
-                      )}
                       {NestProgress.map((P) => (
                         <View key={P.compartment_id} style={styles.ProgressRow}>
                           <Text style={styles.ProgressTitle}>{P.unit_name} · {P.label}</Text>
