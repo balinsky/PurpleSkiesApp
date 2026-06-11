@@ -753,33 +753,24 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         {PrevSummary && (
           <Text style={styles.PrevBanner}>
             Last check ({formatDate(PrevEntry!.check_date)}): {PrevSummary}
-          </Text>
-        )}
-
-        {/* ── Nestling age (auto-calculated from hatch date) ──────── */}
-        {CalculatedNestlingAge !== null && (
-          <Text style={styles.HatchBanner}>
-            Nestling age: {CalculatedNestlingAge} days
+            {PrevEntry!.young_count > 0 && CalculatedNestlingAge !== null
+              ? `. Now ${CalculatedNestlingAge} days old.`
+              : ''}
           </Text>
         )}
 
         {/* ── Egg / hatch / fledge date projections ───────────────── */}
-        {ActualHatchDate ? (
+        {(FirstEggRange || ActualHatchDate || ProjectedFledgeDate) && (
           <View style={styles.DateStats}>
-            <Text style={styles.DateStat}>Hatched: {formatDate(ActualHatchDate)}</Text>
-            {ProjectedFledgeDate && (
-              <Text style={styles.DateStat}>Proj. fledge: {formatDate(ProjectedFledgeDate)}</Text>
+            {FirstEggRange && (
+              <Text style={styles.DateStat}>
+                First egg:{' '}
+                {FirstEggRange.min === FirstEggRange.max
+                  ? formatDate(FirstEggRange.min)
+                  : `${formatDate(FirstEggRange.min)}–${formatDate(FirstEggRange.max)}`}
+              </Text>
             )}
-          </View>
-        ) : FirstEggRange ? (
-          <View style={styles.DateStats}>
-            <Text style={styles.DateStat}>
-              First egg:{' '}
-              {FirstEggRange.min === FirstEggRange.max
-                ? formatDate(FirstEggRange.min)
-                : `${formatDate(FirstEggRange.min)}–${formatDate(FirstEggRange.max)}`}
-            </Text>
-            {ProjectedHatchRange && (
+            {ProjectedHatchRange && !ActualHatchDate && (
               <Text style={styles.DateStat}>
                 Proj. hatch:{' '}
                 {ProjectedHatchRange.min === ProjectedHatchRange.max
@@ -787,8 +778,14 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                   : `${formatDate(ProjectedHatchRange.min)}–${formatDate(ProjectedHatchRange.max)}`}
               </Text>
             )}
+            {ActualHatchDate && (
+              <Text style={styles.DateStat}>Actual Hatch: {formatDate(ActualHatchDate)}</Text>
+            )}
+            {ProjectedFledgeDate && (
+              <Text style={styles.DateStat}>Proj. fledge: {formatDate(ProjectedFledgeDate)}</Text>
+            )}
           </View>
-        ) : null}
+        )}
 
         {/* ── Species ─────────────────────────────────────────────── */}
         <View style={styles.SpeciesRow}>

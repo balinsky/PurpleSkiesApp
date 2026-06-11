@@ -56,7 +56,7 @@ function buildEntrySummary(entry: {
     Parts.push(`${SpeciesName} nest`);
   } else {
     Parts.push(SpeciesName);
-    if (NetEggs > 0) Parts.push(`${NetEggs} eggs`);
+    if (NetEggs > 0) Parts.push(`${NetEggs} ${NetEggs === 1 ? 'egg' : 'eggs'}`);
     if (entry.young_count > 0) {
       Parts.push(`${entry.young_count} young`);
       if (entry.nestling_age_days === 0)        Parts.push('HD');
