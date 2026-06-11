@@ -64,7 +64,7 @@ function progressLine(P: CompartmentProgress): string {
   const AgeParts = [P.male_age && `♂ ${P.male_age}`, P.female_age && `♀ ${P.female_age}`].filter(Boolean).join('  ');
   const Age = AgeParts ? `  ·  ${AgeParts}` : '';
   if (P.actual_hatch) {
-    const fledge = P.proj_fledge ? `  ·  Fledge ${shortDate(P.proj_fledge)}` : '';
+    const fledge = P.proj_fledge ? `  ·  Earliest Fledge ${shortDate(P.proj_fledge)}` : '';
     return `Hatched ${shortDate(P.actual_hatch)}${fledge}${Age}`;
   }
   if (!P.first_egg_min) return AgeParts;
