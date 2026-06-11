@@ -337,7 +337,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
       // Hatch date anchor: earliest check with a recorded nestling age
       for (const E of EWD) {
-        if ((E.young_count ?? 0) > 0 && (E.nestling_age_days ?? 0) > 0) {
+        if ((E.young_count ?? 0) > 0 && E.nestling_age_days != null) {
           const [ay, am, ad] = E.check_date.split('-').map(Number);
           const Hatch = new Date(ay, am - 1, ad);
           Hatch.setDate(Hatch.getDate() - E.nestling_age_days!);
