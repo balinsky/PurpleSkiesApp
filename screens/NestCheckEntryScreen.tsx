@@ -841,7 +841,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
             <View style={styles.CountersRow}>
               <Counter
-                label={L('Eggs', 'E')} value={EggCount}
+                label={L('Eggs (incl. discards)', 'E')} value={EggCount}
                 onChange={(N) => { MarkDirty(); setEggCount(N); if (N > 0) setIsEmpty(false); }}
                 prevValue={PrevEntry?.egg_count}
               />
