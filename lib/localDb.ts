@@ -289,13 +289,13 @@ export async function getLocalEntriesForCompartment(
   compartmentId: string, siteId: string, year: number, excludeCheckId: string,
 ): Promise<{
   check_date: string; species: string; is_empty_cavity: number; has_nest: number;
-  egg_count: number; young_count: number; nestling_age_days: number | null;
+  egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null;
   observed_male_age: string | null; observed_female_age: string | null;
   nest_check_id: string;
 }[]> {
   const D = await db();
   return D.getAllAsync(
-    `SELECT nce.species, nce.is_empty_cavity, nce.has_nest, nce.egg_count, nce.young_count,
+    `SELECT nce.species, nce.is_empty_cavity, nce.has_nest, nce.egg_count, nce.discarded_eggs, nce.young_count,
             nce.nestling_age_days, nce.observed_male_age, nce.observed_female_age,
             nce.nest_check_id, nc.check_date
      FROM nest_check_entries nce

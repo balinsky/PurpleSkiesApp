@@ -30,6 +30,7 @@ type PrevEntry = {
   is_empty_cavity: boolean;
   has_nest: boolean;
   egg_count: number;
+  discarded_eggs: number;
   young_count: number;
 };
 
@@ -248,7 +249,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       type SeasonEntry = {
         check_date: string; species: string;
         is_empty_cavity: boolean | number; has_nest: boolean | number;
-        egg_count: number; young_count: number; nestling_age_days: number | null;
+        egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null;
         observed_male_age: string | null; observed_female_age: string | null;
       };
       let Entries: SeasonEntry[] = [];
@@ -267,7 +268,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
         const { data: OtherEntries, error: EErr } = await supabase
           .from('nest_check_entries')
-          .select('nest_check_id, species, is_empty_cavity, has_nest, egg_count, young_count, nestling_age_days, observed_male_age, observed_female_age')
+          .select('nest_check_id, species, is_empty_cavity, has_nest, egg_count, discarded_eggs, young_count, nestling_age_days, observed_male_age, observed_female_age')
           .in('nest_check_id', SeasonChecks.map(c => c.id))
           .eq('compartment_id', CompartmentId);
         if (EErr) throw EErr;
@@ -308,6 +309,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           is_empty_cavity:  !!Prev.is_empty_cavity,
           has_nest:         !!Prev.has_nest,
           egg_count:        Prev.egg_count,
+          discarded_eggs:   Prev.discarded_eggs ?? 0,
           young_count:      Prev.young_count,
         });
       }
@@ -843,7 +845,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               <Counter
                 label={L('Eggs (incl. discards)', 'E')} value={EggCount}
                 onChange={(N) => { MarkDirty(); setEggCount(N); if (N > 0) setIsEmpty(false); }}
-                prevValue={PrevEntry?.egg_count}
+                prevValue={PrevEntry ? Math.max(0, PrevEntry.egg_count - PrevEntry.discarded_eggs) : undefined}
               />
               <Counter
                 label={L('Young', 'Y')} value={YoungCount}
