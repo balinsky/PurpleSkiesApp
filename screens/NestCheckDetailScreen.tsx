@@ -52,11 +52,17 @@ function buildEntrySummary(entry: {
   const SpeciesName = SpeciesLabel[entry.species] ?? entry.species;
   const NetEggs = Math.max(0, entry.egg_count - entry.discarded_eggs);
   const Parts: string[] = [];
-  if (!IsPM || (NetEggs === 0 && entry.young_count === 0)) {
+  if (!IsPM || (NetEggs === 0 && entry.young_count === 0 && entry.discarded_eggs === 0)) {
     Parts.push(`${SpeciesName} nest`);
   } else {
     Parts.push(SpeciesName);
-    if (NetEggs > 0) Parts.push(`${NetEggs} ${NetEggs === 1 ? 'egg' : 'eggs'}`);
+    if (NetEggs > 0 && entry.discarded_eggs > 0) {
+      Parts.push(`${NetEggs} ${NetEggs === 1 ? 'egg' : 'eggs'} (${entry.discarded_eggs} discarded)`);
+    } else if (NetEggs > 0) {
+      Parts.push(`${NetEggs} ${NetEggs === 1 ? 'egg' : 'eggs'}`);
+    } else if (entry.discarded_eggs > 0) {
+      Parts.push(`${entry.discarded_eggs} ${entry.discarded_eggs === 1 ? 'egg' : 'eggs'} discarded`);
+    }
     if (entry.young_count > 0) {
       Parts.push(`${entry.young_count} young`);
       if (entry.nestling_age_days === 0)        Parts.push('HD');
