@@ -23,6 +23,7 @@ type CompartmentRow = {
   unit_name: string;
   entry_id: string | null;
   entry_summary: string | null;
+  prev_summary: string | null;
 };
 
 type Section = {
@@ -106,6 +107,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     function buildSections(
       Units: UnitRow[], Entries: EntryRow[], BandingSet: Set<string>,
       HatchDateMap: Map<string, string>, SeasonRows: SeasonRow[],
+      PrevEntryMap: Map<string, string>,
     ) {
       function effectiveAge(compartmentId: string, stored: number | null): number | null {
         if (stored !== null) return stored;
@@ -149,6 +151,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
                 ...AgeMap.get(C.id),
                 has_banding: BandingSet.has(Entry.id),
               }) : null,
+              prev_summary:  PrevEntryMap.get(C.id) ?? null,
             };
           }),
       })));
@@ -239,6 +242,21 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
         }
       }
 
+      // Previous check summaries — entries from the most recent prior check
+      const PrevEntryMap = new Map<string, string>();
+      if (PriorChecks && PriorChecks.length > 0) {
+        const MostRecent = PriorChecks[PriorChecks.length - 1];
+        const { data: PrevEntries } = await supabase
+          .from('nest_check_entries')
+          .select('compartment_id, species, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days')
+          .eq('nest_check_id', MostRecent.id);
+        if (PrevEntries) {
+          for (const E of PrevEntries) {
+            PrevEntryMap.set(E.compartment_id, buildEntrySummary(E as any));
+          }
+        }
+      }
+
       const { data: NestSeasonRows } = await supabase
         .from('nest_seasons')
         .select('compartment_id, male_age, female_age')
@@ -253,7 +271,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
           id: C.id, cavity_label: C.cavity_label, sort_order: C.sort_order ?? null,
         })),
       }));
-      buildSections(TypedUnits, (Entries ?? []) as EntryRow[], BandingSet, HatchDateMap, NestSeasonRows ?? []);
+      buildSections(TypedUnits, (Entries ?? []) as EntryRow[], BandingSet, HatchDateMap, NestSeasonRows ?? [], PrevEntryMap);
     } catch {
       // Offline or network error: fall back to local DB (no-op on web — SQLite not available)
       try {
@@ -261,9 +279,9 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
         const LocalEntries  = (await getLocalEntriesForCheck(CheckId)).map(localEntryToJs);
         const LocalBandSet  = await getLocalBandEntryIds(LocalEntries.map(E => E.id));
         const LocalSeasons  = await getLocalNestSeasons(SeasonId);
-        buildSections(LocalUnits, LocalEntries as EntryRow[], LocalBandSet, new Map(), LocalSeasons);
+        buildSections(LocalUnits, LocalEntries as EntryRow[], LocalBandSet, new Map(), LocalSeasons, new Map());
       } catch {
-        buildSections([], [], new Set(), new Map(), []);
+        buildSections([], [], new Set(), new Map(), [], new Map());
       }
     }
   }
@@ -468,6 +486,11 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
                 />
               )}
             />
+            {item.prev_summary && (
+              <Card.Content style={styles.PrevContent}>
+                <Text style={styles.PrevText}>Prev: {item.prev_summary}</Text>
+              </Card.Content>
+            )}
             <Card.Actions style={styles.QuickActions}>
               <Button
                 compact mode="outlined"
@@ -563,5 +586,7 @@ const styles = StyleSheet.create({
   EmptyContainer:   { padding: 16, alignItems: 'flex-start' },
   EmptyText:        { color: '#666', marginBottom: 12 },
   MarkAllEmptyBtn:  { marginTop: 10, alignSelf: 'stretch' },
+  PrevContent:      { paddingTop: 0, paddingBottom: 4 },
+  PrevText:         { color: '#999', fontStyle: 'italic', fontSize: 12 },
   DialogInput:      { marginBottom: 8 },
 });
