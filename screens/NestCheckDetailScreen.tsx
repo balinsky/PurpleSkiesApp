@@ -486,7 +486,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
                 />
               )}
             />
-            {item.prev_summary && (
+            {item.prev_summary && !item.entry_id && (
               <Card.Content style={styles.PrevContent}>
                 <Text style={styles.PrevText}>Prev: {item.prev_summary}</Text>
               </Card.Content>
