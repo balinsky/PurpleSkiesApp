@@ -56,12 +56,10 @@ function buildEntrySummary(entry: {
     Parts.push(`${SpeciesName} nest`);
   } else {
     Parts.push(SpeciesName);
-    if (NetEggs > 0 && entry.discarded_eggs > 0) {
-      Parts.push(`${NetEggs} ${NetEggs === 1 ? 'egg' : 'eggs'} (${entry.discarded_eggs} discarded)`);
+    if (entry.egg_count > 0 && entry.discarded_eggs > 0) {
+      Parts.push(`${entry.egg_count} ${entry.egg_count === 1 ? 'egg' : 'eggs'}, ${entry.discarded_eggs} discarded`);
     } else if (NetEggs > 0) {
       Parts.push(`${NetEggs} ${NetEggs === 1 ? 'egg' : 'eggs'}`);
-    } else if (entry.discarded_eggs > 0) {
-      Parts.push(`${entry.discarded_eggs} ${entry.discarded_eggs === 1 ? 'egg' : 'eggs'} discarded`);
     }
     if (entry.young_count > 0) {
       Parts.push(`${entry.young_count} young`);
