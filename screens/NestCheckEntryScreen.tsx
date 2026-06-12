@@ -216,19 +216,32 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const IsPM    = SpeciesVal === 'PM';
   const HasNest = IsPM ? (!IsEmpty && (EggCount > 0 || YoungCount > 0 || HasNestOnly)) : true;
 
-  // Compact toggle in header
+  // Header right: Save button (when dirty) + compact toggle
   useEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <IconButton
-          icon={CompactMode ? 'view-compact' : 'view-compact-outline'}
-          size={22}
-          onPress={toggleCompactMode}
-          style={{ marginRight: 4 }}
-        />
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {IsDirtyState && (
+            <Button
+              mode="contained"
+              compact
+              loading={Saving}
+              onPress={handleSave}
+              style={{ marginRight: 4 }}
+            >
+              Save
+            </Button>
+          )}
+          <IconButton
+            icon={CompactMode ? 'view-compact' : 'view-compact-outline'}
+            size={22}
+            onPress={toggleCompactMode}
+            style={{ marginRight: 4 }}
+          />
+        </View>
       ),
     });
-  }, [CompactMode]);
+  }, [IsDirtyState, Saving, CompactMode]);
 
   // When dirty: disable swipe-back and replace the native header back button
   useEffect(() => {
