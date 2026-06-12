@@ -1008,15 +1008,18 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         })()}
 
         {/* ── Dead adult (expandable) ──────────────────────────────── */}
-        <Button
-          mode="text" compact
-          icon={DeadAdultExpanded ? 'chevron-up' : 'chevron-down'}
-          contentStyle={styles.ExpandBtnContent}
-          onPress={() => setDeadAdultExpanded(!DeadAdultExpanded)}
-          style={styles.ExpandBtn}
-        >
-          {L('Dead adult bird', 'DA')}{DeadAdultLabel ? ` · ${DeadAdultLabel}` : ''}
-        </Button>
+        <View style={[styles.ExpandRow, { marginTop: 12 }]}>
+          <View style={styles.ExpandIconSpacer} />
+          <Button
+            mode="text" compact
+            icon={DeadAdultExpanded ? 'chevron-up' : 'chevron-down'}
+            contentStyle={styles.ExpandBtnContent}
+            onPress={() => setDeadAdultExpanded(!DeadAdultExpanded)}
+            style={styles.ExpandBtnInRow}
+          >
+            {L('Dead adult bird', 'DA')}{DeadAdultLabel ? ` · ${DeadAdultLabel}` : ''}
+          </Button>
+        </View>
         {DeadAdultExpanded && (
           <View style={styles.ExpandedSection}>
             <Checkbox.Item
@@ -1045,19 +1048,16 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           return (
             <>
               <View style={styles.ExpandRow}>
-                {BandingStatus !== 'none' && (
-                  <Icon
-                    source="check-circle"
-                    size={16}
-                    color={BandingStatus === 'all' ? '#22c55e' : '#f59e0b'}
-                  />
-                )}
+                {BandingStatus !== 'none'
+                  ? <Icon source="check-circle" size={16} color={BandingStatus === 'all' ? '#22c55e' : '#f59e0b'} />
+                  : <View style={styles.ExpandIconSpacer} />
+                }
                 <Button
                   mode="text" compact
                   icon={BandingExpanded ? 'chevron-up' : 'chevron-down'}
                   contentStyle={styles.ExpandBtnContent}
                   onPress={() => setBandingExpanded(!BandingExpanded)}
-                  style={BandingStatus !== 'none' ? styles.ExpandBtnInRow : styles.ExpandBtn}
+                  style={styles.ExpandBtnInRow}
                 >
                   {L('Banding (B)', 'B')}{HasBands ? ' · B' : ''}
                 </Button>
@@ -1156,15 +1156,18 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         })()}
 
         {/* ── Notes (expandable) ──────────────────────────────────── */}
-        <Button
-          mode="text" compact
-          icon={NotesExpanded ? 'chevron-up' : 'chevron-down'}
-          contentStyle={styles.ExpandBtnContent}
-          onPress={() => setNotesExpanded(!NotesExpanded)}
-          style={styles.ExpandBtn}
-        >
-          Notes{Notes.trim() ? ' · …' : ''}
-        </Button>
+        <View style={styles.ExpandRow}>
+          <View style={styles.ExpandIconSpacer} />
+          <Button
+            mode="text" compact
+            icon={NotesExpanded ? 'chevron-up' : 'chevron-down'}
+            contentStyle={styles.ExpandBtnContent}
+            onPress={() => setNotesExpanded(!NotesExpanded)}
+            style={styles.ExpandBtnInRow}
+          >
+            Notes{Notes.trim() ? ' · …' : ''}
+          </Button>
+        </View>
         {NotesExpanded && (
           <TextInput
             value={Notes}
@@ -1347,8 +1350,9 @@ const styles = StyleSheet.create({
   DeadYoungRow:      { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   ExpandBtn:         { alignSelf: 'flex-start', marginTop: 4 },
   ExpandBtnContent:  { flexDirection: 'row-reverse' },
-  ExpandRow:         { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  ExpandBtnInRow:    { flex: 1 },
+  ExpandRow:         { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginTop: 4 },
+  ExpandBtnInRow:    {},
+  ExpandIconSpacer:  { width: 16 },
   ExpandedSection:   { paddingLeft: 8 },
   NotesInput:        { marginTop: 8 },
   AgeRow:            { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
