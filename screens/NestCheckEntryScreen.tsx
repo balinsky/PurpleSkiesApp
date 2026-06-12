@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, TextInput as RNTextInput, View } from 'react-native';
 import {
   Button, Checkbox, Dialog, Divider, HelperText,
-  IconButton, Portal, RadioButton, Text, TextInput,
+  Icon, IconButton, Portal, RadioButton, Text, TextInput,
 } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -309,7 +309,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       const FemaleObs = Entries.map(e => e.observed_female_age ?? null);
       setOtherMaleObs(MaleObs);
       setOtherFemaleObs(FemaleObs);
-      if (MaleObs.some(Boolean) || FemaleObs.some(Boolean)) setAdultAgesExpanded(true);
+      // Adult ages section stays closed by default
 
       // Prev entry: most recent entry strictly before the current check date
       const Prev = [...Entries]
@@ -406,7 +406,6 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       const OM = (E.observed_male_age as 'SY' | 'ASY' | 'UNK' | null) ?? null;
       const OF = (E.observed_female_age as 'SY' | 'ASY' | 'UNK' | null) ?? null;
       setObservedMaleAge(OM); setObservedFemaleAge(OF);
-      if (OM || OF) setAdultAgesExpanded(true);
       setInitLoading(false);
     }
     loadEntry();
@@ -483,7 +482,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
       setNestlings(records);
       setAdultBands(adultBands);
-      if (records.length > 0 || adultBands.length > 0) setBandingExpanded(true);
+      // Banding section stays closed by default
     }
     loadBandingContext();
   }, [CompartmentId, SeasonId, ExistingEntryId]);
@@ -944,17 +943,29 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           const ConfirmedMale   = computeConfirmedAge(OtherMaleObs,   ObservedMaleAge);
           const ConfirmedFemale = computeConfirmedAge(OtherFemaleObs, ObservedFemaleAge);
           const AgeLabel = [ConfirmedMale && `♂ ${ConfirmedMale}`, ConfirmedFemale && `♀ ${ConfirmedFemale}`].filter(Boolean).join('  ');
+          const MaleCount   = [...OtherMaleObs,   ObservedMaleAge].filter(Boolean).length;
+          const FemaleCount = [...OtherFemaleObs, ObservedFemaleAge].filter(Boolean).length;
+          const AgeStatus = (MaleCount >= 3 && FemaleCount >= 3) ? 'complete'
+            : (MaleCount > 0 || FemaleCount > 0) ? 'partial'
+            : 'none';
           return (
             <>
-              <Button
-                mode="text" compact
-                icon={AdultAgesExpanded ? 'chevron-up' : 'chevron-down'}
-                contentStyle={styles.ExpandBtnContent}
-                onPress={() => setAdultAgesExpanded(!AdultAgesExpanded)}
-                style={styles.ExpandBtn}
-              >
-                {L('Adult ages', 'Ages')}{AgeLabel ? ` · ${AgeLabel}` : ''}
-              </Button>
+              <View style={styles.ExpandRow}>
+                <Icon
+                  source={AgeStatus === 'complete' ? 'check-circle' : 'help-circle-outline'}
+                  size={16}
+                  color={AgeStatus === 'complete' ? '#22c55e' : AgeStatus === 'partial' ? '#f59e0b' : '#9e9e9e'}
+                />
+                <Button
+                  mode="text" compact
+                  icon={AdultAgesExpanded ? 'chevron-up' : 'chevron-down'}
+                  contentStyle={styles.ExpandBtnContent}
+                  onPress={() => setAdultAgesExpanded(!AdultAgesExpanded)}
+                  style={styles.ExpandBtnInRow}
+                >
+                  {L('Adult ages', 'Ages')}{AgeLabel ? ` · ${AgeLabel}` : ''}
+                </Button>
+              </View>
               {AdultAgesExpanded && (
                 <View style={styles.ExpandedSection}>
                   {([
@@ -1026,17 +1037,31 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         {/* ── Banding (expandable) ────────────────────────────────── */}
         {(() => {
           const HasBands = Nestlings.some(N => N.bandsThisCheck.length > 0) || AdultBands.length > 0;
+          const BandedCount = Nestlings.filter(N => N.totalPriorBands > 0 || N.bandsThisCheck.length > 0).length;
+          const BandingStatus = Nestlings.length === 0 ? 'none'
+            : BandedCount === Nestlings.length ? 'all'
+            : BandedCount > 0 ? 'some'
+            : 'none';
           return (
             <>
-              <Button
-                mode="text" compact
-                icon={BandingExpanded ? 'chevron-up' : 'chevron-down'}
-                contentStyle={styles.ExpandBtnContent}
-                onPress={() => setBandingExpanded(!BandingExpanded)}
-                style={styles.ExpandBtn}
-              >
-                {L('Banding (B)', 'B')}{HasBands ? ' · B' : ''}
-              </Button>
+              <View style={styles.ExpandRow}>
+                {BandingStatus !== 'none' && (
+                  <Icon
+                    source="check-circle"
+                    size={16}
+                    color={BandingStatus === 'all' ? '#22c55e' : '#f59e0b'}
+                  />
+                )}
+                <Button
+                  mode="text" compact
+                  icon={BandingExpanded ? 'chevron-up' : 'chevron-down'}
+                  contentStyle={styles.ExpandBtnContent}
+                  onPress={() => setBandingExpanded(!BandingExpanded)}
+                  style={BandingStatus !== 'none' ? styles.ExpandBtnInRow : styles.ExpandBtn}
+                >
+                  {L('Banding (B)', 'B')}{HasBands ? ' · B' : ''}
+                </Button>
+              </View>
               {BandingExpanded && (
                 <View style={styles.ExpandedSection}>
 
@@ -1322,6 +1347,8 @@ const styles = StyleSheet.create({
   DeadYoungRow:      { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   ExpandBtn:         { alignSelf: 'flex-start', marginTop: 4 },
   ExpandBtnContent:  { flexDirection: 'row-reverse' },
+  ExpandRow:         { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  ExpandBtnInRow:    { flex: 1 },
   ExpandedSection:   { paddingLeft: 8 },
   NotesInput:        { marginTop: 8 },
   AgeRow:            { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
