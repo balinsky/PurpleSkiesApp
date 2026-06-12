@@ -1007,36 +1007,6 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           );
         })()}
 
-        {/* ── Dead adult (expandable) ──────────────────────────────── */}
-        <View style={[styles.ExpandRow, { marginTop: 12 }]}>
-          <View style={styles.ExpandIconSpacer} />
-          <Button
-            mode="text" compact
-            icon={DeadAdultExpanded ? 'chevron-up' : 'chevron-down'}
-            contentStyle={styles.ExpandBtnContent}
-            onPress={() => setDeadAdultExpanded(!DeadAdultExpanded)}
-            style={styles.ExpandBtnInRow}
-          >
-            {L('Dead adult bird', 'DA')}{DeadAdultLabel ? ` · ${DeadAdultLabel}` : ''}
-          </Button>
-        </View>
-        {DeadAdultExpanded && (
-          <View style={styles.ExpandedSection}>
-            <Checkbox.Item
-              label="Dead male"
-              status={DeadAdultMale ? 'checked' : 'unchecked'}
-              onPress={() => { MarkDirty(); setDeadAdultMale(!DeadAdultMale); }}
-              style={styles.CheckboxItem}
-            />
-            <Checkbox.Item
-              label="Dead female"
-              status={DeadAdultFemale ? 'checked' : 'unchecked'}
-              onPress={() => { MarkDirty(); setDeadAdultFemale(!DeadAdultFemale); }}
-              style={styles.CheckboxItem}
-            />
-          </View>
-        )}
-
         {/* ── Banding (expandable) ────────────────────────────────── */}
         {(() => {
           const HasBands = Nestlings.some(N => N.bandsThisCheck.length > 0) || AdultBands.length > 0;
@@ -1154,6 +1124,36 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             </>
           );
         })()}
+
+        {/* ── Dead adult (expandable) ──────────────────────────────── */}
+        <View style={styles.ExpandRow}>
+          <View style={styles.ExpandIconSpacer} />
+          <Button
+            mode="text" compact
+            icon={DeadAdultExpanded ? 'chevron-up' : 'chevron-down'}
+            contentStyle={styles.ExpandBtnContent}
+            onPress={() => setDeadAdultExpanded(!DeadAdultExpanded)}
+            style={styles.ExpandBtnInRow}
+          >
+            {L('Dead adult bird', 'DA')}{DeadAdultLabel ? ` · ${DeadAdultLabel}` : ''}
+          </Button>
+        </View>
+        {DeadAdultExpanded && (
+          <View style={styles.ExpandedSection}>
+            <Checkbox.Item
+              label="Dead male"
+              status={DeadAdultMale ? 'checked' : 'unchecked'}
+              onPress={() => { MarkDirty(); setDeadAdultMale(!DeadAdultMale); }}
+              style={styles.CheckboxItem}
+            />
+            <Checkbox.Item
+              label="Dead female"
+              status={DeadAdultFemale ? 'checked' : 'unchecked'}
+              onPress={() => { MarkDirty(); setDeadAdultFemale(!DeadAdultFemale); }}
+              style={styles.CheckboxItem}
+            />
+          </View>
+        )}
 
         {/* ── Notes (expandable) ──────────────────────────────────── */}
         <View style={styles.ExpandRow}>
