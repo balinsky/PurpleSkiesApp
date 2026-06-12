@@ -242,16 +242,20 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
         }
       }
 
-      // Previous check summaries — entries from the most recent prior check
+      // Previous check summaries — most recent entry per compartment across all prior checks
       const PrevEntryMap = new Map<string, string>();
       if (PriorChecks && PriorChecks.length > 0) {
-        const MostRecent = PriorChecks[PriorChecks.length - 1];
         const { data: PrevEntries } = await supabase
           .from('nest_check_entries')
-          .select('compartment_id, species, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days')
-          .eq('nest_check_id', MostRecent.id);
+          .select('compartment_id, nest_check_id, species, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days')
+          .in('nest_check_id', PriorChecks.map(c => c.id));
         if (PrevEntries) {
-          for (const E of PrevEntries) {
+          // PriorChecks is sorted ascending — last entry per compartment wins
+          const CheckDateMap = new Map(PriorChecks.map(c => [c.id, c.check_date]));
+          const sorted = [...PrevEntries].sort((a, b) =>
+            (CheckDateMap.get(a.nest_check_id) ?? '').localeCompare(CheckDateMap.get(b.nest_check_id) ?? '')
+          );
+          for (const E of sorted) {
             PrevEntryMap.set(E.compartment_id, buildEntrySummary(E as any));
           }
         }
