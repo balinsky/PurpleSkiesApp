@@ -384,8 +384,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   }
 
   // ── Add nest check ─────────────────────────────────────────────────
-  function openAddCheck() {
-    setNewCheckDate(todayString());
+  function openAddCheck(date?: string) {
+    setNewCheckDate(date ?? todayString());
     setAddCheckError('');
     setAddCheckVisible(true);
   }
@@ -484,7 +484,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                     SiteId, SeasonId, Year,
                   });
                 } else {
-                  createAndNavigateToCheck(day.dateString);
+                  openAddCheck(day.dateString);
                 }
               }}
               theme={{
@@ -815,7 +815,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         <FAB
           icon="plus"
           style={styles.FAB}
-          onPress={openAddCheck}
+          onPress={() => openAddCheck()}
         />
       </View>
 
