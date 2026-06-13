@@ -835,6 +835,15 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       return;
     }
     setDeleting(true);
+    // If this entry carried the renesting flag, unwind all other entries in the
+    // season for this compartment back to attempt 1 (same as unchecking the checkbox)
+    if (Renesting) {
+      const Ids = AllPriorEntriesRef.current.map(e => e.id).filter(id => id !== '');
+      if (Ids.length > 0) {
+        try { await supabase.from('nest_check_entries').update({ nesting_attempt: 1 }).in('id', Ids); } catch {}
+        try { await setLocalEntriesNestingAttempt(Ids, 1); } catch {}
+      }
+    }
     await deleteLocalEntry(ExistingEntryId);
     const { error } = await supabase.from('nest_check_entries').delete().eq('id', ExistingEntryId);
     setDeleting(false);
