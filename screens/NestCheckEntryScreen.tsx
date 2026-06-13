@@ -16,7 +16,7 @@ import {
   getLocalNestlings, cacheNestlings,
   getLocalBands, cacheBands, getLocalPriorBandCounts,
   upsertLocalEntry, upsertLocalNestling, replaceLocalBands,
-  upsertLocalNestSeason, deleteLocalEntry, makeId, setLocalEntriesBroodAttempt,
+  upsertLocalNestSeason, deleteLocalEntry, makeId, setLocalEntriesNestingAttempt,
 } from '../lib/localDb';
 
 type Props = {
@@ -151,7 +151,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [DeadYoungCount, setDeadYoungCount]   = useState(0);
   const [FledgedCount, setFledgedCount]       = useState(0);
   const [Renesting, setRenesting]             = useState(false);
-  const [BroodAttempt, setBroodAttempt]       = useState(1);
+  const [NestingAttempt, setNestingAttempt]       = useState(1);
   const [RenestingDialogVisible, setRenestingDialogVisible] = useState(false);
   const [ProposedSplitDate, setProposedSplitDate]           = useState<string | null>(null);
   const AllPriorEntriesRef = useRef<{ id: string; check_date: string; egg_count: number }[]>([]);
@@ -406,7 +406,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       setDeadYoungCount(E.dead_young_count ?? 0);
       setFledgedCount(E.fledged_count ?? 0);
       setRenesting(!!E.renesting_attempt);
-      setBroodAttempt(E.brood_attempt ?? 1);
+      setNestingAttempt(E.nesting_attempt ?? 1);
       setNestDiscarded(!!E.nest_discarded);
       setNestReplaced(!!E.nest_replaced);
       setDeadAdultMale(!!E.dead_adult_male);
@@ -600,7 +600,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       dead_adult_female:  DeadAdultFemale,
       fledged_count:      IsPM && HasNest ? FledgedCount : 0,
       renesting_attempt:  IsPM && HasNest ? Renesting : false,
-      brood_attempt:      BroodAttempt,
+      nesting_attempt:      NestingAttempt,
       notes:              Notes.trim() || null,
       observed_male_age:  IsPM ? ObservedMaleAge : null,
       observed_female_age: IsPM ? ObservedFemaleAge : null,
@@ -720,7 +720,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     MarkDirty();
     if (Renesting) {
       setRenesting(false);
-      setBroodAttempt(1);
+      setNestingAttempt(1);
       return;
     }
     // Toggling ON — detect inflection point in prior egg counts
@@ -729,7 +729,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       .sort((a, b) => a.check_date.localeCompare(b.check_date));
     setRenesting(true);
     if (Prior.length === 0) {
-      setBroodAttempt(2);
+      setNestingAttempt(2);
       return;
     }
     // Find index of the last occurrence of the minimum egg count
@@ -740,7 +740,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     const splitIdx = minIdx + 1;
     if (splitIdx >= Prior.length) {
       // All prior entries are attempt 1, current check starts attempt 2
-      setBroodAttempt(2);
+      setNestingAttempt(2);
       return;
     }
     setProposedSplitDate(Prior[splitIdx].check_date);
@@ -748,22 +748,22 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   }
 
   async function handleRenestingConfirm() {
-    if (!ProposedSplitDate) { setBroodAttempt(2); setRenestingDialogVisible(false); return; }
+    if (!ProposedSplitDate) { setNestingAttempt(2); setRenestingDialogVisible(false); return; }
     const Ids = AllPriorEntriesRef.current
       .filter(e => e.check_date >= ProposedSplitDate && e.check_date < CheckDate)
       .map(e => e.id)
       .filter(id => id !== '');
     if (Ids.length > 0) {
-      try { await supabase.from('nest_check_entries').update({ brood_attempt: 2 }).in('id', Ids); } catch {}
-      try { await setLocalEntriesBroodAttempt(Ids, 2); } catch {}
+      try { await supabase.from('nest_check_entries').update({ nesting_attempt: 2 }).in('id', Ids); } catch {}
+      try { await setLocalEntriesNestingAttempt(Ids, 2); } catch {}
     }
-    setBroodAttempt(2);
+    setNestingAttempt(2);
     setRenestingDialogVisible(false);
   }
 
   function handleRenestingCancel() {
     setRenesting(false);
-    setBroodAttempt(1);
+    setNestingAttempt(1);
     setRenestingDialogVisible(false);
   }
 
