@@ -216,6 +216,10 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const IsPM    = SpeciesVal === 'PM';
   const HasNest = IsPM ? (!IsEmpty && (EggCount > 0 || YoungCount > 0 || HasNestOnly)) : true;
 
+  // Keep a ref to handleSave that's always current, so the header button never closes over a stale version
+  const handleSaveRef = useRef<() => Promise<void>>(async () => {});
+  useEffect(() => { handleSaveRef.current = handleSave; });
+
   // Header right: Save button (when dirty) + compact toggle
   useEffect(() => {
     navigation.setOptions({
@@ -226,7 +230,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               mode="contained"
               compact
               loading={Saving}
-              onPress={handleSave}
+              onPress={() => handleSaveRef.current()}
               style={{ marginRight: 4 }}
             >
               Save
