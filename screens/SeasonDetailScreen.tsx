@@ -284,16 +284,20 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
         if (!Entries) { setNestProgress([]); return; }
 
-        // All check dates per compartment (across every nesting attempt), used for RA first-egg uncertainty
-        const AllCheckDatesByCompartment = new Map<string, string[]>();
+        // Full check history per compartment (all attempts, sorted ascending) for RA first-egg uncertainty.
+        // Stores egg_count alongside date so the trough's count can inform how far back to look.
+        type CheckSnapshot = { check_date: string; egg_count: number };
+        const AllHistoryByCompartment = new Map<string, CheckSnapshot[]>();
         for (const E of Entries) {
           const Chk = Checks.find(c => c.id === E.nest_check_id);
           if (!Chk) continue;
-          if (!AllCheckDatesByCompartment.has(E.compartment_id)) AllCheckDatesByCompartment.set(E.compartment_id, []);
-          const dates = AllCheckDatesByCompartment.get(E.compartment_id)!;
-          if (!dates.includes(Chk.check_date)) dates.push(Chk.check_date);
+          if (!AllHistoryByCompartment.has(E.compartment_id)) AllHistoryByCompartment.set(E.compartment_id, []);
+          const hist = AllHistoryByCompartment.get(E.compartment_id)!;
+          if (!hist.some(h => h.check_date === Chk.check_date))
+            hist.push({ check_date: Chk.check_date, egg_count: E.egg_count ?? 0 });
         }
-        for (const [id, dates] of AllCheckDatesByCompartment) AllCheckDatesByCompartment.set(id, dates.sort());
+        for (const [id, hist] of AllHistoryByCompartment)
+          AllHistoryByCompartment.set(id, hist.sort((a, b) => a.check_date.localeCompare(b.check_date)));
 
         // Group entries by (compartment, nesting_attempt)
         type CompKey = string; // `${compartment_id}:${nesting_attempt}`
@@ -348,10 +352,21 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
               const LastEmpty = [...EWD].filter(e => e.egg_count === 0 && e.check_date < FirstWithEggs.check_date).pop();
               EarliestFirst = LastEmpty ? addDays(LastEmpty.check_date, 1) : null;
             } else {
-              // Renesting: last check from any attempt before the first RA egg is the lower bound
-              const AllDates = AllCheckDatesByCompartment.get(Data.compartment_id) ?? [];
-              const PrecedingDate = [...AllDates].filter(d => d < FirstWithEggs.check_date).pop() ?? null;
-              EarliestFirst = PrecedingDate ? addDays(PrecedingDate, 1) : null;
+              // Renesting: the trough check (last check before first RA egg) may itself contain
+              // new eggs laid alongside sterile old ones, so the true first new egg could predate it.
+              // - If trough egg count === 0: no new eggs existed yet → lower bound is day after trough.
+              // - If trough egg count > 0: trough eggs may be partly new → go back one more check.
+              const Hist = AllHistoryByCompartment.get(Data.compartment_id) ?? [];
+              const Before = Hist.filter(h => h.check_date < FirstWithEggs.check_date);
+              const Trough = Before[Before.length - 1] ?? null;
+              if (!Trough) {
+                EarliestFirst = null;
+              } else if (Trough.egg_count === 0) {
+                EarliestFirst = addDays(Trough.check_date, 1);
+              } else {
+                const PreTrough = Before[Before.length - 2] ?? null;
+                EarliestFirst = addDays(PreTrough ? PreTrough.check_date : Trough.check_date, 1);
+              }
             }
             const MinFirst = (EarliestFirst && EarliestFirst <= LatestFirst) ? EarliestFirst : LatestFirst;
             FirstEggMin = MinFirst; FirstEggMax = LatestFirst;
