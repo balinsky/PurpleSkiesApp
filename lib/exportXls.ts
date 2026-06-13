@@ -239,7 +239,7 @@ export async function exportSeasonXls(
 
   const { data: Entries } = await supabase
     .from('nest_check_entries')
-    .select('id, nest_check_id, compartment_id, species, egg_count, young_count, nestling_age_days, nest_discarded, fledged_count, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
+    .select('id, nest_check_id, compartment_id, species, egg_count, young_count, nestling_age_days, nest_discarded, fledged_count, nesting_attempt, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
     .in('nest_check_id', Checks.map(c => c.id));
 
   const BandingSet = new Set<string>();
@@ -298,25 +298,35 @@ export async function exportSeasonXls(
   }
 
   type CompData = {
+    compartment_id: string;
     unit_name: string; label: string;
     housing_type: string; hole_type: string;
+    nesting_attempt: number;
     byCheck: Map<string, EntryData>;
   };
+  // Keyed by `${compartment_id}:${nesting_attempt}` so each attempt gets its own row
   const CompMap = new Map<string, CompData>();
+
+  // Full PM egg history per compartment (all attempts) for RA first-egg uncertainty
+  const AllHistoryByCompartment = new Map<string, { check_date: string; egg_count: number }[]>();
 
   for (const E of Entries) {
     const comp = E.compartments as any;
     if (!comp) continue;
-    if (!CompMap.has(E.compartment_id)) {
-      CompMap.set(E.compartment_id, {
-        unit_name:    (comp.housing_units as any)?.name ?? '',
-        label:        comp.cavity_label as string,
-        housing_type: (comp.housing_type as string) ?? '',
-        hole_type:    (comp.hole_type as string) ?? '',
-        byCheck:      new Map(),
+    const Attempt = (E as any).nesting_attempt ?? 1;
+    const Key = `${E.compartment_id}:${Attempt}`;
+    if (!CompMap.has(Key)) {
+      CompMap.set(Key, {
+        compartment_id: E.compartment_id,
+        unit_name:      (comp.housing_units as any)?.name ?? '',
+        label:          comp.cavity_label as string,
+        housing_type:   (comp.housing_type as string) ?? '',
+        hole_type:      (comp.hole_type as string) ?? '',
+        nesting_attempt: Attempt,
+        byCheck:        new Map(),
       });
     }
-    CompMap.get(E.compartment_id)!.byCheck.set(E.nest_check_id, {
+    CompMap.get(Key)!.byCheck.set(E.nest_check_id, {
       species:           E.species ?? null,
       egg_count:         E.egg_count ?? 0,
       young_count:       E.young_count ?? 0,
@@ -325,11 +335,33 @@ export async function exportSeasonXls(
       has_banding:       BandingSet.has(E.id),
       fledged_count:     (E as any).fledged_count ?? 0,
     });
+
+    // Accumulate PM egg history for trough-aware first-egg calculation
+    if (E.species === 'PM') {
+      const Chk = Checks.find(c => c.id === E.nest_check_id);
+      if (Chk) {
+        if (!AllHistoryByCompartment.has(E.compartment_id)) AllHistoryByCompartment.set(E.compartment_id, []);
+        const hist = AllHistoryByCompartment.get(E.compartment_id)!;
+        if (!hist.some(h => h.check_date === Chk.check_date))
+          hist.push({ check_date: Chk.check_date, egg_count: E.egg_count ?? 0 });
+      }
+    }
+  }
+  for (const [id, hist] of AllHistoryByCompartment)
+    AllHistoryByCompartment.set(id, hist.sort((a, b) => a.check_date.localeCompare(b.check_date)));
+
+  // Compartments that have at least one renesting attempt row
+  const MultiAttemptCompartments = new Set<string>();
+  for (const [, Data] of CompMap) {
+    if (Data.nesting_attempt > 1) MultiAttemptCompartments.add(Data.compartment_id);
   }
 
   const SortedComps = [...CompMap.entries()].sort(([, a], [, b]) => {
     const u = a.unit_name.localeCompare(b.unit_name);
-    return u !== 0 ? u : a.label.localeCompare(b.label);
+    if (u !== 0) return u;
+    const l = a.label.localeCompare(b.label);
+    if (l !== 0) return l;
+    return a.nesting_attempt - b.nesting_attempt;
   });
 
   // ── Build worksheet ────────────────────────────────────────────────
@@ -350,9 +382,11 @@ export async function exportSeasonXls(
 
   const DataRows: (string | number)[][] = [];
 
-  for (const [CompId, Data] of SortedComps) {
-    const Ages = AgeMap.get(CompId);
-    const AgeStr = Ages ? [Ages.male_age, Ages.female_age].filter(Boolean).join('/') : '';
+  for (const [, Data] of SortedComps) {
+    const IsRA = Data.nesting_attempt > 1;
+    const Ages = AgeMap.get(Data.compartment_id);
+    // Age only shown on the first attempt row to avoid duplication
+    const AgeStr = !IsRA && Ages ? [Ages.male_age, Ages.female_age].filter(Boolean).join('/') : '';
 
     const EWD = Checks.map(c => ({ date: c.check_date, entry: Data.byCheck.get(c.id) ?? null }))
       .filter(({ entry }) => entry?.species === 'PM');
@@ -361,18 +395,38 @@ export async function exportSeasonXls(
 
     const FirstWithEggs = EWD.find(({ entry }) => (entry?.egg_count ?? 0) > 0);
     if (FirstWithEggs?.entry) {
-      const LastEmpty = [...EWD]
-        .filter(({ entry, date }) => (entry?.egg_count ?? 0) === 0 && date < FirstWithEggs.date)
-        .pop();
       MaxEggs = Math.max(...EWD.map(({ entry }) => entry?.egg_count ?? 0));
       const LatestFirst = addDays(FirstWithEggs.date, -(FirstWithEggs.entry.egg_count - 1));
-      const EarliestFirst = LastEmpty ? addDays(LastEmpty.date, 1) : null;
+      let EarliestFirst: string | null = null;
+
+      if (!IsRA) {
+        // First attempt: last check with 0 eggs gives the lower bound
+        const LastEmpty = [...EWD]
+          .filter(({ entry, date }) => (entry?.egg_count ?? 0) === 0 && date < FirstWithEggs.date)
+          .pop();
+        EarliestFirst = LastEmpty ? addDays(LastEmpty.date, 1) : null;
+      } else {
+        // Renesting: trough eggs may include new ones; go back before trough if trough count > 0
+        const Hist = AllHistoryByCompartment.get(Data.compartment_id) ?? [];
+        const Before = Hist.filter(h => h.check_date < FirstWithEggs.date);
+        const Trough = Before[Before.length - 1] ?? null;
+        if (Trough) {
+          if (Trough.egg_count === 0) {
+            EarliestFirst = addDays(Trough.check_date, 1);
+          } else {
+            const PreTrough = Before[Before.length - 2] ?? null;
+            EarliestFirst = addDays(PreTrough ? PreTrough.check_date : Trough.check_date, 1);
+          }
+        }
+      }
+
       const MinFirst = (EarliestFirst && EarliestFirst <= LatestFirst) ? EarliestFirst : LatestFirst;
       FirstEggDate = fmtDate(MinFirst);
       ProjHatch = fmtDate(addDays(MinFirst, MaxEggs - 1 + 15));
     }
 
-    const Anchor = EWD.find(({ entry }) => (entry?.young_count ?? 0) > 0 && (entry?.nestling_age_days ?? 0) > 0);
+    // nestling_age_days can be 0 on hatch day, so use != null rather than > 0
+    const Anchor = EWD.find(({ entry }) => (entry?.young_count ?? 0) > 0 && entry?.nestling_age_days != null);
     if (Anchor?.entry) {
       const [ay, am, ad] = Anchor.date.split('-').map(Number);
       const HatchDt = new Date(ay, am - 1, ad);
@@ -385,10 +439,20 @@ export async function exportSeasonXls(
     HatchCount = EWD.length > 0 ? Math.max(...EWD.map(({ entry }) => entry?.young_count ?? 0)) : 0;
     const FledgeCount = EWD.reduce((sum, { entry }) => sum + (entry?.fledged_count ?? 0), 0);
 
+    // For multi-attempt compartments, show blank for checks belonging to a different attempt
+    const CheckCodes = Checks.map(c =>
+      MultiAttemptCompartments.has(Data.compartment_id)
+        ? (Data.byCheck.has(c.id) ? checkCode(Data.byCheck.get(c.id)!) : '')
+        : checkCode(Data.byCheck.get(c.id) ?? null)
+    );
+
     DataRows.push([
-      Data.housing_type, Data.hole_type, Data.label, AgeStr,
+      IsRA ? '' : Data.housing_type,
+      IsRA ? '' : Data.hole_type,
+      IsRA ? `${Data.label} (RA)` : Data.label,
+      AgeStr,
       FirstEggDate, MaxEggs || '', ProjHatch, ActualHatch, ProjFledge,
-      ...Checks.map(c => checkCode(Data.byCheck.get(c.id) ?? null)),
+      ...CheckCodes,
       MaxEggs || '', HatchCount || '', FledgeCount || '',
     ]);
   }
