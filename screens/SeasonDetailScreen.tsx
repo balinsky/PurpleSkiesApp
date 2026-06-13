@@ -47,6 +47,7 @@ function addDays(dateStr: string, days: number): string {
 
 type CompartmentProgress = {
   compartment_id: string;
+  nesting_attempt: number;
   label: string;
   unit_name: string;
   first_egg_min: string | null;
@@ -352,7 +353,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           // Use the last recorded young_count — if young disappeared after hatching, they're excluded from banding
           const YoungCount = EWD[EWD.length - 1]?.young_count ?? 0;
           const AttemptSuffix = Data.nesting_attempt > 1 ? ` (Attempt ${Data.nesting_attempt})` : '';
-          Progress.push({ compartment_id: Data.compartment_id, label: Data.label + AttemptSuffix, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount });
+          Progress.push({ compartment_id: Data.compartment_id, nesting_attempt: Data.nesting_attempt, label: Data.label + AttemptSuffix, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount });
         }
 
         setNestProgress(Progress.sort((a, b) => {
@@ -557,7 +558,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                 {NestProgressExpanded && (
                   <>
                     {NestProgress.map((P) => (
-                      <View key={P.compartment_id} style={styles.ProgressRow}>
+                      <View key={`${P.compartment_id}:${P.nesting_attempt}`} style={styles.ProgressRow}>
                         <Text style={styles.ProgressTitle}>{P.unit_name} · {P.label}</Text>
                         <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
                       </View>
@@ -713,7 +714,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                   {NestProgressExpanded && (
                     <>
                       {NestProgress.map((P) => (
-                        <View key={P.compartment_id} style={styles.ProgressRow}>
+                        <View key={`${P.compartment_id}:${P.nesting_attempt}`} style={styles.ProgressRow}>
                           <Text style={styles.ProgressTitle}>{P.unit_name} · {P.label}</Text>
                           <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
                         </View>
