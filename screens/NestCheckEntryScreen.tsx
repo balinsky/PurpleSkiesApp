@@ -778,8 +778,15 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
   async function handleRenestingConfirm() {
     if (!SelectedSplitDate) { setNestingAttempt(2); setRenestingDialogVisible(false); return; }
+    const SelCandidate = RenestingCandidates.find(c => c.check_date === SelectedSplitDate);
+    const TroughNet = SelCandidate ? Math.max(0, SelCandidate.egg_count - SelCandidate.discarded_eggs) : 0;
+    // If the trough was truly empty (all eggs discarded), it belongs to attempt 1.
+    // Only entries strictly AFTER the trough date start attempt 2.
+    // If the trough had remaining eggs, those may be new RA eggs, so include it in attempt 2.
     const Ids = AllPriorEntriesRef.current
-      .filter(e => e.check_date >= SelectedSplitDate && e.check_date < CheckDate)
+      .filter(e => (TroughNet === 0
+        ? e.check_date > SelectedSplitDate
+        : e.check_date >= SelectedSplitDate) && e.check_date < CheckDate)
       .map(e => e.id)
       .filter(id => id !== '');
     if (Ids.length > 0) {
@@ -1387,13 +1394,27 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         <Dialog visible={RenestingDialogVisible} onDismiss={handleRenestingCancel}>
           <Dialog.Title>Renesting Attempt</Dialog.Title>
           <Dialog.Content>
-            {RenestingCandidates.length <= 1 ? (
-              <Text>
-                Based on previous checks, the new clutch appears to have started around{' '}
-                {RenestingCandidates[0] ? formatDate(RenestingCandidates[0].check_date) : ''}.
-                {' '}Entries from that check through this one will be tagged as Attempt 2.
-              </Text>
-            ) : (
+            {RenestingCandidates.length <= 1 ? (() => {
+              const C = RenestingCandidates[0];
+              if (!C) return null;
+              const net = Math.max(0, C.egg_count - C.discarded_eggs);
+              if (net === 0) {
+                return (
+                  <Text>
+                    Based on previous checks, all eggs in the nest were discarded by the{' '}
+                    {formatDate(C.check_date)} check, leaving it empty. The new clutch began
+                    after that date. Only this entry and any later checks will be tagged as Attempt 2.
+                  </Text>
+                );
+              }
+              return (
+                <Text>
+                  Based on previous checks, the new clutch appears to have started around{' '}
+                  {formatDate(C.check_date)}. Entries from that check through this one will
+                  be tagged as Attempt 2.
+                </Text>
+              );
+            })() : (
               <>
                 <Text style={{ marginBottom: 8 }}>
                   It is unclear exactly when the new clutch began. Select the check that most
@@ -1417,12 +1438,23 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                     );
                   })}
                 </RadioButton.Group>
-                {SelectedSplitDate && (
-                  <Text style={{ marginTop: 8, fontSize: 13, color: '#666' }}>
-                    Entries from {formatDate(SelectedSplitDate)} through this check will be
-                    tagged as Attempt 2.
-                  </Text>
-                )}
+                {SelectedSplitDate && (() => {
+                  const sel = RenestingCandidates.find(c => c.check_date === SelectedSplitDate);
+                  const net = sel ? Math.max(0, sel.egg_count - sel.discarded_eggs) : 0;
+                  if (net === 0) {
+                    return (
+                      <Text style={{ marginTop: 8, fontSize: 13, color: '#666' }}>
+                        All eggs were discarded at the {formatDate(SelectedSplitDate)} check,
+                        leaving the nest empty. Only entries after that check will be tagged as Attempt 2.
+                      </Text>
+                    );
+                  }
+                  return (
+                    <Text style={{ marginTop: 8, fontSize: 13, color: '#666' }}>
+                      Entries from {formatDate(SelectedSplitDate)} through this check will be tagged as Attempt 2.
+                    </Text>
+                  );
+                })()}
               </>
             )}
           </Dialog.Content>
