@@ -17,6 +17,7 @@ import {
   getLocalBands, cacheBands, getLocalPriorBandCounts,
   upsertLocalEntry, upsertLocalNestling, replaceLocalBands,
   upsertLocalNestSeason, deleteLocalEntry, makeId, setLocalEntriesNestingAttempt,
+  resetLocalNestingAttemptsForCompartment,
 } from '../lib/localDb';
 
 type Props = {
@@ -731,12 +732,23 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     if (Renesting) {
       setRenesting(false);
       setNestingAttempt(1);
-      // Reset all prior entries back to attempt 1, unwinding any previous split
-      const Ids = AllPriorEntriesRef.current.map(e => e.id).filter(id => id !== '');
-      if (Ids.length > 0) {
-        try { await supabase.from('nest_check_entries').update({ nesting_attempt: 1 }).in('id', Ids); } catch {}
-        try { await setLocalEntriesNestingAttempt(Ids, 1); } catch {}
-      }
+      // Reset every entry for this compartment/season directly — more reliable than
+      // using AllPriorEntriesRef, which only reflects the current session's load
+      const YearStr = CheckDate.substring(0, 4);
+      try {
+        const { data: SeasonChecks } = await supabase
+          .from('nest_checks').select('id')
+          .eq('site_id', SiteId)
+          .gte('check_date', `${YearStr}-01-01`)
+          .lte('check_date', `${YearStr}-12-31`);
+        if (SeasonChecks && SeasonChecks.length > 0) {
+          await supabase.from('nest_check_entries')
+            .update({ nesting_attempt: 1 })
+            .in('nest_check_id', SeasonChecks.map(c => c.id))
+            .eq('compartment_id', CompartmentId);
+        }
+      } catch {}
+      try { await resetLocalNestingAttemptsForCompartment(CompartmentId, SiteId, parseInt(YearStr, 10)); } catch {}
       return;
     }
     const Prior = [...AllPriorEntriesRef.current]
@@ -843,11 +855,21 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     // If this entry carried the renesting flag, unwind all other entries in the
     // season for this compartment back to attempt 1 (same as unchecking the checkbox)
     if (Renesting) {
-      const Ids = AllPriorEntriesRef.current.map(e => e.id).filter(id => id !== '');
-      if (Ids.length > 0) {
-        try { await supabase.from('nest_check_entries').update({ nesting_attempt: 1 }).in('id', Ids); } catch {}
-        try { await setLocalEntriesNestingAttempt(Ids, 1); } catch {}
-      }
+      const YearStr = CheckDate.substring(0, 4);
+      try {
+        const { data: SeasonChecks } = await supabase
+          .from('nest_checks').select('id')
+          .eq('site_id', SiteId)
+          .gte('check_date', `${YearStr}-01-01`)
+          .lte('check_date', `${YearStr}-12-31`);
+        if (SeasonChecks && SeasonChecks.length > 0) {
+          await supabase.from('nest_check_entries')
+            .update({ nesting_attempt: 1 })
+            .in('nest_check_id', SeasonChecks.map(c => c.id))
+            .eq('compartment_id', CompartmentId);
+        }
+      } catch {}
+      try { await resetLocalNestingAttemptsForCompartment(CompartmentId, SiteId, parseInt(YearStr, 10)); } catch {}
     }
     await deleteLocalEntry(ExistingEntryId);
     const { error } = await supabase.from('nest_check_entries').delete().eq('id', ExistingEntryId);
