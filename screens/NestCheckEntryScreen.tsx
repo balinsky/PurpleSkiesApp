@@ -155,7 +155,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [RenestingDialogVisible, setRenestingDialogVisible] = useState(false);
   const [RenestingCandidates, setRenestingCandidates]       = useState<{ check_date: string; egg_count: number; discarded_eggs: number; nest_discarded: boolean; species: string }[]>([]);
   const [SelectedSplitDate, setSelectedSplitDate]           = useState<string | null>(null);
-  const AllPriorEntriesRef = useRef<{ id: string; check_date: string; egg_count: number; discarded_eggs: number; nest_discarded: boolean; species: string }[]>([]);
+  const AllPriorEntriesRef = useRef<{ id: string; check_date: string; egg_count: number; discarded_eggs: number; young_count: number; nest_discarded: boolean; species: string }[]>([]);
 
   // ── Nest management ───────────────────────────────────────────────────
   const [NestDiscarded, setNestDiscarded] = useState(false);
@@ -318,6 +318,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         species: e.species,
         egg_count: e.egg_count,
         discarded_eggs: e.discarded_eggs ?? 0,
+        young_count: e.young_count ?? 0,
         nest_discarded: !!e.nest_discarded,
       }));
 
@@ -757,10 +758,14 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     const DeclineZone = Prior.slice(PeakIdx + 1);
     if (DeclineZone.length === 0) { setNestingAttempt(2); return; }
 
+    // Exclude checks where eggs declined due to hatching — those are NOT renesting troughs
+    const ValidDecline = DeclineZone.filter(e => e.young_count === 0);
+    if (ValidDecline.length === 0) { setNestingAttempt(2); return; }
+
     // Find trough in the decline zone using net eggs
-    const TroughNetEggs = Math.min(...DeclineZone.map(NetEggs));
+    const TroughNetEggs = Math.min(...ValidDecline.map(NetEggs));
     // Most-recent first so the default selection is the latest trough
-    const Candidates = [...DeclineZone]
+    const Candidates = [...ValidDecline]
       .filter(e => NetEggs(e) === TroughNetEggs)
       .reverse()
       .map(e => ({
