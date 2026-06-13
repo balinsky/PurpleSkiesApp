@@ -725,11 +725,17 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     return true;
   }
 
-  function handleRenestingToggle() {
+  async function handleRenestingToggle() {
     MarkDirty();
     if (Renesting) {
       setRenesting(false);
       setNestingAttempt(1);
+      // Reset all prior entries back to attempt 1, unwinding any previous split
+      const Ids = AllPriorEntriesRef.current.map(e => e.id).filter(id => id !== '');
+      if (Ids.length > 0) {
+        try { await supabase.from('nest_check_entries').update({ nesting_attempt: 1 }).in('id', Ids); } catch {}
+        try { await setLocalEntriesNestingAttempt(Ids, 1); } catch {}
+      }
       return;
     }
     const Prior = [...AllPriorEntriesRef.current]
