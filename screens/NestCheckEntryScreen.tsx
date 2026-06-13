@@ -151,10 +151,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [DeadYoungCount, setDeadYoungCount]   = useState(0);
   const [FledgedCount, setFledgedCount]       = useState(0);
   const [Renesting, setRenesting]             = useState(false);
-  const [NestingAttempt, setNestingAttempt]       = useState(1);
+  const [NestingAttempt, setNestingAttempt]         = useState(1);
   const [RenestingDialogVisible, setRenestingDialogVisible] = useState(false);
-  const [ProposedSplitDate, setProposedSplitDate]           = useState<string | null>(null);
-  const AllPriorEntriesRef = useRef<{ id: string; check_date: string; egg_count: number }[]>([]);
+  const [RenestingCandidates, setRenestingCandidates]       = useState<{ check_date: string; egg_count: number; discarded_eggs: number; nest_discarded: boolean; species: string }[]>([]);
+  const [SelectedSplitDate, setSelectedSplitDate]           = useState<string | null>(null);
+  const AllPriorEntriesRef = useRef<{ id: string; check_date: string; egg_count: number; discarded_eggs: number; nest_discarded: boolean; species: string }[]>([]);
 
   // ── Nest management ───────────────────────────────────────────────────
   const [NestDiscarded, setNestDiscarded] = useState(false);
@@ -270,6 +271,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       type SeasonEntry = {
         id: string; check_date: string; species: string;
         is_empty_cavity: boolean | number; has_nest: boolean | number;
+        nest_discarded: boolean | number;
         egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null;
         observed_male_age: string | null; observed_female_age: string | null;
       };
@@ -289,7 +291,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
         const { data: OtherEntries, error: EErr } = await supabase
           .from('nest_check_entries')
-          .select('id, nest_check_id, species, is_empty_cavity, has_nest, egg_count, discarded_eggs, young_count, nestling_age_days, observed_male_age, observed_female_age')
+          .select('id, nest_check_id, species, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days, observed_male_age, observed_female_age')
           .in('nest_check_id', SeasonChecks.map(c => c.id))
           .eq('compartment_id', CompartmentId);
         if (EErr) throw EErr;
@@ -310,7 +312,14 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
       if (Entries.length === 0) return;
 
-      AllPriorEntriesRef.current = Entries.map(e => ({ id: (e as any).id ?? '', check_date: e.check_date, egg_count: e.egg_count }));
+      AllPriorEntriesRef.current = Entries.map(e => ({
+        id: (e as any).id ?? '',
+        check_date: e.check_date,
+        species: e.species,
+        egg_count: e.egg_count,
+        discarded_eggs: e.discarded_eggs ?? 0,
+        nest_discarded: !!e.nest_discarded,
+      }));
 
       setPriorEggsSeen(Entries.some(e => (e.egg_count ?? 0) > 0));
       setPriorYoungSeen(Entries.some(e => (e.young_count ?? 0) > 0));
@@ -723,34 +732,44 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       setNestingAttempt(1);
       return;
     }
-    // Toggling ON — detect inflection point in prior egg counts
     const Prior = [...AllPriorEntriesRef.current]
       .filter(e => e.check_date < CheckDate)
       .sort((a, b) => a.check_date.localeCompare(b.check_date));
     setRenesting(true);
-    if (Prior.length === 0) {
-      setNestingAttempt(2);
-      return;
+    if (Prior.length === 0) { setNestingAttempt(2); return; }
+
+    // Find peak: last occurrence of the maximum egg count
+    const MaxEggs = Math.max(...Prior.map(e => e.egg_count));
+    let PeakIdx = -1;
+    for (let i = Prior.length - 1; i >= 0; i--) {
+      if (Prior[i].egg_count === MaxEggs) { PeakIdx = i; break; }
     }
-    // Find index of the last occurrence of the minimum egg count
-    let minEggs = Infinity, minIdx = -1;
-    for (let i = 0; i < Prior.length; i++) {
-      if (Prior[i].egg_count <= minEggs) { minEggs = Prior[i].egg_count; minIdx = i; }
-    }
-    const splitIdx = minIdx + 1;
-    if (splitIdx >= Prior.length) {
-      // All prior entries are attempt 1, current check starts attempt 2
-      setNestingAttempt(2);
-      return;
-    }
-    setProposedSplitDate(Prior[splitIdx].check_date);
+    const DeclineZone = Prior.slice(PeakIdx + 1);
+    if (DeclineZone.length === 0) { setNestingAttempt(2); return; }
+
+    // Find trough in the decline zone; collect all entries at that minimum
+    const TroughEggs = Math.min(...DeclineZone.map(e => e.egg_count));
+    // Most-recent first so the default selection is the latest trough
+    const Candidates = [...DeclineZone]
+      .filter(e => e.egg_count === TroughEggs)
+      .reverse()
+      .map(e => ({
+        check_date: e.check_date,
+        egg_count: e.egg_count,
+        discarded_eggs: e.discarded_eggs,
+        nest_discarded: e.nest_discarded,
+        species: e.species,
+      }));
+
+    setRenestingCandidates(Candidates);
+    setSelectedSplitDate(Candidates[0].check_date);
     setRenestingDialogVisible(true);
   }
 
   async function handleRenestingConfirm() {
-    if (!ProposedSplitDate) { setNestingAttempt(2); setRenestingDialogVisible(false); return; }
+    if (!SelectedSplitDate) { setNestingAttempt(2); setRenestingDialogVisible(false); return; }
     const Ids = AllPriorEntriesRef.current
-      .filter(e => e.check_date >= ProposedSplitDate && e.check_date < CheckDate)
+      .filter(e => e.check_date >= SelectedSplitDate && e.check_date < CheckDate)
       .map(e => e.id)
       .filter(id => id !== '');
     if (Ids.length > 0) {
@@ -764,6 +783,8 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   function handleRenestingCancel() {
     setRenesting(false);
     setNestingAttempt(1);
+    setRenestingCandidates([]);
+    setSelectedSplitDate(null);
     setRenestingDialogVisible(false);
   }
 
@@ -1356,11 +1377,44 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         <Dialog visible={RenestingDialogVisible} onDismiss={handleRenestingCancel}>
           <Dialog.Title>Renesting Attempt</Dialog.Title>
           <Dialog.Content>
-            <Text>
-              Based on the previous checks, the new clutch appears to have started at the check on{' '}
-              {ProposedSplitDate ? formatDate(ProposedSplitDate) : ''}. Entries from that check
-              through this one will be tagged as Attempt 2.
-            </Text>
+            {RenestingCandidates.length <= 1 ? (
+              <Text>
+                Based on previous checks, the new clutch appears to have started around{' '}
+                {RenestingCandidates[0] ? formatDate(RenestingCandidates[0].check_date) : ''}.
+                {' '}Entries from that check through this one will be tagged as Attempt 2.
+              </Text>
+            ) : (
+              <>
+                <Text style={{ marginBottom: 8 }}>
+                  It is unclear exactly when the new clutch began. Select the check that most
+                  likely marks the start of the renesting attempt:
+                </Text>
+                <RadioButton.Group
+                  value={SelectedSplitDate ?? ''}
+                  onValueChange={v => setSelectedSplitDate(v)}
+                >
+                  {RenestingCandidates.map(C => {
+                    const Parts = [`${C.egg_count} egg${C.egg_count !== 1 ? 's' : ''}`];
+                    if (C.discarded_eggs > 0) Parts.push(`${C.discarded_eggs} discarded`);
+                    if (C.nest_discarded && C.species !== 'PM') Parts.push(`${SpeciesLabel[C.species] ?? C.species} nest discarded`);
+                    return (
+                      <RadioButton.Item
+                        key={C.check_date}
+                        label={`${formatDate(C.check_date)} · ${Parts.join(' · ')}`}
+                        value={C.check_date}
+                        style={styles.RadioItem}
+                      />
+                    );
+                  })}
+                </RadioButton.Group>
+                {SelectedSplitDate && (
+                  <Text style={{ marginTop: 8, fontSize: 13, color: '#666' }}>
+                    Entries from {formatDate(SelectedSplitDate)} through this check will be
+                    tagged as Attempt 2.
+                  </Text>
+                )}
+              </>
+            )}
           </Dialog.Content>
           <Dialog.Actions>
             <Button onPress={handleRenestingCancel}>Cancel</Button>
