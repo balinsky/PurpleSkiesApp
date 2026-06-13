@@ -385,8 +385,7 @@ export async function exportSeasonXls(
   for (const [, Data] of SortedComps) {
     const IsRA = Data.nesting_attempt > 1;
     const Ages = AgeMap.get(Data.compartment_id);
-    // Age only shown on the first attempt row to avoid duplication
-    const AgeStr = !IsRA && Ages ? [Ages.male_age, Ages.female_age].filter(Boolean).join('/') : '';
+    const AgeStr = Ages ? [Ages.male_age, Ages.female_age].filter(Boolean).join('/') : '';
 
     const EWD = Checks.map(c => ({ date: c.check_date, entry: Data.byCheck.get(c.id) ?? null }))
       .filter(({ entry }) => entry?.species === 'PM');
@@ -447,8 +446,8 @@ export async function exportSeasonXls(
     );
 
     DataRows.push([
-      IsRA ? '' : Data.housing_type,
-      IsRA ? '' : Data.hole_type,
+      Data.housing_type,
+      Data.hole_type,
       IsRA ? `${Data.label} (RA)` : Data.label,
       AgeStr,
       FirstEggDate, MaxEggs || '', ProjHatch, ActualHatch, ProjFledge,
