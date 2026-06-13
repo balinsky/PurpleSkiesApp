@@ -284,6 +284,17 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
         if (!Entries) { setNestProgress([]); return; }
 
+        // All check dates per compartment (across every nesting attempt), used for RA first-egg uncertainty
+        const AllCheckDatesByCompartment = new Map<string, string[]>();
+        for (const E of Entries) {
+          const Chk = Checks.find(c => c.id === E.nest_check_id);
+          if (!Chk) continue;
+          if (!AllCheckDatesByCompartment.has(E.compartment_id)) AllCheckDatesByCompartment.set(E.compartment_id, []);
+          const dates = AllCheckDatesByCompartment.get(E.compartment_id)!;
+          if (!dates.includes(Chk.check_date)) dates.push(Chk.check_date);
+        }
+        for (const [id, dates] of AllCheckDatesByCompartment) AllCheckDatesByCompartment.set(id, dates.sort());
+
         // Group entries by (compartment, nesting_attempt)
         type CompKey = string; // `${compartment_id}:${nesting_attempt}`
         const CompMap = new Map<CompKey, { compartment_id: string; label: string; unit_name: string; nesting_attempt: number; ewd: { check_date: string; egg_count: number; young_count: number; nestling_age_days: number | null; fledged_count: number; dead_young_count: number }[] }>();
@@ -330,10 +341,19 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
           const FirstWithEggs = EWD.find(e => e.egg_count > 0);
           if (FirstWithEggs) {
-            const LastEmpty    = [...EWD].filter(e => e.egg_count === 0 && e.check_date < FirstWithEggs.check_date).pop();
-            const LatestFirst  = addDays(FirstWithEggs.check_date, -(FirstWithEggs.egg_count - 1));
-            const EarliestFirst = LastEmpty ? addDays(LastEmpty.check_date, 1) : null;
-            const MinFirst     = (EarliestFirst && EarliestFirst <= LatestFirst) ? EarliestFirst : LatestFirst;
+            const LatestFirst = addDays(FirstWithEggs.check_date, -(FirstWithEggs.egg_count - 1));
+            let EarliestFirst: string | null = null;
+            if (Data.nesting_attempt === 1) {
+              // First attempt: last check with 0 eggs gives the earliest-possible date
+              const LastEmpty = [...EWD].filter(e => e.egg_count === 0 && e.check_date < FirstWithEggs.check_date).pop();
+              EarliestFirst = LastEmpty ? addDays(LastEmpty.check_date, 1) : null;
+            } else {
+              // Renesting: last check from any attempt before the first RA egg is the lower bound
+              const AllDates = AllCheckDatesByCompartment.get(Data.compartment_id) ?? [];
+              const PrecedingDate = [...AllDates].filter(d => d < FirstWithEggs.check_date).pop() ?? null;
+              EarliestFirst = PrecedingDate ? addDays(PrecedingDate, 1) : null;
+            }
+            const MinFirst = (EarliestFirst && EarliestFirst <= LatestFirst) ? EarliestFirst : LatestFirst;
             FirstEggMin = MinFirst; FirstEggMax = LatestFirst;
             const MaxEggs = Math.max(...EWD.map(e => e.egg_count));
             ProjHatchMin = addDays(MinFirst,    MaxEggs - 1 + 15);
