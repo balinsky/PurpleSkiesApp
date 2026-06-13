@@ -248,7 +248,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         const [EntriesResult, NestSeasonsResult] = await Promise.all([
           supabase
             .from('nest_check_entries')
-            .select('nest_check_id, compartment_id, egg_count, young_count, nestling_age_days, fledged_count, dead_young_count, nesting_attempt, compartments(cavity_label, housing_units(name))')
+            .select('nest_check_id, compartment_id, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count, dead_young_count, nesting_attempt, compartments(cavity_label, housing_units(name))')
             .in('nest_check_id', Checks.map(c => c.id))
             .eq('species', 'PM'),
           supabase
@@ -286,7 +286,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
         // Full check history per compartment (all attempts, sorted ascending) for RA first-egg uncertainty.
         // Stores egg_count alongside date so the trough's count can inform how far back to look.
-        type CheckSnapshot = { check_date: string; egg_count: number };
+        type CheckSnapshot = { check_date: string; egg_count: number; discarded_eggs: number };
         const AllHistoryByCompartment = new Map<string, CheckSnapshot[]>();
         for (const E of Entries) {
           const Chk = Checks.find(c => c.id === E.nest_check_id);
@@ -294,7 +294,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           if (!AllHistoryByCompartment.has(E.compartment_id)) AllHistoryByCompartment.set(E.compartment_id, []);
           const hist = AllHistoryByCompartment.get(E.compartment_id)!;
           if (!hist.some(h => h.check_date === Chk.check_date))
-            hist.push({ check_date: Chk.check_date, egg_count: E.egg_count ?? 0 });
+            hist.push({ check_date: Chk.check_date, egg_count: E.egg_count ?? 0, discarded_eggs: (E as any).discarded_eggs ?? 0 });
         }
         for (const [id, hist] of AllHistoryByCompartment)
           AllHistoryByCompartment.set(id, hist.sort((a, b) => a.check_date.localeCompare(b.check_date)));
@@ -361,11 +361,14 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
               const Trough = Before[Before.length - 1] ?? null;
               if (!Trough) {
                 EarliestFirst = null;
-              } else if (Trough.egg_count === 0) {
-                EarliestFirst = addDays(Trough.check_date, 1);
               } else {
-                const PreTrough = Before[Before.length - 2] ?? null;
-                EarliestFirst = addDays(PreTrough ? PreTrough.check_date : Trough.check_date, 1);
+                const TroughNet = Math.max(0, Trough.egg_count - Trough.discarded_eggs);
+                if (TroughNet === 0) {
+                  EarliestFirst = addDays(Trough.check_date, 1);
+                } else {
+                  const PreTrough = Before[Before.length - 2] ?? null;
+                  EarliestFirst = addDays(PreTrough ? PreTrough.check_date : Trough.check_date, 1);
+                }
               }
             }
             const MinFirst = (EarliestFirst && EarliestFirst <= LatestFirst) ? EarliestFirst : LatestFirst;

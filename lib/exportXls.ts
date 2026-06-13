@@ -239,7 +239,7 @@ export async function exportSeasonXls(
 
   const { data: Entries } = await supabase
     .from('nest_check_entries')
-    .select('id, nest_check_id, compartment_id, species, egg_count, young_count, nestling_age_days, nest_discarded, fledged_count, nesting_attempt, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
+    .select('id, nest_check_id, compartment_id, species, egg_count, discarded_eggs, young_count, nestling_age_days, nest_discarded, fledged_count, nesting_attempt, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
     .in('nest_check_id', Checks.map(c => c.id));
 
   const BandingSet = new Set<string>();
@@ -308,7 +308,7 @@ export async function exportSeasonXls(
   const CompMap = new Map<string, CompData>();
 
   // Full PM egg history per compartment (all attempts) for RA first-egg uncertainty
-  const AllHistoryByCompartment = new Map<string, { check_date: string; egg_count: number }[]>();
+  const AllHistoryByCompartment = new Map<string, { check_date: string; egg_count: number; discarded_eggs: number }[]>();
 
   for (const E of Entries) {
     const comp = E.compartments as any;
@@ -343,7 +343,7 @@ export async function exportSeasonXls(
         if (!AllHistoryByCompartment.has(E.compartment_id)) AllHistoryByCompartment.set(E.compartment_id, []);
         const hist = AllHistoryByCompartment.get(E.compartment_id)!;
         if (!hist.some(h => h.check_date === Chk.check_date))
-          hist.push({ check_date: Chk.check_date, egg_count: E.egg_count ?? 0 });
+          hist.push({ check_date: Chk.check_date, egg_count: E.egg_count ?? 0, discarded_eggs: (E as any).discarded_eggs ?? 0 });
       }
     }
   }
@@ -410,7 +410,8 @@ export async function exportSeasonXls(
         const Before = Hist.filter(h => h.check_date < FirstWithEggs.date);
         const Trough = Before[Before.length - 1] ?? null;
         if (Trough) {
-          if (Trough.egg_count === 0) {
+          const TroughNet = Math.max(0, Trough.egg_count - Trough.discarded_eggs);
+          if (TroughNet === 0) {
             EarliestFirst = addDays(Trough.check_date, 1);
           } else {
             const PreTrough = Before[Before.length - 2] ?? null;

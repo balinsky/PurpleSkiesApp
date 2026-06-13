@@ -744,20 +744,24 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     setRenesting(true);
     if (Prior.length === 0) { setNestingAttempt(2); return; }
 
-    // Find peak: last occurrence of the maximum egg count
-    const MaxEggs = Math.max(...Prior.map(e => e.egg_count));
+    // Use net eggs (deducting discards) so a check where all eggs were discarded
+    // is correctly treated as a true trough, not as eggs still present
+    const NetEggs = (e: typeof Prior[0]) => Math.max(0, e.egg_count - e.discarded_eggs);
+
+    // Find peak: last occurrence of the maximum net egg count
+    const MaxNetEggs = Math.max(...Prior.map(NetEggs));
     let PeakIdx = -1;
     for (let i = Prior.length - 1; i >= 0; i--) {
-      if (Prior[i].egg_count === MaxEggs) { PeakIdx = i; break; }
+      if (NetEggs(Prior[i]) === MaxNetEggs) { PeakIdx = i; break; }
     }
     const DeclineZone = Prior.slice(PeakIdx + 1);
     if (DeclineZone.length === 0) { setNestingAttempt(2); return; }
 
-    // Find trough in the decline zone; collect all entries at that minimum
-    const TroughEggs = Math.min(...DeclineZone.map(e => e.egg_count));
+    // Find trough in the decline zone using net eggs
+    const TroughNetEggs = Math.min(...DeclineZone.map(NetEggs));
     // Most-recent first so the default selection is the latest trough
     const Candidates = [...DeclineZone]
-      .filter(e => e.egg_count === TroughEggs)
+      .filter(e => NetEggs(e) === TroughNetEggs)
       .reverse()
       .map(e => ({
         check_date: e.check_date,
