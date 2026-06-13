@@ -16,7 +16,7 @@ import {
   getLocalNestlings, cacheNestlings,
   getLocalBands, cacheBands, getLocalPriorBandCounts,
   upsertLocalEntry, upsertLocalNestling, replaceLocalBands,
-  upsertLocalNestSeason, deleteLocalEntry, makeId,
+  upsertLocalNestSeason, deleteLocalEntry, makeId, setLocalEntriesBroodAttempt,
 } from '../lib/localDb';
 
 type Props = {
@@ -151,6 +151,10 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [DeadYoungCount, setDeadYoungCount]   = useState(0);
   const [FledgedCount, setFledgedCount]       = useState(0);
   const [Renesting, setRenesting]             = useState(false);
+  const [BroodAttempt, setBroodAttempt]       = useState(1);
+  const [RenestingDialogVisible, setRenestingDialogVisible] = useState(false);
+  const [ProposedSplitDate, setProposedSplitDate]           = useState<string | null>(null);
+  const AllPriorEntriesRef = useRef<{ id: string; check_date: string; egg_count: number }[]>([]);
 
   // ── Nest management ───────────────────────────────────────────────────
   const [NestDiscarded, setNestDiscarded] = useState(false);
@@ -264,7 +268,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
       // Flat list of other entries for this compartment in this season, with check_date
       type SeasonEntry = {
-        check_date: string; species: string;
+        id: string; check_date: string; species: string;
         is_empty_cavity: boolean | number; has_nest: boolean | number;
         egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null;
         observed_male_age: string | null; observed_female_age: string | null;
@@ -285,7 +289,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
         const { data: OtherEntries, error: EErr } = await supabase
           .from('nest_check_entries')
-          .select('nest_check_id, species, is_empty_cavity, has_nest, egg_count, discarded_eggs, young_count, nestling_age_days, observed_male_age, observed_female_age')
+          .select('id, nest_check_id, species, is_empty_cavity, has_nest, egg_count, discarded_eggs, young_count, nestling_age_days, observed_male_age, observed_female_age')
           .in('nest_check_id', SeasonChecks.map(c => c.id))
           .eq('compartment_id', CompartmentId);
         if (EErr) throw EErr;
@@ -305,6 +309,8 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       }
 
       if (Entries.length === 0) return;
+
+      AllPriorEntriesRef.current = Entries.map(e => ({ id: (e as any).id ?? '', check_date: e.check_date, egg_count: e.egg_count }));
 
       setPriorEggsSeen(Entries.some(e => (e.egg_count ?? 0) > 0));
       setPriorYoungSeen(Entries.some(e => (e.young_count ?? 0) > 0));
@@ -400,6 +406,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       setDeadYoungCount(E.dead_young_count ?? 0);
       setFledgedCount(E.fledged_count ?? 0);
       setRenesting(!!E.renesting_attempt);
+      setBroodAttempt(E.brood_attempt ?? 1);
       setNestDiscarded(!!E.nest_discarded);
       setNestReplaced(!!E.nest_replaced);
       setDeadAdultMale(!!E.dead_adult_male);
@@ -593,6 +600,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       dead_adult_female:  DeadAdultFemale,
       fledged_count:      IsPM && HasNest ? FledgedCount : 0,
       renesting_attempt:  IsPM && HasNest ? Renesting : false,
+      brood_attempt:      BroodAttempt,
       notes:              Notes.trim() || null,
       observed_male_age:  IsPM ? ObservedMaleAge : null,
       observed_female_age: IsPM ? ObservedFemaleAge : null,
@@ -706,6 +714,57 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     setSaving(false);
     ClearDirty();
     return true;
+  }
+
+  function handleRenestingToggle() {
+    MarkDirty();
+    if (Renesting) {
+      setRenesting(false);
+      setBroodAttempt(1);
+      return;
+    }
+    // Toggling ON — detect inflection point in prior egg counts
+    const Prior = [...AllPriorEntriesRef.current]
+      .filter(e => e.check_date < CheckDate)
+      .sort((a, b) => a.check_date.localeCompare(b.check_date));
+    setRenesting(true);
+    if (Prior.length === 0) {
+      setBroodAttempt(2);
+      return;
+    }
+    // Find index of the last occurrence of the minimum egg count
+    let minEggs = Infinity, minIdx = -1;
+    for (let i = 0; i < Prior.length; i++) {
+      if (Prior[i].egg_count <= minEggs) { minEggs = Prior[i].egg_count; minIdx = i; }
+    }
+    const splitIdx = minIdx + 1;
+    if (splitIdx >= Prior.length) {
+      // All prior entries are attempt 1, current check starts attempt 2
+      setBroodAttempt(2);
+      return;
+    }
+    setProposedSplitDate(Prior[splitIdx].check_date);
+    setRenestingDialogVisible(true);
+  }
+
+  async function handleRenestingConfirm() {
+    if (!ProposedSplitDate) { setBroodAttempt(2); setRenestingDialogVisible(false); return; }
+    const Ids = AllPriorEntriesRef.current
+      .filter(e => e.check_date >= ProposedSplitDate && e.check_date < CheckDate)
+      .map(e => e.id)
+      .filter(id => id !== '');
+    if (Ids.length > 0) {
+      try { await supabase.from('nest_check_entries').update({ brood_attempt: 2 }).in('id', Ids); } catch {}
+      try { await setLocalEntriesBroodAttempt(Ids, 2); } catch {}
+    }
+    setBroodAttempt(2);
+    setRenestingDialogVisible(false);
+  }
+
+  function handleRenestingCancel() {
+    setRenesting(false);
+    setBroodAttempt(1);
+    setRenestingDialogVisible(false);
   }
 
   async function handleSave() {
@@ -909,7 +968,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 <Checkbox.Item
                   label={L('Renesting attempt', 'RA')}
                   status={Renesting ? 'checked' : 'unchecked'}
-                  onPress={() => { MarkDirty(); setRenesting(!Renesting); }}
+                  onPress={handleRenestingToggle}
                   style={styles.CheckboxItem}
                 />
               </>
@@ -1291,6 +1350,21 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           <Dialog.Actions>
             <Button onPress={() => setAddAdultBandVisible(false)}>Cancel</Button>
             <Button onPress={handleConfirmAdultBand}>Add</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        <Dialog visible={RenestingDialogVisible} onDismiss={handleRenestingCancel}>
+          <Dialog.Title>Renesting Attempt</Dialog.Title>
+          <Dialog.Content>
+            <Text>
+              Based on the previous checks, the new clutch appears to have started at the check on{' '}
+              {ProposedSplitDate ? formatDate(ProposedSplitDate) : ''}. Entries from that check
+              through this one will be tagged as Attempt 2.
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={handleRenestingCancel}>Cancel</Button>
+            <Button onPress={handleRenestingConfirm}>Confirm</Button>
           </Dialog.Actions>
         </Dialog>
 

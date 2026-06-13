@@ -247,7 +247,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         const [EntriesResult, NestSeasonsResult] = await Promise.all([
           supabase
             .from('nest_check_entries')
-            .select('nest_check_id, compartment_id, egg_count, young_count, nestling_age_days, fledged_count, dead_young_count, compartments(cavity_label, housing_units(name))')
+            .select('nest_check_id, compartment_id, egg_count, young_count, nestling_age_days, fledged_count, dead_young_count, brood_attempt, compartments(cavity_label, housing_units(name))')
             .in('nest_check_id', Checks.map(c => c.id))
             .eq('species', 'PM'),
           supabase
@@ -283,21 +283,26 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
         if (!Entries) { setNestProgress([]); return; }
 
-        // Group entries by compartment
-        const CompMap = new Map<string, { label: string; unit_name: string; ewd: { check_date: string; egg_count: number; young_count: number; nestling_age_days: number | null; fledged_count: number; dead_young_count: number }[] }>();
+        // Group entries by (compartment, brood_attempt)
+        type CompKey = string; // `${compartment_id}:${brood_attempt}`
+        const CompMap = new Map<CompKey, { compartment_id: string; label: string; unit_name: string; brood_attempt: number; ewd: { check_date: string; egg_count: number; young_count: number; nestling_age_days: number | null; fledged_count: number; dead_young_count: number }[] }>();
         for (const E of Entries) {
           const Chk = Checks.find(c => c.id === E.nest_check_id);
           if (!Chk) continue;
           const comp = E.compartments as any;
           if (!comp) continue;
-          if (!CompMap.has(E.compartment_id)) {
-            CompMap.set(E.compartment_id, {
-              label:     comp.cavity_label as string,
-              unit_name: (comp.housing_units as any)?.name as string ?? '',
-              ewd:       [],
+          const BroodAttempt = (E as any).brood_attempt ?? 1;
+          const CompKey = `${E.compartment_id}:${BroodAttempt}`;
+          if (!CompMap.has(CompKey)) {
+            CompMap.set(CompKey, {
+              compartment_id: E.compartment_id,
+              label:          comp.cavity_label as string,
+              unit_name:      (comp.housing_units as any)?.name as string ?? '',
+              brood_attempt:  BroodAttempt,
+              ewd:            [],
             });
           }
-          CompMap.get(E.compartment_id)!.ewd.push({
+          CompMap.get(CompKey)!.ewd.push({
             check_date:        Chk.check_date,
             egg_count:         E.egg_count ?? 0,
             young_count:       E.young_count ?? 0,
@@ -307,10 +312,10 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           });
         }
 
-        // Compute projections per compartment
+        // Compute projections per (compartment, brood_attempt)
         const Progress: CompartmentProgress[] = [];
         let StatEggs = 0, StatHatched = 0, StatFledged = 0;
-        for (const [CompId, Data] of CompMap) {
+        for (const [, Data] of CompMap) {
           if (!Data.ewd.some(e => e.egg_count > 0 || e.young_count > 0)) continue;
 
           StatEggs    += Math.max(0, ...Data.ewd.map(e => e.egg_count));
@@ -343,9 +348,11 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             ProjFledge  = addDays(ActualHatch, 26);
           }
 
-          const Ages = AgeMap.get(CompId);
-          const YoungCount = [...EWD].reverse().find(e => e.young_count > 0)?.young_count ?? 0;
-          Progress.push({ compartment_id: CompId, label: Data.label, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount });
+          const Ages = AgeMap.get(Data.compartment_id);
+          // Use the last recorded young_count — if young disappeared after hatching, they're excluded from banding
+          const YoungCount = EWD[EWD.length - 1]?.young_count ?? 0;
+          const AttemptSuffix = Data.brood_attempt > 1 ? ` (Attempt ${Data.brood_attempt})` : '';
+          Progress.push({ compartment_id: Data.compartment_id, label: Data.label + AttemptSuffix, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount });
         }
 
         setNestProgress(Progress.sort((a, b) => {
