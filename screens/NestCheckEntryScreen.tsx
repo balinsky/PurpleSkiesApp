@@ -91,13 +91,13 @@ function computeConfirmedAge(others: (string | null)[], current: string | null):
 
 // ── Counter ────────────────────────────────────────────────────────────────
 function Counter({
-  label, value, onChange, prevValue,
+  label, value, onChange, prevValue, horizontal,
 }: {
-  label: string; value: number; onChange: (n: number) => void; prevValue?: number | null;
+  label: string; value: number; onChange: (n: number) => void; prevValue?: number | null; horizontal?: boolean;
 }) {
   return (
-    <View style={styles.Counter}>
-      {label !== '' && <Text style={styles.CounterLabel}>{label}</Text>}
+    <View style={horizontal ? styles.CounterH : styles.Counter}>
+      {label !== '' && <Text style={horizontal ? styles.CounterLabelH : styles.CounterLabel}>{label}</Text>}
       <View style={styles.CounterControls}>
         <IconButton icon="minus" size={18} onPress={() => onChange(Math.max(0, value - 1))} style={styles.StepBtn} />
         <RNTextInput
@@ -114,7 +114,7 @@ function Counter({
           mode="outlined"
           compact
           onPress={() => onChange(prevValue)}
-          style={styles.PrevBtn}
+          style={horizontal ? styles.PrevBtnH : styles.PrevBtn}
           labelStyle={styles.PrevBtnLabel}
         >
           prev: {prevValue}
@@ -1129,7 +1129,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             </View>
 
             {EggCount > 0 && (
-              <Counter label={L('Discarded eggs', 'ED')} value={DiscardedEggs} onChange={(N) => { MarkDirty(); setDiscardedEggs(N); }} />
+              <Counter label={L('Discarded eggs', 'ED')} value={DiscardedEggs} onChange={(N) => { MarkDirty(); setDiscardedEggs(N); }} horizontal />
             )}
 
             {YoungCount > 0 && (
@@ -1145,7 +1145,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                       style={styles.CheckboxItem}
                     />
                     {!IsHatchingDay && (
-                      <Counter label={L('Nestling age (days)', 'Age')} value={NestlingAgeDays} onChange={(N) => { MarkDirty(); setNestlingAgeDays(N); }} />
+                      <Counter label={L('Nestling age (days)', 'Age')} value={NestlingAgeDays} onChange={(N) => { MarkDirty(); setNestlingAgeDays(N); }} horizontal />
                     )}
                   </>
                 )}
@@ -1166,7 +1166,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             {HasNest && (
               <>
                 <Divider style={styles.Divider} />
-                <Counter label={L('Fledged', 'F')} value={FledgedCount} onChange={(N) => { MarkDirty(); setFledgedCount(N); }} />
+                <Counter label={L('Fledged', 'F')} value={FledgedCount} onChange={(N) => { MarkDirty(); setFledgedCount(N); }} horizontal />
                 <Checkbox.Item
                   label={L('Renesting attempt', 'RA')}
                   status={Renesting ? 'checked' : 'unchecked'}
@@ -1671,7 +1671,7 @@ const styles = StyleSheet.create({
   CheckDateBanner:   { fontSize: 13, color: '#555', fontWeight: 'bold', textDecorationLine: 'underline', marginBottom: 2 },
   PrevBanner:        { color: '#888', fontStyle: 'italic', marginBottom: 4 },
   HatchBanner:       { color: '#444', fontWeight: '500', marginBottom: 4 },
-  DateStats:         { marginBottom: 12 },
+  DateStats:         { marginBottom: 4 },
   DateStat:          { fontSize: 13, color: '#444', marginBottom: 2 },
   CalcAge:           { fontSize: 14, color: '#333', fontWeight: '500', marginVertical: 4 },
   SpeciesRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
@@ -1680,7 +1680,9 @@ const styles = StyleSheet.create({
   Divider:           { marginVertical: 6 },
   CountersRow:       { flexDirection: 'row', gap: 16, marginBottom: 4 },
   Counter:           { alignItems: 'center', flex: 1 },
+  CounterH:         { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   CounterLabel:      { fontSize: 13, color: '#444', marginBottom: 2 },
+  CounterLabelH:    { fontSize: 13, color: '#444', flex: 1 },
   CounterControls:   { flexDirection: 'row', alignItems: 'center' },
   StepBtn:           { margin: 0 },
   CounterInput: {
@@ -1689,6 +1691,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4, paddingVertical: 4, color: '#000',
   },
   PrevBtn:           { marginTop: 6, alignSelf: 'center' },
+  PrevBtnH:         { alignSelf: 'center' },
   PrevBtnLabel:      { fontSize: 12, marginVertical: 2, marginHorizontal: 4 },
   CheckboxItem:      { paddingVertical: 0 },
   PMStatusRow:       { flexDirection: 'row' },
