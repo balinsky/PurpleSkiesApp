@@ -157,7 +157,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [RenestingDialogVisible, setRenestingDialogVisible] = useState(false);
   const [RenestingCandidates, setRenestingCandidates]       = useState<{ check_date: string; egg_count: number; discarded_eggs: number; nest_discarded: boolean; species: string }[]>([]);
   const [SelectedSplitDate, setSelectedSplitDate]           = useState<string | null>(null);
-  const AllPriorEntriesRef = useRef<{ id: string; check_date: string; egg_count: number; discarded_eggs: number; young_count: number; adult_present: boolean; nest_discarded: boolean; species: string }[]>([]);
+  const AllPriorEntriesRef = useRef<{ id: string; check_date: string; egg_count: number; discarded_eggs: number; young_count: number; adult_present: boolean; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean; species: string }[]>([]);
 
   // ── Nest management ───────────────────────────────────────────────────
   const [NestDiscarded, setNestDiscarded] = useState(false);
@@ -335,6 +335,8 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         discarded_eggs: e.discarded_eggs ?? 0,
         young_count: e.young_count ?? 0,
         adult_present: !!(e as any).adult_present,
+        is_empty_cavity: !!e.is_empty_cavity,
+        has_nest: !!e.has_nest,
         nest_discarded: !!e.nest_discarded,
       }));
 
@@ -806,14 +808,26 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       return;
     }
 
-    // Exclude checks where eggs declined due to hatching, or nest wasn't checked
-    const ValidDecline = DeclineZone.filter(e => e.young_count === 0 && !e.adult_present);
+    // An entry counts as "nest not inspected" if adult_present is set, OR if it has
+    // the data signature of an unchecked entry (has_nest=false, no eggs, no discards,
+    // not an empty cavity) — guards against stale PostgREST schema cache returning
+    // adult_present as undefined.
+    const IsUnchecked = (e: typeof Prior[0]) =>
+      e.adult_present ||
+      (!e.is_empty_cavity && !e.has_nest &&
+       e.egg_count === 0 && e.discarded_eggs === 0 && e.young_count === 0 && !e.nest_discarded);
+
+    // Exclude checks where eggs declined due to hatching, or nest wasn't inspected
+    const ValidDecline = DeclineZone.filter(e => e.young_count === 0 && !IsUnchecked(e));
     if (ValidDecline.length === 0) {
       await tagFutureEntriesAsAttempt2();
       setNestingAttempt(2);
+      const WasUnchecked = DeclineZone.some(e => IsUnchecked(e) && e.young_count === 0);
       Alert.alert(
         'Renesting Attempt',
-        'The prior clutch appears to have hatched successfully. This check marks the start of Attempt 2. Subsequent checks for this compartment have been updated. Save this record to complete the change.',
+        WasUnchecked
+          ? 'The nest was not inspected at the prior check(s), so the exact end of the first clutch is unknown. This check marks the start of Attempt 2. Subsequent checks for this compartment have been updated. Save this record to complete the change.'
+          : 'The prior clutch appears to have hatched successfully. This check marks the start of Attempt 2. Subsequent checks for this compartment have been updated. Save this record to complete the change.',
         [{ text: 'OK' }],
       );
       return;
