@@ -1668,7 +1668,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   Loading:           { flex: 1, justifyContent: 'center', alignItems: 'center' },
   Container:         { padding: 16, paddingBottom: 40 },
-  CheckDateBanner:   { fontSize: 13, color: '#555', marginBottom: 2 },
+  CheckDateBanner:   { fontSize: 13, color: '#555', fontWeight: 'bold', marginBottom: 2 },
   PrevBanner:        { color: '#888', fontStyle: 'italic', marginBottom: 4 },
   HatchBanner:       { color: '#444', fontWeight: '500', marginBottom: 4 },
   DateStats:         { marginBottom: 12 },
