@@ -1004,7 +1004,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   }
 
   const PrevSummary = PrevEntry
-    ? PrevEntry.is_empty_cavity ? 'Empty cavity'
+    ? PrevEntry.is_empty_cavity ? 'Empty'
       : !PrevEntry.has_nest ? 'No nest'
       : PrevEntry.species === 'PM'
         ? `PM · ${PrevEntry.egg_count}E${PrevEntry.discarded_eggs > 0 ? '/D' : ''} · ${PrevEntry.young_count}Y`
@@ -1079,7 +1079,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         {IsPM && (
           <View style={styles.PMStatusRow}>
             <Checkbox.Item
-              label={L('Empty cavity', 'X')}
+              label={L('Empty', 'X')}
               status={IsEmpty ? 'checked' : 'unchecked'}
               onPress={() => {
                 MarkDirty();
@@ -1087,10 +1087,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 setIsEmpty(Next);
                 if (Next) { setEggCount(0); setYoungCount(0); setHasNestOnly(false); setAdultPresent(false); }
               }}
+              mode="android"
               style={[styles.CheckboxItem, styles.PMStatusItem]}
             />
             <Checkbox.Item
-              label={L('Adult present', 'A')}
+              label={L('Adult present (no check)', 'A')}
               status={AdultPresent ? 'checked' : 'unchecked'}
               onPress={() => {
                 MarkDirty();
@@ -1098,6 +1099,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 setAdultPresent(Next);
                 if (Next) { setIsEmpty(false); setHasNestOnly(false); }
               }}
+              mode="android"
               style={[styles.CheckboxItem, styles.PMStatusItem]}
             />
           </View>
@@ -1106,14 +1108,14 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         {/* ── Purple Martin form ───────────────────────────────────── */}
         {!IsEmpty && !AdultPresent && IsPM && (
           <>
-            {EggCount === 0 && YoungCount === 0 && (
-              <Checkbox.Item
-                label={L('Nest (no eggs)', 'N')}
-                status={HasNestOnly ? 'checked' : 'unchecked'}
-                onPress={() => { MarkDirty(); const N = !HasNestOnly; setHasNestOnly(N); if (N) setIsEmpty(false); }}
-                style={styles.CheckboxItem}
-              />
-            )}
+            <Checkbox.Item
+              label={L('Nest (no eggs)', 'N')}
+              status={HasNestOnly ? 'checked' : 'unchecked'}
+              disabled={EggCount > 0 || YoungCount > 0}
+              onPress={() => { MarkDirty(); const N = !HasNestOnly; setHasNestOnly(N); if (N) setIsEmpty(false); }}
+              mode="android"
+              style={styles.CheckboxItem}
+            />
 
             <View style={styles.CountersRow}>
               <Counter
@@ -1142,6 +1144,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                       label={L('Hatching Day (HD)', 'HD')}
                       status={IsHatchingDay ? 'checked' : 'unchecked'}
                       onPress={() => { MarkDirty(); setIsHatchingDay(!IsHatchingDay); }}
+                      mode="android"
                       style={styles.CheckboxItem}
                     />
                     {!IsHatchingDay && (
@@ -1154,6 +1157,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                     label={L('Dead young', 'DY')}
                     status={HasDeadYoung ? 'checked' : 'unchecked'}
                     onPress={() => { MarkDirty(); setHasDeadYoung(!HasDeadYoung); }}
+                    mode="android"
                     style={styles.CheckboxItem}
                   />
                   {HasDeadYoung && (
@@ -1171,6 +1175,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                   label={L('Renesting attempt', 'RA')}
                   status={Renesting ? 'checked' : 'unchecked'}
                   onPress={handleRenestingToggle}
+                  mode="android"
                   style={styles.CheckboxItem}
                 />
               </>
@@ -1187,6 +1192,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 label={L('Nest discarded', 'ND')}
                 status={NestDiscarded ? 'checked' : 'unchecked'}
                 onPress={() => { MarkDirty(); setNestDiscarded(!NestDiscarded); }}
+                mode="android"
                 style={styles.CheckboxItem}
               />
             )}
@@ -1195,6 +1201,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 label={L('Nest replaced', 'NR')}
                 status={NestReplaced ? 'checked' : 'unchecked'}
                 onPress={() => { MarkDirty(); setNestReplaced(!NestReplaced); }}
+                mode="android"
                 style={styles.CheckboxItem}
               />
             )}
@@ -1409,12 +1416,14 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               label="Dead male"
               status={DeadAdultMale ? 'checked' : 'unchecked'}
               onPress={() => { MarkDirty(); setDeadAdultMale(!DeadAdultMale); }}
+              mode="android"
               style={styles.CheckboxItem}
             />
             <Checkbox.Item
               label="Dead female"
               status={DeadAdultFemale ? 'checked' : 'unchecked'}
               onPress={() => { MarkDirty(); setDeadAdultFemale(!DeadAdultFemale); }}
+              mode="android"
               style={styles.CheckboxItem}
             />
           </View>
