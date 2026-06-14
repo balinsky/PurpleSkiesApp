@@ -727,6 +727,16 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     return true;
   }
 
+  async function tagFutureEntriesAsAttempt2() {
+    const FutureIds = AllPriorEntriesRef.current
+      .filter(e => e.check_date > CheckDate)
+      .map(e => e.id).filter(id => id !== '');
+    if (FutureIds.length > 0) {
+      try { await supabase.from('nest_check_entries').update({ nesting_attempt: 2 }).in('id', FutureIds); } catch {}
+      try { await setLocalEntriesNestingAttempt(FutureIds, 2); } catch {}
+    }
+  }
+
   async function handleRenestingToggle() {
     MarkDirty();
     if (Renesting) {
@@ -755,7 +765,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       .filter(e => e.check_date < CheckDate)
       .sort((a, b) => a.check_date.localeCompare(b.check_date));
     setRenesting(true);
-    if (Prior.length === 0) { setNestingAttempt(2); return; }
+    if (Prior.length === 0) { await tagFutureEntriesAsAttempt2(); setNestingAttempt(2); return; }
 
     // Use net eggs (deducting discards) so a check where all eggs were discarded
     // is correctly treated as a true trough, not as eggs still present
@@ -768,17 +778,25 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       if (NetEggs(Prior[i]) === MaxNetEggs) { PeakIdx = i; break; }
     }
     const DeclineZone = Prior.slice(PeakIdx + 1);
-    if (DeclineZone.length === 0) { setNestingAttempt(2); return; }
+    if (DeclineZone.length === 0) {
+      await tagFutureEntriesAsAttempt2();
+      setNestingAttempt(2);
+      Alert.alert(
+        'Renesting Attempt',
+        'This check marks the start of Attempt 2. Subsequent checks for this compartment have been updated. Save this record to complete the change.',
+        [{ text: 'OK' }],
+      );
+      return;
+    }
 
     // Exclude checks where eggs declined due to hatching — those are NOT renesting troughs
     const ValidDecline = DeclineZone.filter(e => e.young_count === 0);
     if (ValidDecline.length === 0) {
-      // The prior clutch appears to have hatched successfully; all prior entries stay
-      // as Attempt 1. Only this check needs to be marked as Attempt 2.
+      await tagFutureEntriesAsAttempt2();
       setNestingAttempt(2);
       Alert.alert(
         'Renesting Attempt',
-        'The prior clutch appears to have hatched successfully. This check will be saved as the start of Attempt 2. No prior entries need to be changed — just save this record.',
+        'The prior clutch appears to have hatched successfully. This check marks the start of Attempt 2. Subsequent checks for this compartment have been updated. Save this record to complete the change.',
         [{ text: 'OK' }],
       );
       return;
@@ -810,15 +828,19 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     // If the trough was truly empty (all eggs discarded), it belongs to attempt 1.
     // Only entries strictly AFTER the trough date start attempt 2.
     // If the trough had remaining eggs, those may be new RA eggs, so include it in attempt 2.
-    const Ids = AllPriorEntriesRef.current
+    const PriorIds = AllPriorEntriesRef.current
       .filter(e => (TroughNet === 0
         ? e.check_date > SelectedSplitDate
         : e.check_date >= SelectedSplitDate) && e.check_date < CheckDate)
       .map(e => e.id)
       .filter(id => id !== '');
-    if (Ids.length > 0) {
-      try { await supabase.from('nest_check_entries').update({ nesting_attempt: 2 }).in('id', Ids); } catch {}
-      try { await setLocalEntriesNestingAttempt(Ids, 2); } catch {}
+    const FutureIds = AllPriorEntriesRef.current
+      .filter(e => e.check_date > CheckDate)
+      .map(e => e.id).filter(id => id !== '');
+    const AllIds = [...PriorIds, ...FutureIds];
+    if (AllIds.length > 0) {
+      try { await supabase.from('nest_check_entries').update({ nesting_attempt: 2 }).in('id', AllIds); } catch {}
+      try { await setLocalEntriesNestingAttempt(AllIds, 2); } catch {}
     }
     setNestingAttempt(2);
     setRenestingDialogVisible(false);
