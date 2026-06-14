@@ -73,7 +73,7 @@ function AppNavigator() {
       <AppStack.Screen name="CreateCompartment" component={CreateCompartmentScreen} options={{ title: 'Add Compartment' }} />
       <AppStack.Screen name="SeasonDetail" component={SeasonDetailScreen} options={({ route }) => ({ title: `${route.params.Year} Season` })} />
       <AppStack.Screen name="NestCheckDetail" component={NestCheckDetailScreen} options={({ route }) => ({ title: new Date(route.params.CheckDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) })} />
-      <AppStack.Screen name="NestCheckEntry" component={NestCheckEntryScreen} options={({ route }) => ({ title: `${route.params.UnitName} · ${route.params.CompartmentLabel} · ${new Date(route.params.CheckDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` })} />
+      <AppStack.Screen name="NestCheckEntry" component={NestCheckEntryScreen} options={({ route }) => ({ title: `${route.params.UnitName} · ${route.params.CompartmentLabel}` })} />
     </AppStack.Navigator>
   );
 }

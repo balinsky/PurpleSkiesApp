@@ -1017,6 +1017,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     <>
       <ScrollView contentContainerStyle={styles.Container}>
 
+        {/* ── Current check date ──────────────────────────────────── */}
+        <Text style={styles.CheckDateBanner}>Check: {formatDate(CheckDate)}</Text>
+
         {/* ── Previous check ──────────────────────────────────────── */}
         {PrevSummary && (
           <Text style={styles.PrevBanner}>
@@ -1030,24 +1033,17 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         {/* ── Egg / hatch / fledge date projections ───────────────── */}
         {(FirstEggRange || ActualHatchDate || ProjectedFledgeDate) && (
           <View style={styles.DateStats}>
-            {FirstEggRange && (
-              <Text style={styles.DateStat}>
-                First egg:{' '}
-                {FirstEggRange.min === FirstEggRange.max
-                  ? formatDate(FirstEggRange.min)
-                  : `${formatDate(FirstEggRange.min)}–${formatDate(FirstEggRange.max)}`}
-              </Text>
-            )}
-            {ProjectedHatchRange && !ActualHatchDate && (
-              <Text style={styles.DateStat}>
-                Proj. hatch:{' '}
-                {ProjectedHatchRange.min === ProjectedHatchRange.max
-                  ? formatDate(ProjectedHatchRange.min)
-                  : `${formatDate(ProjectedHatchRange.min)}–${formatDate(ProjectedHatchRange.max)}`}
-              </Text>
-            )}
+            {/* First egg and Proj. hatch share one line */}
+            {(FirstEggRange || (ProjectedHatchRange && !ActualHatchDate)) && (() => {
+              const parts: string[] = [];
+              if (FirstEggRange)
+                parts.push(`First egg: ${FirstEggRange.min === FirstEggRange.max ? formatDate(FirstEggRange.min) : `${formatDate(FirstEggRange.min)}–${formatDate(FirstEggRange.max)}`}`);
+              if (ProjectedHatchRange && !ActualHatchDate)
+                parts.push(`Proj. hatch: ${ProjectedHatchRange.min === ProjectedHatchRange.max ? formatDate(ProjectedHatchRange.min) : `${formatDate(ProjectedHatchRange.min)}–${formatDate(ProjectedHatchRange.max)}`}`);
+              return <Text style={styles.DateStat}>{parts.join('  ·  ')}</Text>;
+            })()}
             {ActualHatchDate && (
-              <Text style={styles.DateStat}>Actual Hatch: {formatDate(ActualHatchDate)}</Text>
+              <Text style={styles.DateStat}>Actual hatch: {formatDate(ActualHatchDate)}</Text>
             )}
             {ProjectedFledgeDate && (
               <Text style={styles.DateStat}>Proj. fledge: {formatDate(ProjectedFledgeDate)}</Text>
@@ -1672,6 +1668,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   Loading:           { flex: 1, justifyContent: 'center', alignItems: 'center' },
   Container:         { padding: 16, paddingBottom: 40 },
+  CheckDateBanner:   { fontSize: 13, color: '#555', marginBottom: 2 },
   PrevBanner:        { color: '#888', fontStyle: 'italic', marginBottom: 4 },
   HatchBanner:       { color: '#444', fontWeight: '500', marginBottom: 4 },
   DateStats:         { marginBottom: 12 },
