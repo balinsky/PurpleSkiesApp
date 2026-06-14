@@ -1573,7 +1573,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                     {wereDiscarded
                       ? `Based on previous checks, all eggs in the nest were discarded by the ${formatDate(C.check_date)} check, leaving it empty.`
                       : `Based on previous checks, no eggs were present at the ${formatDate(C.check_date)} check.`
-                    }{' '}The new clutch began after that date. Only this entry and any later checks will be tagged as Attempt 2.
+                    }{' '}The new clutch began after that date. Only this entry and any later checks will be tagged as Attempt {NestingAttempt + 1}.
                   </Text>
                 );
               }
@@ -1581,7 +1581,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 <Text>
                   Based on previous checks, the new clutch appears to have started around{' '}
                   {formatDate(C.check_date)}. Entries from that check through this one will
-                  be tagged as Attempt 2.
+                  be tagged as Attempt {NestingAttempt + 1}.
                 </Text>
               );
             })() : (
@@ -1618,13 +1618,13 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                         {wereDiscarded
                           ? `All eggs were discarded at the ${formatDate(SelectedSplitDate)} check, leaving the nest empty.`
                           : `No eggs were present at the ${formatDate(SelectedSplitDate)} check.`
-                        }{' '}Only entries after that check will be tagged as Attempt 2.
+                        }{' '}Only entries after that check will be tagged as Attempt {NestingAttempt + 1}.
                       </Text>
                     );
                   }
                   return (
                     <Text style={{ marginTop: 8, fontSize: 13, color: '#666' }}>
-                      Entries from {formatDate(SelectedSplitDate)} through this check will be tagged as Attempt 2.
+                      Entries from {formatDate(SelectedSplitDate)} through this check will be tagged as Attempt {NestingAttempt + 1}.
                     </Text>
                   );
                 })()}
