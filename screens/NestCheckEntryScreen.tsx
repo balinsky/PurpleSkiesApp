@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, TextInput as RNTextInput, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, TextInput as RNTextInput, View } from 'react-native';
 import {
   Button, Checkbox, Dialog, Divider, HelperText,
   Icon, IconButton, Portal, RadioButton, Text, TextInput,
@@ -772,7 +772,17 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
     // Exclude checks where eggs declined due to hatching — those are NOT renesting troughs
     const ValidDecline = DeclineZone.filter(e => e.young_count === 0);
-    if (ValidDecline.length === 0) { setNestingAttempt(2); return; }
+    if (ValidDecline.length === 0) {
+      // The prior clutch appears to have hatched successfully; all prior entries stay
+      // as Attempt 1. Only this check needs to be marked as Attempt 2.
+      setNestingAttempt(2);
+      Alert.alert(
+        'Renesting Attempt',
+        'The prior clutch appears to have hatched successfully. This check will be saved as the start of Attempt 2. No prior entries need to be changed — just save this record.',
+        [{ text: 'OK' }],
+      );
+      return;
+    }
 
     // Find trough in the decline zone using net eggs
     const TroughNetEggs = Math.min(...ValidDecline.map(NetEggs));
