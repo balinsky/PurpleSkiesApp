@@ -1511,11 +1511,13 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               if (!C) return null;
               const net = Math.max(0, C.egg_count - C.discarded_eggs);
               if (net === 0) {
+                const wereDiscarded = C.discarded_eggs > 0 || C.nest_discarded;
                 return (
                   <Text>
-                    Based on previous checks, all eggs in the nest were discarded by the{' '}
-                    {formatDate(C.check_date)} check, leaving it empty. The new clutch began
-                    after that date. Only this entry and any later checks will be tagged as Attempt 2.
+                    {wereDiscarded
+                      ? `Based on previous checks, all eggs in the nest were discarded by the ${formatDate(C.check_date)} check, leaving it empty.`
+                      : `Based on previous checks, no eggs were present at the ${formatDate(C.check_date)} check.`
+                    }{' '}The new clutch began after that date. Only this entry and any later checks will be tagged as Attempt 2.
                   </Text>
                 );
               }
@@ -1554,10 +1556,13 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                   const sel = RenestingCandidates.find(c => c.check_date === SelectedSplitDate);
                   const net = sel ? Math.max(0, sel.egg_count - sel.discarded_eggs) : 0;
                   if (net === 0) {
+                    const wereDiscarded = sel ? (sel.discarded_eggs > 0 || sel.nest_discarded) : false;
                     return (
                       <Text style={{ marginTop: 8, fontSize: 13, color: '#666' }}>
-                        All eggs were discarded at the {formatDate(SelectedSplitDate)} check,
-                        leaving the nest empty. Only entries after that check will be tagged as Attempt 2.
+                        {wereDiscarded
+                          ? `All eggs were discarded at the ${formatDate(SelectedSplitDate)} check, leaving the nest empty.`
+                          : `No eggs were present at the ${formatDate(SelectedSplitDate)} check.`
+                        }{' '}Only entries after that check will be tagged as Attempt 2.
                       </Text>
                     );
                   }
