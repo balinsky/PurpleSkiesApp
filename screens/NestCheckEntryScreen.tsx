@@ -1075,9 +1075,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
         <Divider style={styles.Divider} />
 
-        {/* ── Empty cavity (PM only) ───────────────────────────────── */}
+        {/* ── Empty cavity / Adult present (PM only, one row) ─────── */}
         {IsPM && (
-          <>
+          <View style={styles.PMStatusRow}>
             <Checkbox.Item
               label={L('Empty cavity', 'X')}
               status={IsEmpty ? 'checked' : 'unchecked'}
@@ -1087,10 +1087,10 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 setIsEmpty(Next);
                 if (Next) { setEggCount(0); setYoungCount(0); setHasNestOnly(false); setAdultPresent(false); }
               }}
-              style={styles.CheckboxItem}
+              style={[styles.CheckboxItem, styles.PMStatusItem]}
             />
             <Checkbox.Item
-              label={L('Adult present. Nest not checked.', 'A')}
+              label={L('Adult present', 'A')}
               status={AdultPresent ? 'checked' : 'unchecked'}
               onPress={() => {
                 MarkDirty();
@@ -1098,9 +1098,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 setAdultPresent(Next);
                 if (Next) { setIsEmpty(false); setHasNestOnly(false); }
               }}
-              style={styles.CheckboxItem}
+              style={[styles.CheckboxItem, styles.PMStatusItem]}
             />
-          </>
+          </View>
         )}
 
         {/* ── Purple Martin form ───────────────────────────────────── */}
@@ -1667,7 +1667,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   Loading:           { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  Container:         { padding: 16, paddingBottom: 40 },
+  Container:         { padding: 16, paddingBottom: 16 },
   CheckDateBanner:   { fontSize: 13, color: '#555', fontWeight: 'bold', textDecorationLine: 'underline', marginBottom: 2 },
   PrevBanner:        { color: '#888', fontStyle: 'italic', marginBottom: 4 },
   HatchBanner:       { color: '#444', fontWeight: '500', marginBottom: 4 },
@@ -1677,7 +1677,7 @@ const styles = StyleSheet.create({
   SpeciesRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   SpeciesCurrent:    { fontWeight: '600', fontSize: 15 },
   SpeciesBtnContent: { flexDirection: 'row-reverse' },
-  Divider:           { marginVertical: 12 },
+  Divider:           { marginVertical: 6 },
   CountersRow:       { flexDirection: 'row', gap: 16, marginBottom: 4 },
   Counter:           { alignItems: 'center', flex: 1 },
   CounterLabel:      { fontSize: 13, color: '#444', marginBottom: 2 },
@@ -1691,10 +1691,12 @@ const styles = StyleSheet.create({
   PrevBtn:           { marginTop: 6, alignSelf: 'center' },
   PrevBtnLabel:      { fontSize: 12, marginVertical: 2, marginHorizontal: 4 },
   CheckboxItem:      { paddingVertical: 0 },
+  PMStatusRow:       { flexDirection: 'row' },
+  PMStatusItem:      { flex: 1 },
   DeadYoungRow:      { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   ExpandBtn:         { alignSelf: 'flex-start', marginTop: 4 },
   ExpandBtnContent:  { flexDirection: 'row-reverse' },
-  ExpandRow:         { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginTop: 4 },
+  ExpandRow:         { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginTop: 0 },
   ExpandBtnInRow:    {},
   ExpandIconSpacer:  { width: 16 },
   ExpandedSection:   { paddingLeft: 8 },
@@ -1706,7 +1708,7 @@ const styles = StyleSheet.create({
   AgeChipLabel:      { fontSize: 12, marginHorizontal: 6, marginVertical: 2 },
   AgeConfirmed:      { fontSize: 11, color: '#2e7d32', fontWeight: '500', marginTop: 3 },
   AgeCount:          { fontSize: 11, color: '#888', marginTop: 3 },
-  Actions:           { marginTop: 20, gap: 8 },
+  Actions:           { marginTop: 8, gap: 8 },
   SaveRow:           { flexDirection: 'row', gap: 12 },
   ActionBtn:         { flex: 1 },
   DeleteBtn:         { borderColor: 'red' },
