@@ -34,6 +34,7 @@ export async function initDb(): Promise<void> {
       has_nest INTEGER NOT NULL DEFAULT 0,
       nest_discarded INTEGER NOT NULL DEFAULT 0,
       nest_replaced INTEGER NOT NULL DEFAULT 0,
+      adult_present INTEGER NOT NULL DEFAULT 0,
       egg_count INTEGER NOT NULL DEFAULT 0,
       discarded_eggs INTEGER NOT NULL DEFAULT 0,
       young_count INTEGER NOT NULL DEFAULT 0,
@@ -82,6 +83,9 @@ export async function initDb(): Promise<void> {
   // Migrate existing databases: add nesting_attempt if not yet present
   try {
     await _db.execAsync('ALTER TABLE nest_check_entries ADD COLUMN nesting_attempt INTEGER NOT NULL DEFAULT 1');
+  } catch {}
+  try {
+    await _db.execAsync('ALTER TABLE nest_check_entries ADD COLUMN adult_present INTEGER NOT NULL DEFAULT 0');
   } catch {}
 }
 
@@ -194,7 +198,7 @@ export async function markNestCheckSynced(id: string): Promise<void> {
 export type LocalEntry = {
   id: string; nest_check_id: string; compartment_id: string;
   species: string; is_empty_cavity: number; has_nest: number;
-  nest_discarded: number; nest_replaced: number;
+  nest_discarded: number; nest_replaced: number; adult_present: number;
   egg_count: number; discarded_eggs: number; young_count: number;
   nestling_age_days: number | null; nestling_age_notes: string | null;
   dead_young_count: number; dead_adult_male: number; dead_adult_female: number;
@@ -211,6 +215,7 @@ export function localEntryToJs(E: LocalEntry) {
     has_nest:          !!E.has_nest,
     nest_discarded:    !!E.nest_discarded,
     nest_replaced:     !!E.nest_replaced,
+    adult_present:     !!E.adult_present,
     dead_adult_male:   !!E.dead_adult_male,
     dead_adult_female: !!E.dead_adult_female,
     renesting_attempt: !!E.renesting_attempt,
@@ -224,15 +229,15 @@ export async function cacheEntries(entries: any[]): Promise<void> {
     // INSERT OR IGNORE: never overwrite a locally-pending entry with stale server data
     await D.runAsync(
       `INSERT OR IGNORE INTO nest_check_entries
-       (id,nest_check_id,compartment_id,species,is_empty_cavity,has_nest,nest_discarded,nest_replaced,
+       (id,nest_check_id,compartment_id,species,is_empty_cavity,has_nest,nest_discarded,nest_replaced,adult_present,
         egg_count,discarded_eggs,young_count,nestling_age_days,nestling_age_notes,
         dead_young_count,dead_adult_male,dead_adult_female,fledged_count,renesting_attempt,nesting_attempt,
         notes,observed_male_age,observed_female_age,sync_status,updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'synced',?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'synced',?)`,
       [
         E.id, E.nest_check_id, E.compartment_id, E.species ?? 'PM',
         E.is_empty_cavity ? 1 : 0, E.has_nest ? 1 : 0,
-        E.nest_discarded ? 1 : 0, E.nest_replaced ? 1 : 0,
+        E.nest_discarded ? 1 : 0, E.nest_replaced ? 1 : 0, E.adult_present ? 1 : 0,
         E.egg_count ?? 0, E.discarded_eggs ?? 0, E.young_count ?? 0,
         E.nestling_age_days ?? null, E.nestling_age_notes ?? null,
         E.dead_young_count ?? 0, E.dead_adult_male ? 1 : 0, E.dead_adult_female ? 1 : 0,
@@ -247,7 +252,7 @@ export async function cacheEntries(entries: any[]): Promise<void> {
 export async function upsertLocalEntry(E: {
   id: string; nest_check_id: string; compartment_id: string;
   species: string; is_empty_cavity: boolean; has_nest: boolean;
-  nest_discarded: boolean; nest_replaced: boolean;
+  nest_discarded: boolean; nest_replaced: boolean; adult_present: boolean;
   egg_count: number; discarded_eggs: number; young_count: number;
   nestling_age_days: number | null; nestling_age_notes: null;
   dead_young_count: number; dead_adult_male: boolean; dead_adult_female: boolean;
@@ -257,15 +262,15 @@ export async function upsertLocalEntry(E: {
   const D = await db();
   await D.runAsync(
     `INSERT OR REPLACE INTO nest_check_entries
-     (id,nest_check_id,compartment_id,species,is_empty_cavity,has_nest,nest_discarded,nest_replaced,
+     (id,nest_check_id,compartment_id,species,is_empty_cavity,has_nest,nest_discarded,nest_replaced,adult_present,
       egg_count,discarded_eggs,young_count,nestling_age_days,nestling_age_notes,
       dead_young_count,dead_adult_male,dead_adult_female,fledged_count,renesting_attempt,nesting_attempt,
       notes,observed_male_age,observed_female_age,sync_status,updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?)`,
     [
       E.id, E.nest_check_id, E.compartment_id, E.species,
       E.is_empty_cavity ? 1 : 0, E.has_nest ? 1 : 0,
-      E.nest_discarded ? 1 : 0, E.nest_replaced ? 1 : 0,
+      E.nest_discarded ? 1 : 0, E.nest_replaced ? 1 : 0, E.adult_present ? 1 : 0,
       E.egg_count, E.discarded_eggs, E.young_count,
       E.nestling_age_days, E.nestling_age_notes,
       E.dead_young_count, E.dead_adult_male ? 1 : 0, E.dead_adult_female ? 1 : 0,
@@ -315,14 +320,14 @@ export async function getLocalEntriesForCompartment(
   compartmentId: string, siteId: string, year: number, excludeCheckId: string,
 ): Promise<{
   id: string; check_date: string; species: string; is_empty_cavity: number; has_nest: number;
-  nest_discarded: number; egg_count: number; discarded_eggs: number; young_count: number;
+  nest_discarded: number; adult_present: number; egg_count: number; discarded_eggs: number; young_count: number;
   nestling_age_days: number | null; observed_male_age: string | null; observed_female_age: string | null;
   nest_check_id: string; nesting_attempt: number;
 }[]> {
   const D = await db();
   return D.getAllAsync(
     `SELECT nce.id, nce.species, nce.is_empty_cavity, nce.has_nest, nce.nest_discarded,
-            nce.egg_count, nce.discarded_eggs, nce.young_count,
+            nce.adult_present, nce.egg_count, nce.discarded_eggs, nce.young_count,
             nce.nestling_age_days, nce.observed_male_age, nce.observed_female_age,
             nce.nest_check_id, nce.nesting_attempt, nc.check_date
      FROM nest_check_entries nce

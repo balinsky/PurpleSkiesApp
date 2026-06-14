@@ -248,7 +248,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         const [EntriesResult, NestSeasonsResult] = await Promise.all([
           supabase
             .from('nest_check_entries')
-            .select('nest_check_id, compartment_id, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count, dead_young_count, nesting_attempt, compartments(cavity_label, housing_units(name))')
+            .select('nest_check_id, compartment_id, adult_present, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count, dead_young_count, nesting_attempt, compartments(cavity_label, housing_units(name))')
             .in('nest_check_id', Checks.map(c => c.id))
             .eq('species', 'PM'),
           supabase
@@ -291,10 +291,12 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         for (const E of Entries) {
           const Chk = Checks.find(c => c.id === E.nest_check_id);
           if (!Chk) continue;
-          if (!AllHistoryByCompartment.has(E.compartment_id)) AllHistoryByCompartment.set(E.compartment_id, []);
-          const hist = AllHistoryByCompartment.get(E.compartment_id)!;
-          if (!hist.some(h => h.check_date === Chk.check_date))
-            hist.push({ check_date: Chk.check_date, egg_count: E.egg_count ?? 0, discarded_eggs: (E as any).discarded_eggs ?? 0 });
+          if (!(E as any).adult_present) {
+            if (!AllHistoryByCompartment.has(E.compartment_id)) AllHistoryByCompartment.set(E.compartment_id, []);
+            const hist = AllHistoryByCompartment.get(E.compartment_id)!;
+            if (!hist.some(h => h.check_date === Chk.check_date))
+              hist.push({ check_date: Chk.check_date, egg_count: E.egg_count ?? 0, discarded_eggs: (E as any).discarded_eggs ?? 0 });
+          }
         }
         for (const [id, hist] of AllHistoryByCompartment)
           AllHistoryByCompartment.set(id, hist.sort((a, b) => a.check_date.localeCompare(b.check_date)));
@@ -318,14 +320,16 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
               ewd:            [],
             });
           }
-          CompMap.get(CompKey)!.ewd.push({
-            check_date:        Chk.check_date,
-            egg_count:         E.egg_count ?? 0,
-            young_count:       E.young_count ?? 0,
-            nestling_age_days: E.nestling_age_days,
-            fledged_count:     (E as any).fledged_count ?? 0,
-            dead_young_count:  (E as any).dead_young_count ?? 0,
-          });
+          if (!(E as any).adult_present) {
+            CompMap.get(CompKey)!.ewd.push({
+              check_date:        Chk.check_date,
+              egg_count:         E.egg_count ?? 0,
+              young_count:       E.young_count ?? 0,
+              nestling_age_days: E.nestling_age_days,
+              fledged_count:     (E as any).fledged_count ?? 0,
+              dead_young_count:  (E as any).dead_young_count ?? 0,
+            });
+          }
         }
 
         // Compute projections per (compartment, nesting_attempt)

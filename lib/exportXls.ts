@@ -239,7 +239,7 @@ export async function exportSeasonXls(
 
   const { data: Entries } = await supabase
     .from('nest_check_entries')
-    .select('id, nest_check_id, compartment_id, species, egg_count, discarded_eggs, young_count, nestling_age_days, nest_discarded, fledged_count, nesting_attempt, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
+    .select('id, nest_check_id, compartment_id, species, adult_present, egg_count, discarded_eggs, young_count, nestling_age_days, nest_discarded, fledged_count, nesting_attempt, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
     .in('nest_check_id', Checks.map(c => c.id));
 
   const BandingSet = new Set<string>();
@@ -326,18 +326,20 @@ export async function exportSeasonXls(
         byCheck:        new Map(),
       });
     }
-    CompMap.get(Key)!.byCheck.set(E.nest_check_id, {
-      species:           E.species ?? null,
-      egg_count:         E.egg_count ?? 0,
-      young_count:       E.young_count ?? 0,
-      nestling_age_days: E.nestling_age_days ?? null,
-      nest_discarded:    E.nest_discarded ?? false,
-      has_banding:       BandingSet.has(E.id),
-      fledged_count:     (E as any).fledged_count ?? 0,
-    });
+    if (!(E as any).adult_present) {
+      CompMap.get(Key)!.byCheck.set(E.nest_check_id, {
+        species:           E.species ?? null,
+        egg_count:         E.egg_count ?? 0,
+        young_count:       E.young_count ?? 0,
+        nestling_age_days: E.nestling_age_days ?? null,
+        nest_discarded:    E.nest_discarded ?? false,
+        has_banding:       BandingSet.has(E.id),
+        fledged_count:     (E as any).fledged_count ?? 0,
+      });
+    }
 
-    // Accumulate PM egg history for trough-aware first-egg calculation
-    if (E.species === 'PM') {
+    // Accumulate PM egg history for trough-aware first-egg calculation (skip not-checked entries)
+    if (E.species === 'PM' && !(E as any).adult_present) {
       const Chk = Checks.find(c => c.id === E.nest_check_id);
       if (Chk) {
         if (!AllHistoryByCompartment.has(E.compartment_id)) AllHistoryByCompartment.set(E.compartment_id, []);

@@ -44,11 +44,13 @@ const SpeciesLabel: Record<string, string> = {
 
 function buildEntrySummary(entry: {
   species: string; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean;
+  adult_present?: boolean;
   egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null;
   renesting_attempt?: boolean;
   male_age?: string | null; female_age?: string | null; has_banding?: boolean;
 }): string {
   if (entry.is_empty_cavity) return 'Empty cavity';
+  if (entry.adult_present) return 'Adult present · not checked';
   if (!entry.has_nest) return 'No nest';
   const IsPM = entry.species === 'PM';
   const SpeciesName = SpeciesLabel[entry.species] ?? entry.species;
@@ -103,7 +105,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
 
   async function loadData() {
     type UnitRow = { id: string; name: string; compartments: { id: string; cavity_label: string; sort_order: number | null }[] };
-    type EntryRow = { id: string; compartment_id: string; species: string; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean; renesting_attempt: boolean; egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null };
+    type EntryRow = { id: string; compartment_id: string; species: string; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean; adult_present: boolean; renesting_attempt: boolean; egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null };
     type SeasonRow = { compartment_id: string; male_age: string | null; female_age: string | null };
 
     function buildSections(
@@ -170,7 +172,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
 
       const { data: RemoteEntries, error: EntriesError } = await supabase
         .from('nest_check_entries')
-        .select('id, compartment_id, species, is_empty_cavity, has_nest, nest_discarded, renesting_attempt, egg_count, discarded_eggs, young_count, nestling_age_days')
+        .select('id, compartment_id, species, is_empty_cavity, has_nest, nest_discarded, adult_present, renesting_attempt, egg_count, discarded_eggs, young_count, nestling_age_days')
         .eq('nest_check_id', CheckId);
       if (EntriesError) throw EntriesError;
 
@@ -249,7 +251,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       if (PriorChecks && PriorChecks.length > 0) {
         const { data: PrevEntries } = await supabase
           .from('nest_check_entries')
-          .select('compartment_id, nest_check_id, species, is_empty_cavity, has_nest, nest_discarded, renesting_attempt, egg_count, discarded_eggs, young_count, nestling_age_days')
+          .select('compartment_id, nest_check_id, species, is_empty_cavity, has_nest, nest_discarded, adult_present, renesting_attempt, egg_count, discarded_eggs, young_count, nestling_age_days')
           .in('nest_check_id', PriorChecks.map(c => c.id));
         if (PrevEntries) {
           // PriorChecks is sorted ascending — last entry per compartment wins
@@ -330,7 +332,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     if (Unrecorded.length === 0) return;
     setMarkingAllEmpty(true);
     const Payload = {
-      species: 'PM' as const, is_empty_cavity: true, has_nest: false,
+      species: 'PM' as const, is_empty_cavity: true, has_nest: false, adult_present: false,
       nest_discarded: false, nest_replaced: false,
       egg_count: 0, discarded_eggs: 0, young_count: 0,
       nestling_age_days: null, nestling_age_notes: null as null,
@@ -369,7 +371,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     setQuickSaving(Key);
     const EntryId = item.entry_id ?? makeId();
     const QuickPayload = {
-      species: 'PM' as const, is_empty_cavity: type === 'empty', has_nest: type === 'pm_nest',
+      species: 'PM' as const, is_empty_cavity: type === 'empty', has_nest: type === 'pm_nest', adult_present: false,
       nest_discarded: false, nest_replaced: false,
       egg_count: 0, discarded_eggs: 0, young_count: 0,
       nestling_age_days: null, nestling_age_notes: null as null,

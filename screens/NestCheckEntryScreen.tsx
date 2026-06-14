@@ -139,8 +139,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [SpeciesExpanded, setSpeciesExpanded] = useState(false);
 
   // ── Status ───────────────────────────────────────────────────────────
-  const [IsEmpty, setIsEmpty]         = useState(false);
-  const [HasNestOnly, setHasNestOnly] = useState(false); // nest w/ no eggs, or non-PM nest present
+  const [IsEmpty, setIsEmpty]           = useState(false);
+  const [AdultPresent, setAdultPresent] = useState(false);
+  const [HasNestOnly, setHasNestOnly]   = useState(false); // nest w/ no eggs, or non-PM nest present
 
   // ── PM-only counts ────────────────────────────────────────────────────
   const [EggCount, setEggCount]               = useState(0);
@@ -156,7 +157,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [RenestingDialogVisible, setRenestingDialogVisible] = useState(false);
   const [RenestingCandidates, setRenestingCandidates]       = useState<{ check_date: string; egg_count: number; discarded_eggs: number; nest_discarded: boolean; species: string }[]>([]);
   const [SelectedSplitDate, setSelectedSplitDate]           = useState<string | null>(null);
-  const AllPriorEntriesRef = useRef<{ id: string; check_date: string; egg_count: number; discarded_eggs: number; young_count: number; nest_discarded: boolean; species: string }[]>([]);
+  const AllPriorEntriesRef = useRef<{ id: string; check_date: string; egg_count: number; discarded_eggs: number; young_count: number; adult_present: boolean; nest_discarded: boolean; species: string }[]>([]);
 
   // ── Nest management ───────────────────────────────────────────────────
   const [NestDiscarded, setNestDiscarded] = useState(false);
@@ -272,7 +273,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       type SeasonEntry = {
         id: string; check_date: string; species: string;
         is_empty_cavity: boolean | number; has_nest: boolean | number;
-        nest_discarded: boolean | number;
+        nest_discarded: boolean | number; adult_present: boolean | number;
         egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null;
         observed_male_age: string | null; observed_female_age: string | null;
       };
@@ -292,7 +293,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
         const { data: OtherEntries, error: EErr } = await supabase
           .from('nest_check_entries')
-          .select('id, nest_check_id, species, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days, observed_male_age, observed_female_age')
+          .select('id, nest_check_id, species, is_empty_cavity, has_nest, nest_discarded, adult_present, egg_count, discarded_eggs, young_count, nestling_age_days, observed_male_age, observed_female_age')
           .in('nest_check_id', SeasonChecks.map(c => c.id))
           .eq('compartment_id', CompartmentId);
         if (EErr) throw EErr;
@@ -320,6 +321,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         egg_count: e.egg_count,
         discarded_eggs: e.discarded_eggs ?? 0,
         young_count: e.young_count ?? 0,
+        adult_present: !!(e as any).adult_present,
         nest_discarded: !!e.nest_discarded,
       }));
 
@@ -332,9 +334,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       setOtherFemaleObs(FemaleObs);
       // Adult ages section stays closed by default
 
-      // Prev entry: most recent entry strictly before the current check date
+      // Prev entry: most recent checked entry before current date (skip adult_present)
       const Prev = [...Entries]
-        .filter(e => e.check_date < CheckDate)
+        .filter(e => e.check_date < CheckDate && !(e as any).adult_present)
         .sort((a, b) => b.check_date.localeCompare(a.check_date))[0];
       if (Prev) {
         setPrevEntry({
@@ -348,8 +350,8 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         });
       }
 
-      // Entries sorted ascending for egg/hatch date calculations
-      const EWD = [...Entries].sort((a, b) => a.check_date.localeCompare(b.check_date));
+      // Exclude adult_present entries from egg/hatch calculations (nest wasn't checked)
+      const EWD = [...Entries].filter(e => !(e as any).adult_present).sort((a, b) => a.check_date.localeCompare(b.check_date));
 
       // First egg date range
       const FirstWithEggs = EWD.find(e => e.egg_count > 0);
@@ -407,6 +409,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       if (!E) return;
       setSpeciesVal(E.species ?? 'PM');
       setIsEmpty(!!E.is_empty_cavity);
+      setAdultPresent(!!(E as any).adult_present);
       setEggCount(E.egg_count ?? 0);
       setYoungCount(E.young_count ?? 0);
       setHasNestOnly(!!E.has_nest && E.egg_count === 0 && E.young_count === 0);
@@ -566,7 +569,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       setNestlingAgeDays(0); setIsHatchingDay(false); setHasDeadYoung(false); setDeadYoungCount(0);
       setFledgedCount(0); setRenesting(false);
       setNestReplaced(false);
-      setIsEmpty(false); setHasNestOnly(false);
+      setIsEmpty(false); setAdultPresent(false); setHasNestOnly(false);
     }
     if (Val !== 'HS' && Val !== 'ST') {
       setNestDiscarded(false);
@@ -597,11 +600,12 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       species:            SpeciesVal,
       is_empty_cavity:    IsEmpty,
       has_nest:           HasNest,
+      adult_present:      IsPM && !IsEmpty ? AdultPresent : false,
       nest_discarded:     HasNest && (SpeciesVal === 'HS' || SpeciesVal === 'ST') ? NestDiscarded : false,
       nest_replaced:      HasNest && IsPM ? NestReplaced : false,
-      egg_count:          IsPM && !IsEmpty ? EggCount : 0,
-      discarded_eggs:     IsPM && EggCount > 0 ? DiscardedEggs : 0,
-      young_count:        IsPM && !IsEmpty ? YoungCount : 0,
+      egg_count:          IsPM && !IsEmpty && !AdultPresent ? EggCount : 0,
+      discarded_eggs:     IsPM && EggCount > 0 && !AdultPresent ? DiscardedEggs : 0,
+      young_count:        IsPM && !IsEmpty && !AdultPresent ? YoungCount : 0,
       nestling_age_days:  IsPM && YoungCount > 0
         ? (CalculatedNestlingAge ?? (IsHatchingDay ? 0 : (NestlingAgeDays > 0 ? NestlingAgeDays : null)))
         : null,
@@ -789,8 +793,8 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       return;
     }
 
-    // Exclude checks where eggs declined due to hatching — those are NOT renesting troughs
-    const ValidDecline = DeclineZone.filter(e => e.young_count === 0);
+    // Exclude checks where eggs declined due to hatching, or nest wasn't checked
+    const ValidDecline = DeclineZone.filter(e => e.young_count === 0 && !e.adult_present);
     if (ValidDecline.length === 0) {
       await tagFutureEntriesAsAttempt2();
       setNestingAttempt(2);
@@ -994,21 +998,34 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
         {/* ── Empty cavity (PM only) ───────────────────────────────── */}
         {IsPM && (
-          <Checkbox.Item
-            label={L('Empty cavity', 'X')}
-            status={IsEmpty ? 'checked' : 'unchecked'}
-            onPress={() => {
-              MarkDirty();
-              const Next = !IsEmpty;
-              setIsEmpty(Next);
-              if (Next) { setEggCount(0); setYoungCount(0); setHasNestOnly(false); }
-            }}
-            style={styles.CheckboxItem}
-          />
+          <>
+            <Checkbox.Item
+              label={L('Empty cavity', 'X')}
+              status={IsEmpty ? 'checked' : 'unchecked'}
+              onPress={() => {
+                MarkDirty();
+                const Next = !IsEmpty;
+                setIsEmpty(Next);
+                if (Next) { setEggCount(0); setYoungCount(0); setHasNestOnly(false); setAdultPresent(false); }
+              }}
+              style={styles.CheckboxItem}
+            />
+            <Checkbox.Item
+              label={L('Adult present. Nest not checked.', 'A')}
+              status={AdultPresent ? 'checked' : 'unchecked'}
+              onPress={() => {
+                MarkDirty();
+                const Next = !AdultPresent;
+                setAdultPresent(Next);
+                if (Next) { setIsEmpty(false); setHasNestOnly(false); }
+              }}
+              style={styles.CheckboxItem}
+            />
+          </>
         )}
 
         {/* ── Purple Martin form ───────────────────────────────────── */}
-        {!IsEmpty && IsPM && (
+        {!IsEmpty && !AdultPresent && IsPM && (
           <>
             {EggCount === 0 && YoungCount === 0 && (
               <Checkbox.Item
