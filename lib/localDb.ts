@@ -290,15 +290,16 @@ export async function setLocalEntriesNestingAttempt(ids: string[], nestingAttemp
 
 export async function resetLocalNestingAttemptsForCompartment(
   compartmentId: string, siteId: string, year: number,
+  fromAttempt: number, toAttempt: number,
 ): Promise<void> {
   const D = await db();
   await D.runAsync(
-    `UPDATE nest_check_entries SET nesting_attempt = 1
-     WHERE compartment_id = ? AND nest_check_id IN (
+    `UPDATE nest_check_entries SET nesting_attempt = ?
+     WHERE compartment_id = ? AND nesting_attempt >= ? AND nest_check_id IN (
        SELECT id FROM nest_checks WHERE site_id = ?
          AND check_date BETWEEN ? AND ?
      )`,
-    [compartmentId, siteId, `${year}-01-01`, `${year}-12-31`],
+    [toAttempt, compartmentId, fromAttempt, siteId, `${year}-01-01`, `${year}-12-31`],
   );
 }
 
