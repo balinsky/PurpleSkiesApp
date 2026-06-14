@@ -157,7 +157,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [RenestingDialogVisible, setRenestingDialogVisible] = useState(false);
   const [RenestingCandidates, setRenestingCandidates]       = useState<{ check_date: string; egg_count: number; discarded_eggs: number; nest_discarded: boolean; species: string }[]>([]);
   const [SelectedSplitDate, setSelectedSplitDate]           = useState<string | null>(null);
-  const AllPriorEntriesRef = useRef<{ id: string; check_date: string; egg_count: number; discarded_eggs: number; young_count: number; adult_present: boolean; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean; species: string; nesting_attempt: number }[]>([]);
+  const AllPriorEntriesRef = useRef<{ id: string; nest_check_id: string; check_date: string; egg_count: number; discarded_eggs: number; young_count: number; adult_present: boolean; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean; renesting_attempt: boolean; species: string; nesting_attempt: number }[]>([]);
 
   // ── Nest management ───────────────────────────────────────────────────
   const [NestDiscarded, setNestDiscarded] = useState(false);
@@ -276,7 +276,8 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         nest_discarded: boolean | number; adult_present: boolean | number;
         egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null;
         observed_male_age: string | null; observed_female_age: string | null;
-        nesting_attempt: number;
+        nesting_attempt: number; renesting_attempt: boolean | number;
+        nest_check_id: string;
       };
       let Entries: SeasonEntry[] = [];
 
@@ -294,7 +295,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
         const { data: OtherEntries, error: EErr } = await supabase
           .from('nest_check_entries')
-          .select('id, nest_check_id, species, is_empty_cavity, has_nest, nest_discarded, adult_present, egg_count, discarded_eggs, young_count, nestling_age_days, observed_male_age, observed_female_age, nesting_attempt')
+          .select('id, nest_check_id, species, is_empty_cavity, has_nest, nest_discarded, adult_present, renesting_attempt, egg_count, discarded_eggs, young_count, nestling_age_days, observed_male_age, observed_female_age, nesting_attempt')
           .in('nest_check_id', SeasonChecks.map(c => c.id))
           .eq('compartment_id', CompartmentId);
         if (EErr) throw EErr;
@@ -330,6 +331,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
       AllPriorEntriesRef.current = Entries.map(e => ({
         id: (e as any).id ?? '',
+        nest_check_id: (e as any).nest_check_id ?? '',
         check_date: e.check_date,
         species: e.species,
         egg_count: e.egg_count,
@@ -339,6 +341,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         is_empty_cavity: !!e.is_empty_cavity,
         has_nest: !!e.has_nest,
         nest_discarded: !!e.nest_discarded,
+        renesting_attempt: !!(e as any).renesting_attempt,
         nesting_attempt: (e as any).nesting_attempt ?? 1,
       }));
 
@@ -768,10 +771,38 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   }
 
   async function handleRenestingToggle() {
-    MarkDirty();
     if (Renesting) {
+      // Block if a later RA exists — user must remove it first to preserve ordering.
+      const LaterRA = [...AllPriorEntriesRef.current]
+        .filter(e => e.check_date > CheckDate && e.renesting_attempt)
+        .sort((a, b) => a.check_date.localeCompare(b.check_date))[0];
+      if (LaterRA) {
+        Alert.alert(
+          'Later Renesting Attempt Exists',
+          `A renesting attempt is already recorded on ${formatDate(LaterRA.check_date)}. You must remove that one first before removing this one.`,
+          [
+            { text: 'Stay Here', style: 'cancel' },
+            {
+              text: `Go to ${formatDate(LaterRA.check_date)}`,
+              onPress: () => navigation.push('NestCheckEntry', {
+                CheckId:          LaterRA.nest_check_id,
+                CheckDate:        LaterRA.check_date,
+                SeasonId,
+                SiteId,
+                CompartmentId,
+                CompartmentLabel: route.params.CompartmentLabel,
+                UnitName:         route.params.UnitName,
+                ExistingEntryId:  LaterRA.id,
+              }),
+            },
+          ],
+        );
+        return;
+      }
+
       // Unwind: reset all entries at this attempt level (and any higher ones from
       // subsequent RAs that were removed first) back to the previous attempt.
+      MarkDirty();
       const RevertFrom = NestingAttempt;       // e.g. 3
       const RevertTo   = NestingAttempt - 1;   // e.g. 2
       setRenesting(false);
@@ -794,6 +825,8 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       try { await resetLocalNestingAttemptsForCompartment(CompartmentId, SiteId, parseInt(YearStr, 10), RevertFrom, RevertTo); } catch {}
       return;
     }
+
+    MarkDirty();
 
     const CurrentAttempt = NestingAttempt;       // attempt this check is currently in
     const NextAttempt    = CurrentAttempt + 1;   // the new attempt being started
