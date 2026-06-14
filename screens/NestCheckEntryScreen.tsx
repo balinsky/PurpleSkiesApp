@@ -303,6 +303,19 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           const C = SeasonChecks.find(c => c.id === E.nest_check_id)!;
           return { ...E, check_date: C.check_date };
         });
+        // PostgREST caches the DB schema, so newly-added columns may come back as
+        // undefined until the cache refreshes. Read adult_present from local SQLite,
+        // which is always correct after save, and merge it in.
+        try {
+          const LocalEs = await getLocalEntriesForCompartment(CompartmentId, SiteId, parseInt(YearStr, 10), CheckId);
+          const AdultMap = new Map(LocalEs.map(e => [e.id, !!e.adult_present]));
+          Entries = Entries.map(e => ({
+            ...e,
+            adult_present: AdultMap.has((e as any).id)
+              ? AdultMap.get((e as any).id)!
+              : !!(e as any).adult_present,
+          }));
+        } catch {}
       } catch {
         // Offline or web: use local DB cache
         try {
