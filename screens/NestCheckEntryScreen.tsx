@@ -204,7 +204,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [ProjectedFledgeDate, setProjectedFledgeDate] = useState<string | null>(null);
 
   // ── Loading / saving / deleting ───────────────────────────────────────
-  const [InitLoading, setInitLoading]     = useState(!!ExistingEntryId);
+  const [InitLoading, setInitLoading]         = useState(!!ExistingEntryId);
+  const [ContextLoaded, setContextLoaded]     = useState(false);
+  const RepairRanRef                          = useRef(false);
   const [Saving, setSaving]               = useState(false);
   const [DeleteVisible, setDeleteVisible] = useState(false);
   const [Deleting, setDeleting]           = useState(false);
@@ -263,6 +265,17 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         : undefined,
     });
   }, [IsDirtyState, navigation]);
+
+  // Auto-repair: if an RA entry was saved with nesting_attempt=1 (debugging corruption),
+  // correct it to 2 and tag future entries once both loads have finished.
+  useEffect(() => {
+    if (InitLoading || !ContextLoaded || RepairRanRef.current) return;
+    if (!ExistingEntryId || !Renesting || NestingAttempt > 1) return;
+    RepairRanRef.current = true;
+    setNestingAttempt(2);
+    MarkDirty();
+    tagFutureEntriesAsNextAttempt(2).catch(() => {});
+  }, [InitLoading, ContextLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch season context: prev-entry banner + hatch-date for nestling age
   useEffect(() => {
@@ -418,7 +431,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         }
       }
     }
-    fetchSeasonContext();
+    fetchSeasonContext().finally(() => setContextLoaded(true));
   }, []);
 
   // Load existing entry
@@ -802,9 +815,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
       // Unwind: reset all entries at this attempt level (and any higher ones from
       // subsequent RAs that were removed first) back to the previous attempt.
+      // Clamp RevertFrom to at least 2 — if nesting_attempt was corrupted to 1
+      // while renesting_attempt is true, reverting 1→0 would zero out every entry.
       MarkDirty();
-      const RevertFrom = NestingAttempt;       // e.g. 3
-      const RevertTo   = NestingAttempt - 1;   // e.g. 2
+      const RevertFrom = Math.max(NestingAttempt, 2);  // e.g. 3, or 2 if corrupted
+      const RevertTo   = RevertFrom - 1;               // e.g. 2, or 1 if corrupted
       setRenesting(false);
       setNestingAttempt(RevertTo);
       const YearStr = CheckDate.substring(0, 4);
@@ -1018,7 +1033,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       <ScrollView contentContainerStyle={styles.Container}>
 
         {/* ── Current check date ──────────────────────────────────── */}
-        <Text style={styles.CheckDateBanner}>Check: {formatDate(CheckDate)}</Text>
+        <Text style={styles.CheckDateBanner}>Check: {formatDate(CheckDate)}{NestingAttempt > 1 ? `  ·  Attempt ${NestingAttempt}` : ''}</Text>
 
         {/* ── Previous check ──────────────────────────────────────── */}
         {PrevSummary && (
