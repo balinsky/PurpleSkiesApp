@@ -71,9 +71,9 @@ function buildEntrySummary(entry: {
       if (entry.nestling_age_days === 0)        Parts.push('HD');
       else if (entry.nestling_age_days != null) Parts.push(`${entry.nestling_age_days}do`);
     }
-    if ((entry.fledged_count ?? 0) > 0) {
-      Parts.push(`${entry.fledged_count} fledged`);
-    }
+  }
+  if ((entry.fledged_count ?? 0) > 0) {
+    Parts.push(`${entry.fledged_count} fledged`);
   }
   if (entry.nest_discarded) Parts.push('discarded');
   if (entry.renesting_attempt) Parts.push('RA');
