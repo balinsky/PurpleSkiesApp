@@ -7,6 +7,7 @@ import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { AppStackParamList } from '../App';
 import { useSync } from '../contexts/SyncContext';
+import { SpeciesLabel, buildEntrySummary } from '../lib/nestLogic';
 import {
   cacheUnitsAndCompartments, getLocalUnitsWithCompartments,
   cacheEntries, getLocalEntriesForCheck,
@@ -51,53 +52,7 @@ type Props = {
   route: RouteProp<AppStackParamList, 'NestCheckDetail'>;
 };
 
-const SpeciesLabel: Record<string, string> = {
-  PM: 'Purple Martin', HS: 'House Sparrow', ST: 'Starling',
-  TS: 'Tree Swallow',  BB: 'Bluebird',      HW: 'House Wren',
-};
 
-function buildEntrySummary(entry: {
-  species: string; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean;
-  adult_present?: boolean;
-  egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null;
-  fledged_count?: number;
-  renesting_attempt?: boolean;
-  male_age?: string | null; female_age?: string | null; has_banding?: boolean;
-}): string {
-  if (entry.is_empty_cavity) return 'Empty cavity';
-  if (entry.adult_present) return 'Adult present · not checked';
-  if (!entry.has_nest) return 'No nest';
-  const IsPM = entry.species === 'PM';
-  const SpeciesName = SpeciesLabel[entry.species] ?? entry.species;
-  const NetEggs = Math.max(0, entry.egg_count - entry.discarded_eggs);
-  const Parts: string[] = [];
-  if (!IsPM || (NetEggs === 0 && entry.young_count === 0 && entry.discarded_eggs === 0)) {
-    Parts.push(`${SpeciesName} nest`);
-  } else {
-    Parts.push(SpeciesName);
-    if (entry.egg_count > 0 && entry.discarded_eggs > 0) {
-      Parts.push(`${entry.egg_count} ${entry.egg_count === 1 ? 'egg' : 'eggs'}, ${entry.discarded_eggs} discarded`);
-    } else if (NetEggs > 0) {
-      Parts.push(`${NetEggs} ${NetEggs === 1 ? 'egg' : 'eggs'}`);
-    }
-    if (entry.young_count > 0) {
-      Parts.push(`${entry.young_count} young`);
-      if (entry.nestling_age_days === 0)        Parts.push('HD');
-      else if (entry.nestling_age_days != null) Parts.push(`${entry.nestling_age_days}do`);
-    }
-  }
-  if ((entry.fledged_count ?? 0) > 0) {
-    Parts.push(`${entry.fledged_count} fledged`);
-  }
-  if (entry.nest_discarded) Parts.push('discarded');
-  if (entry.renesting_attempt) Parts.push('RA');
-  if (IsPM) {
-    const AgeParts = [entry.male_age && `♂ ${entry.male_age}`, entry.female_age && `♀ ${entry.female_age}`].filter(Boolean);
-    if (AgeParts.length > 0) Parts.push(AgeParts.join(' '));
-  }
-  if (entry.has_banding) Parts.push('B');
-  return Parts.join(' · ');
-}
 
 export default function NestCheckDetailScreen({ navigation, route }: Props) {
   const { CheckId, CheckDate, SiteId, SeasonId, Year } = route.params;

@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase';
 import { AppStackParamList } from '../App';
 import { useSettings } from '../contexts/SettingsContext';
 import { useSync } from '../contexts/SyncContext';
+import { SpeciesLabel, formatDate, addDays, computeConfirmedAge } from '../lib/nestLogic';
 import {
   getLocalEntriesForCompartment,
   cacheEntries, getLocalEntry,
@@ -66,29 +67,6 @@ const SpeciesList = [
   { label: 'House Wren',        value: 'HW' },
 ];
 
-const SpeciesLabel: Record<string, string> = {
-  PM: 'Purple Martin', HS: 'House Sparrow', ST: 'Starling',
-  TS: 'Tree Swallow',  BB: 'Bluebird',      HW: 'House Wren',
-};
-
-function formatDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function addDays(dateStr: string, days: number): string {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const dt = new Date(y, m - 1, d);
-  dt.setDate(dt.getDate() + days);
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-}
-
-function computeConfirmedAge(others: (string | null)[], current: string | null): string | null {
-  const Counts: Record<string, number> = {};
-  for (const O of [...others, current]) if (O) Counts[O] = (Counts[O] ?? 0) + 1;
-  for (const [Age, N] of Object.entries(Counts)) if (N >= 3) return Age;
-  return null;
-}
 
 // ── Counter ────────────────────────────────────────────────────────────────
 function Counter({
