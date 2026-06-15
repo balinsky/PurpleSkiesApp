@@ -1233,21 +1233,22 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             />
 
             <View style={styles.CountersRow}>
-              <Counter
-                label={L('Eggs (incl. discards)', 'E')} value={EggCount}
-                onChange={(N) => { MarkDirty(); setEggCount(N); if (N > 0) setIsEmpty(false); }}
-                prevValue={PrevEntry ? Math.max(0, PrevEntry.egg_count - PrevEntry.discarded_eggs) : undefined}
-              />
+              <View style={{ flex: 1 }}>
+                <Counter
+                  label={L('Eggs (incl. discards)', 'E')} value={EggCount}
+                  onChange={(N) => { MarkDirty(); setEggCount(N); if (N > 0) setIsEmpty(false); }}
+                  prevValue={PrevEntry ? Math.max(0, PrevEntry.egg_count - PrevEntry.discarded_eggs) : undefined}
+                />
+                {EggCount > 0 && (
+                  <Counter label={L('Discarded eggs', 'ED')} value={DiscardedEggs} onChange={(N) => { MarkDirty(); setDiscardedEggs(N); }} horizontal />
+                )}
+              </View>
               <Counter
                 label={L('Young', 'Y')} value={YoungCount}
                 onChange={(N) => { MarkDirty(); setYoungCount(N); if (N > 0) setIsEmpty(false); }}
                 prevValue={PrevEntry?.young_count}
               />
             </View>
-
-            {EggCount > 0 && (
-              <Counter label={L('Discarded eggs', 'ED')} value={DiscardedEggs} onChange={(N) => { MarkDirty(); setDiscardedEggs(N); }} horizontal />
-            )}
 
             {YoungCount > 0 && (
               <>
