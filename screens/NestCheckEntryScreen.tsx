@@ -100,7 +100,7 @@ function Counter({
     <View style={horizontal ? styles.CounterH : styles.Counter}>
       {label !== '' && <Text style={horizontal ? styles.CounterLabelH : styles.CounterLabel}>{label}</Text>}
       <View style={styles.CounterControls}>
-        <IconButton icon="minus" size={18} onPress={() => onChange(Math.max(0, value - 1))} style={styles.StepBtn} />
+        <IconButton icon="minus" size={14} mode="contained" containerColor="#c62828" iconColor="#fff" onPress={() => onChange(Math.max(0, value - 1))} style={styles.StepBtn} />
         <RNTextInput
           value={String(value)}
           onChangeText={(T) => { const N = parseInt(T, 10); onChange(isNaN(N) || N < 0 ? 0 : N); }}
@@ -108,7 +108,7 @@ function Counter({
           selectTextOnFocus
           style={styles.CounterInput}
         />
-        <IconButton icon="plus" size={18} onPress={() => onChange(value + 1)} style={styles.StepBtn} />
+        <IconButton icon="plus" size={14} mode="contained" containerColor="#2e7d32" iconColor="#fff" onPress={() => onChange(value + 1)} style={styles.StepBtn} />
       </View>
       {prevValue != null && (
         <Button
@@ -1254,18 +1254,18 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 {CalculatedNestlingAge !== null ? (
                   <Text style={styles.CalcAge}>{L('Nestling age', 'Age')}: {CalculatedNestlingAge} days</Text>
                 ) : (
-                  <>
+                  <View style={styles.AgeRow}>
+                    <View style={[{ flex: 1 }, IsHatchingDay && { opacity: 0.4 }]}>
+                      <Counter label={L('Nestling age', 'Age')} value={NestlingAgeDays} onChange={(N) => { MarkDirty(); setNestlingAgeDays(N); }} horizontal />
+                    </View>
                     <Checkbox.Item
-                      label={L('Hatching Day (HD)', 'HD')}
+                      label={L('Hatch Day', 'HD')}
                       status={IsHatchingDay ? 'checked' : 'unchecked'}
                       onPress={() => { MarkDirty(); setIsHatchingDay(!IsHatchingDay); }}
                       mode="android"
                       style={styles.CheckboxItem}
                     />
-                    {!IsHatchingDay && (
-                      <Counter label={L('Nestling age (days)', 'Age')} value={NestlingAgeDays} onChange={(N) => { MarkDirty(); setNestlingAgeDays(N); }} horizontal />
-                    )}
-                  </>
+                  </View>
                 )}
                 <View style={styles.DeadYoungRow}>
                   <Checkbox.Item
@@ -1820,10 +1820,10 @@ const styles = StyleSheet.create({
   CountersRow:       { flexDirection: 'row', gap: 16, marginBottom: 4 },
   Counter:           { alignItems: 'center', flex: 1 },
   CounterH:         { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  CounterLabel:      { fontSize: 13, color: '#444', marginBottom: 2 },
-  CounterLabelH:    { fontSize: 13, color: '#444', flex: 1 },
+  CounterLabel:      { fontSize: 16, color: '#444', marginBottom: 2 },
+  CounterLabelH:    { fontSize: 16, color: '#444', flex: 1 },
   CounterControls:   { flexDirection: 'row', alignItems: 'center' },
-  StepBtn:           { margin: 0 },
+  StepBtn:           { marginHorizontal: 4 },
   CounterInput: {
     width: 44, fontSize: 22, fontWeight: '600', textAlign: 'center',
     borderWidth: 1.5, borderColor: '#888', borderRadius: 4,
@@ -1831,10 +1831,11 @@ const styles = StyleSheet.create({
   },
   PrevBtn:           { marginTop: 6, alignSelf: 'center' },
   PrevBtnH:         { alignSelf: 'center' },
-  PrevBtnLabel:      { fontSize: 12, marginVertical: 2, marginHorizontal: 4 },
+  PrevBtnLabel:      { fontSize: 14, marginVertical: 2, marginHorizontal: 4 },
   CheckboxItem:      { paddingVertical: 0 },
   PMStatusRow:       { flexDirection: 'row' },
   PMStatusItem:      { flex: 1 },
+  AgeRow:            { flexDirection: 'row', alignItems: 'center' },
   DeadYoungRow:      { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   ExpandBtn:         { alignSelf: 'flex-start', marginTop: 4 },
   ExpandBtnContent:  { flexDirection: 'row-reverse' },
