@@ -46,6 +46,7 @@ function buildEntrySummary(entry: {
   species: string; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean;
   adult_present?: boolean;
   egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null;
+  fledged_count?: number;
   renesting_attempt?: boolean;
   male_age?: string | null; female_age?: string | null; has_banding?: boolean;
 }): string {
@@ -69,6 +70,9 @@ function buildEntrySummary(entry: {
       Parts.push(`${entry.young_count} young`);
       if (entry.nestling_age_days === 0)        Parts.push('HD');
       else if (entry.nestling_age_days != null) Parts.push(`${entry.nestling_age_days}do`);
+    }
+    if ((entry.fledged_count ?? 0) > 0) {
+      Parts.push(`${entry.fledged_count} fledged`);
     }
   }
   if (entry.nest_discarded) Parts.push('discarded');
@@ -105,7 +109,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
 
   async function loadData() {
     type UnitRow = { id: string; name: string; compartments: { id: string; cavity_label: string; sort_order: number | null }[] };
-    type EntryRow = { id: string; compartment_id: string; species: string; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean; adult_present: boolean; renesting_attempt: boolean; egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null };
+    type EntryRow = { id: string; compartment_id: string; species: string; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean; adult_present: boolean; renesting_attempt: boolean; egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null; fledged_count: number };
     type SeasonRow = { compartment_id: string; male_age: string | null; female_age: string | null };
 
     function buildSections(
@@ -172,7 +176,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
 
       const { data: RemoteEntries, error: EntriesError } = await supabase
         .from('nest_check_entries')
-        .select('id, compartment_id, species, is_empty_cavity, has_nest, nest_discarded, adult_present, renesting_attempt, egg_count, discarded_eggs, young_count, nestling_age_days')
+        .select('id, compartment_id, species, is_empty_cavity, has_nest, nest_discarded, adult_present, renesting_attempt, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count')
         .eq('nest_check_id', CheckId);
       if (EntriesError) throw EntriesError;
 
@@ -251,7 +255,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       if (PriorChecks && PriorChecks.length > 0) {
         const { data: PrevEntries } = await supabase
           .from('nest_check_entries')
-          .select('compartment_id, nest_check_id, species, is_empty_cavity, has_nest, nest_discarded, adult_present, renesting_attempt, egg_count, discarded_eggs, young_count, nestling_age_days')
+          .select('compartment_id, nest_check_id, species, is_empty_cavity, has_nest, nest_discarded, adult_present, renesting_attempt, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count')
           .in('nest_check_id', PriorChecks.map(c => c.id));
         if (PrevEntries) {
           // PriorChecks is sorted ascending — last entry per compartment wins

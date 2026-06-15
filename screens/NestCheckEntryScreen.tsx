@@ -33,6 +33,7 @@ type PrevEntry = {
   egg_count: number;
   discarded_eggs: number;
   young_count: number;
+  nesting_attempt: number;
 };
 
 type NestlingBand = {
@@ -211,6 +212,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [DeleteVisible, setDeleteVisible] = useState(false);
   const [Deleting, setDeleting]           = useState(false);
   const [ErrorMessage, setErrorMessage]   = useState('');
+  const [FledgePromptVisible, setFledgePromptVisible] = useState(false);
+  const [FledgePromptCount, setFledgePromptCount]     = useState(0);
+  const FledgeSaveAndNextRef = useRef(false);
 
   // ── Unsaved-changes guard ─────────────────────────────────────────────
   const IsDirty = useRef(false);
@@ -242,7 +246,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               onPress={() => handleSaveRef.current()}
               style={{ marginRight: 4 }}
             >
-              Save
+              {ExistingEntryId ? 'Update' : 'Save'}
             </Button>
           )}
           <IconButton
@@ -464,6 +468,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           egg_count:        Prev.egg_count,
           discarded_eggs:   Prev.discarded_eggs ?? 0,
           young_count:      Prev.young_count,
+          nesting_attempt:  (Prev as any).nesting_attempt ?? 1,
         });
       }
 
@@ -656,7 +661,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   }
 
   // ── Save (local-first; syncs to Supabase in background) ───────────────
-  async function performSave(): Promise<boolean> {
+  async function performSave(fledgeCountOverride?: number): Promise<boolean> {
     setSaving(true);
     setErrorMessage('');
 
@@ -692,7 +697,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       dead_young_count:   IsPM && YoungCount > 0 && HasDeadYoung ? DeadYoungCount : 0,
       dead_adult_male:    DeadAdultMale,
       dead_adult_female:  DeadAdultFemale,
-      fledged_count:      IsPM && HasNest ? FledgedCount : 0,
+      fledged_count:      IsPM && HasNest ? (fledgeCountOverride ?? FledgedCount) : 0,
       renesting_attempt:  IsPM && HasNest ? Renesting : false,
       nesting_attempt:      NestingAttempt,
       notes:              Notes.trim() || null,
@@ -999,12 +1004,30 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     setRenestingDialogVisible(false);
   }
 
+  function checkFledgeUnaccounted(): number {
+    if (!IsPM || !PrevEntry || PrevEntry.nesting_attempt !== NestingAttempt) return 0;
+    if (PrevEntry.young_count <= 0) return 0;
+    const Reduction = PrevEntry.young_count - YoungCount;
+    if (Reduction <= 0) return 0;
+    const Age = CalculatedNestlingAge ?? (YoungCount > 0 && !IsHatchingDay ? NestlingAgeDays : null);
+    if (Age === null || Age < 26) return 0;
+    const Accounted = FledgedCount + (HasDeadYoung ? DeadYoungCount : 0);
+    const Unaccounted = Reduction - Accounted;
+    return Unaccounted > 0 ? Reduction : 0;
+  }
+
   async function handleSave() {
+    const U = checkFledgeUnaccounted();
+    if (U > 0) {
+      FledgeSaveAndNextRef.current = false;
+      setFledgePromptCount(U);
+      setFledgePromptVisible(true);
+      return;
+    }
     if (await performSave()) navigation.goBack();
   }
 
-  async function handleSaveAndNext() {
-    if (!await performSave()) return;
+  async function navigateAfterSave() {
     if (NextCompartment) {
       navigation.replace('NestCheckEntry', {
         CheckId, CheckDate, SeasonId, SiteId,
@@ -1018,6 +1041,37 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     } else {
       navigation.goBack();
     }
+  }
+
+  async function handleFledgeYes() {
+    const Count = FledgePromptCount;
+    setFledgedCount(Count);
+    setFledgePromptVisible(false);
+    if (FledgeSaveAndNextRef.current) {
+      if (await performSave(Count)) navigateAfterSave();
+    } else {
+      if (await performSave(Count)) navigation.goBack();
+    }
+  }
+
+  async function handleFledgeNo() {
+    setFledgePromptVisible(false);
+    if (FledgeSaveAndNextRef.current) {
+      if (await performSave()) navigateAfterSave();
+    } else {
+      if (await performSave()) navigation.goBack();
+    }
+  }
+
+  async function handleSaveAndNext() {
+    const U = checkFledgeUnaccounted();
+    if (U > 0) {
+      FledgeSaveAndNextRef.current = true;
+      setFledgePromptCount(U);
+      setFledgePromptVisible(true);
+      return;
+    }
+    if (await performSave()) navigateAfterSave();
   }
 
   // ── Delete entry ───────────────────────────────────────────────────────
@@ -1715,6 +1769,21 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               setAbandonVisible(false);
               navigation.goBack();
             }}>Discard</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        {/* ── Fledge prompt ───────────────────────────────────────── */}
+        <Dialog visible={FledgePromptVisible} onDismiss={() => setFledgePromptVisible(false)}>
+          <Dialog.Title>Young old enough to fledge</Dialog.Title>
+          <Dialog.Content>
+            <Text>
+              {FledgePromptCount} young disappeared since the last check and {FledgePromptCount === 1 ? 'was' : 'were'} old enough to fledge. Mark {FledgePromptCount === 1 ? 'it' : 'them'} as fledged?
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setFledgePromptVisible(false)}>Keep editing</Button>
+            <Button onPress={handleFledgeNo}>No</Button>
+            <Button onPress={handleFledgeYes}>Yes</Button>
           </Dialog.Actions>
         </Dialog>
 
