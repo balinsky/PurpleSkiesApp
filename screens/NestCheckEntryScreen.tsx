@@ -711,6 +711,15 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         });
       }
 
+      // Write-through to Supabase immediately so that the next loadEntry read
+      // doesn't race against the background sync and return a stale nesting_attempt.
+      try {
+        if (ExistingEntryId) {
+          await supabase.from('nest_check_entries').update(EntryPayload).eq('id', ExistingEntryId);
+        } else {
+          await supabase.from('nest_check_entries').upsert({ id: EntryId, ...EntryPayload });
+        }
+      } catch {}
       syncNow();
       savedLocally = true;
     } catch {}
