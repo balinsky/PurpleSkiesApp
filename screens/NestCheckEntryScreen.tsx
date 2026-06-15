@@ -157,7 +157,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [RenestingDialogVisible, setRenestingDialogVisible] = useState(false);
   const [RenestingCandidates, setRenestingCandidates]       = useState<{ check_date: string; egg_count: number; discarded_eggs: number; nest_discarded: boolean; species: string }[]>([]);
   const [SelectedSplitDate, setSelectedSplitDate]           = useState<string | null>(null);
-  const AllPriorEntriesRef = useRef<{ id: string; nest_check_id: string; check_date: string; egg_count: number; discarded_eggs: number; young_count: number; adult_present: boolean; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean; renesting_attempt: boolean; species: string; nesting_attempt: number }[]>([]);
+  const AllPriorEntriesRef = useRef<{ id: string; nest_check_id: string; check_date: string; egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null; adult_present: boolean; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean; renesting_attempt: boolean; species: string; nesting_attempt: number }[]>([]);
 
   // ── Nest management ───────────────────────────────────────────────────
   const [NestDiscarded, setNestDiscarded] = useState(false);
@@ -277,6 +277,80 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     tagFutureEntriesAsNextAttempt(2).catch(() => {});
   }, [InitLoading, ContextLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Recompute attempt-scoped date stats whenever the attempt or loaded data changes.
+  // Scoping to the current nesting_attempt means Attempt 2 shows its own first-egg
+  // and hatch dates, not those from Attempt 1. Also detects young that vanished before
+  // fledge age (26 days) and treats them as dead so projections aren't carried forward.
+  useEffect(() => {
+    if (!ContextLoaded) return;
+    if (ExistingEntryId && InitLoading) return;
+
+    type E = typeof AllPriorEntriesRef.current[0];
+    const IsUnchecked = (e: E) =>
+      e.adult_present ||
+      (!e.is_empty_cavity && !e.has_nest &&
+       e.egg_count === 0 && e.discarded_eggs === 0 && e.young_count === 0 && !e.nest_discarded);
+
+    const EWD = AllPriorEntriesRef.current
+      .filter(e => e.nesting_attempt === NestingAttempt && !IsUnchecked(e))
+      .sort((a, b) => a.check_date.localeCompare(b.check_date));
+
+    // First egg date range for this attempt
+    const FirstWithEggs = EWD.find(e => e.egg_count > 0);
+    if (FirstWithEggs) {
+      const LastEmpty = [...EWD].filter(e => e.egg_count === 0 && e.check_date < FirstWithEggs.check_date).pop();
+      const LatestFirst   = addDays(FirstWithEggs.check_date, -(FirstWithEggs.egg_count - 1));
+      const EarliestFirst = LastEmpty ? addDays(LastEmpty.check_date, 1) : null;
+      const MinFirst = (EarliestFirst && EarliestFirst <= LatestFirst) ? EarliestFirst : LatestFirst;
+      setFirstEggRange({ min: MinFirst, max: LatestFirst });
+      const MaxEggs = Math.max(...EWD.map(e => e.egg_count));
+      setProjectedHatchRange({
+        min: addDays(MinFirst,    MaxEggs - 1 + 15),
+        max: addDays(LatestFirst, MaxEggs - 1 + 15),
+      });
+    } else {
+      setFirstEggRange(null);
+      setProjectedHatchRange(null);
+    }
+
+    // Hatch anchor: earliest entry in this attempt with young + recorded nestling age
+    let FoundHatch = false;
+    for (const AnchorE of EWD) {
+      if (AnchorE.young_count > 0 && AnchorE.nestling_age_days != null) {
+        const [ay, am, ad] = AnchorE.check_date.split('-').map(Number);
+        const Hatch = new Date(ay, am - 1, ad);
+        Hatch.setDate(Hatch.getDate() - AnchorE.nestling_age_days!);
+        const HatchStr  = `${Hatch.getFullYear()}-${String(Hatch.getMonth() + 1).padStart(2, '0')}-${String(Hatch.getDate()).padStart(2, '0')}`;
+        const ProjFledgeStr = addDays(HatchStr, 26);
+
+        // If young went to zero before the projected fledge date, treat them as dead.
+        // Only look at entries between the anchor and the current check date.
+        const YoungDied = EWD
+          .filter(f => f.check_date > AnchorE.check_date && f.check_date < CheckDate)
+          .some(f => f.young_count === 0 && f.check_date < ProjFledgeStr);
+
+        if (YoungDied) {
+          setActualHatchDate(null);
+          setProjectedFledgeDate(null);
+          setCalculatedNestlingAge(null);
+        } else {
+          setActualHatchDate(HatchStr);
+          setProjectedFledgeDate(ProjFledgeStr);
+          const [cy, cm, cd] = CheckDate.split('-').map(Number);
+          const DiffDays = Math.round((new Date(cy, cm - 1, cd).getTime() - Hatch.getTime()) / 86400000);
+          setCalculatedNestlingAge(DiffDays > 0 ? DiffDays : null);
+        }
+        FoundHatch = true;
+        break;
+      }
+    }
+    if (!FoundHatch) {
+      setActualHatchDate(null);
+      setProjectedFledgeDate(null);
+      setCalculatedNestlingAge(null);
+    }
+  }, [ContextLoaded, InitLoading, NestingAttempt]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Fetch season context: prev-entry banner + hatch-date for nestling age
   useEffect(() => {
     async function fetchSeasonContext() {
@@ -350,6 +424,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         egg_count: e.egg_count,
         discarded_eggs: e.discarded_eggs ?? 0,
         young_count: e.young_count ?? 0,
+        nestling_age_days: (e as any).nestling_age_days ?? null,
         adult_present: !!(e as any).adult_present,
         is_empty_cavity: !!e.is_empty_cavity,
         has_nest: !!e.has_nest,
@@ -392,44 +467,6 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         });
       }
 
-      // Exclude adult_present entries from egg/hatch calculations (nest wasn't checked)
-      const EWD = [...Entries].filter(e => !(e as any).adult_present).sort((a, b) => a.check_date.localeCompare(b.check_date));
-
-      // First egg date range
-      const FirstWithEggs = EWD.find(e => e.egg_count > 0);
-      if (FirstWithEggs) {
-        const LastEmpty = [...EWD]
-          .filter(e => e.egg_count === 0 && e.check_date < FirstWithEggs.check_date)
-          .pop();
-        const LatestFirst   = addDays(FirstWithEggs.check_date, -(FirstWithEggs.egg_count - 1));
-        const EarliestFirst = LastEmpty ? addDays(LastEmpty.check_date, 1) : null;
-        const MinFirst = (EarliestFirst && EarliestFirst <= LatestFirst) ? EarliestFirst : LatestFirst;
-        setFirstEggRange({ min: MinFirst, max: LatestFirst });
-
-        const MaxEggs = Math.max(...EWD.map(e => e.egg_count));
-        setProjectedHatchRange({
-          min: addDays(MinFirst,    MaxEggs - 1 + 15),
-          max: addDays(LatestFirst, MaxEggs - 1 + 15),
-        });
-      }
-
-      // Hatch date anchor: earliest check with a recorded nestling age
-      for (const E of EWD) {
-        if ((E.young_count ?? 0) > 0 && E.nestling_age_days != null) {
-          const [ay, am, ad] = E.check_date.split('-').map(Number);
-          const Hatch = new Date(ay, am - 1, ad);
-          Hatch.setDate(Hatch.getDate() - E.nestling_age_days!);
-          const HatchStr = `${Hatch.getFullYear()}-${String(Hatch.getMonth() + 1).padStart(2, '0')}-${String(Hatch.getDate()).padStart(2, '0')}`;
-          setActualHatchDate(HatchStr);
-          setProjectedFledgeDate(addDays(HatchStr, 26));
-          const [cy, cm, cd] = CheckDate.split('-').map(Number);
-          const DiffDays = Math.round(
-            (new Date(cy, cm - 1, cd).getTime() - Hatch.getTime()) / 86400000
-          );
-          if (DiffDays > 0) setCalculatedNestlingAge(DiffDays);
-          break;
-        }
-      }
     }
     fetchSeasonContext().finally(() => setContextLoaded(true));
   }, []);
