@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, TextInput as RNTextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput as RNTextInput, View } from 'react-native';
 import {
   Button, Checkbox, Dialog, Divider, HelperText,
   Icon, IconButton, Portal, RadioButton, Text, TextInput,
@@ -195,6 +195,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [FledgePromptVisible, setFledgePromptVisible] = useState(false);
   const [FledgePromptCount, setFledgePromptCount]     = useState(0);
   const FledgeSaveAndNextRef = useRef(false);
+  const ScrollViewRef = useRef<ScrollView>(null);
 
   // ── Unsaved-changes guard ─────────────────────────────────────────────
   const IsDirty = useRef(false);
@@ -1113,7 +1114,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
   return (
     <>
-      <ScrollView contentContainerStyle={styles.Container}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+      <ScrollView ref={ScrollViewRef} contentContainerStyle={styles.Container} keyboardShouldPersistTaps="handled">
 
         {/* ── Current check date ──────────────────────────────────── */}
         <Text style={styles.CheckDateBanner}>Check: {formatDate(CheckDate)}{NestingAttempt > 1 ? `  ·  Attempt ${NestingAttempt}` : ''}</Text>
@@ -1558,6 +1563,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             placeholder="Any additional observations"
             multiline
             style={styles.NotesInput}
+            onFocus={() => setTimeout(() => ScrollViewRef.current?.scrollToEnd({ animated: true }), 100)}
           />
         )}
 
@@ -1587,6 +1593,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         </View>
 
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <Portal>
         {/* ── Add Nestling Band ────────────────────────────────────── */}
@@ -1842,7 +1849,6 @@ const styles = StyleSheet.create({
   CheckboxItem:      { paddingVertical: 0 },
   PMStatusRow:       { flexDirection: 'row' },
   PMStatusItem:      { flex: 1 },
-  AgeRow:            { flexDirection: 'row', alignItems: 'center' },
   ColumnDivider:     { width: 1, backgroundColor: '#ddd', alignSelf: 'stretch' },
   DeadYoungRow:      { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   ExpandBtn:         { alignSelf: 'flex-start', marginTop: 4 },
