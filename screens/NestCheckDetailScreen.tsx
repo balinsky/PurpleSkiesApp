@@ -15,6 +15,18 @@ import {
   upsertLocalEntry, makeId,
 } from '../lib/localDb';
 
+type PrevEntryData = {
+  summary: string;
+  species: string;
+  is_empty_cavity: boolean;
+  has_nest: boolean;
+  egg_count: number;
+  discarded_eggs: number;
+  young_count: number;
+  nesting_attempt: number;
+  renesting_attempt: boolean;
+};
+
 type CompartmentRow = {
   id: string;
   cavity_label: string;
@@ -24,6 +36,8 @@ type CompartmentRow = {
   entry_id: string | null;
   entry_summary: string | null;
   prev_summary: string | null;
+  prev_entry: PrevEntryData | null;
+  calculated_nestling_age: number | null;
 };
 
 type Section = {
@@ -94,6 +108,12 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
   const [QuickSaving, setQuickSaving]     = useState<string | null>(null);
   const [MarkingAllEmpty, setMarkingAllEmpty] = useState(false);
 
+  // ── Fledge prompt (triggered by quick-save when prior had young ≥ 26 days)
+  const [FledgePromptVisible, setFledgePromptVisible] = useState(false);
+  const [FledgePromptCount, setFledgePromptCount]     = useState(0);
+  const [FledgePromptItem, setFledgePromptItem]       = useState<CompartmentRow | null>(null);
+  const [FledgePromptType, setFledgePromptType]       = useState<'empty' | 'pm_nest'>('empty');
+
   // ── Edit date ──────────────────────────────────────────────────────
   const [EditDateVisible, setEditDateVisible]   = useState(false);
   const [EditDateValue, setEditDateValue]       = useState('');
@@ -115,7 +135,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     function buildSections(
       Units: UnitRow[], Entries: EntryRow[], BandingSet: Set<string>,
       HatchDateMap: Map<string, string>, SeasonRows: SeasonRow[],
-      PrevEntryMap: Map<string, string>,
+      PrevEntryMap: Map<string, PrevEntryData>,
     ) {
       function effectiveAge(compartmentId: string, stored: number | null): number | null {
         if (stored !== null) return stored;
@@ -159,7 +179,9 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
                 ...AgeMap.get(C.id),
                 has_banding: BandingSet.has(Entry.id),
               }) : null,
-              prev_summary:  PrevEntryMap.get(C.id) ?? null,
+              prev_summary:           PrevEntryMap.get(C.id)?.summary ?? null,
+              prev_entry:             PrevEntryMap.get(C.id) ?? null,
+              calculated_nestling_age: effectiveAge(C.id, null),
             };
           }),
       })));
@@ -251,11 +273,11 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       }
 
       // Previous check summaries — most recent entry per compartment across all prior checks
-      const PrevEntryMap = new Map<string, string>();
+      const PrevEntryMap = new Map<string, PrevEntryData>();
       if (PriorChecks && PriorChecks.length > 0) {
         const { data: PrevEntries } = await supabase
           .from('nest_check_entries')
-          .select('compartment_id, nest_check_id, species, is_empty_cavity, has_nest, nest_discarded, adult_present, renesting_attempt, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count')
+          .select('compartment_id, nest_check_id, species, is_empty_cavity, has_nest, nest_discarded, adult_present, renesting_attempt, nesting_attempt, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count')
           .in('nest_check_id', PriorChecks.map(c => c.id));
         if (PrevEntries) {
           // PriorChecks is sorted ascending — last entry per compartment wins
@@ -264,7 +286,17 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
             (CheckDateMap.get(a.nest_check_id) ?? '').localeCompare(CheckDateMap.get(b.nest_check_id) ?? '')
           );
           for (const E of sorted) {
-            PrevEntryMap.set(E.compartment_id, buildEntrySummary(E as any));
+            PrevEntryMap.set(E.compartment_id, {
+              summary:          buildEntrySummary(E as any),
+              species:          E.species,
+              is_empty_cavity:  E.is_empty_cavity,
+              has_nest:         E.has_nest,
+              egg_count:        E.egg_count,
+              discarded_eggs:   E.discarded_eggs,
+              young_count:      E.young_count,
+              nesting_attempt:  (E as any).nesting_attempt ?? 1,
+              renesting_attempt: !!E.renesting_attempt,
+            });
           }
         }
       }
@@ -370,7 +402,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     })));
   }
 
-  async function handleQuick(item: CompartmentRow, type: 'empty' | 'pm_nest') {
+  async function performQuickSave(item: CompartmentRow, type: 'empty' | 'pm_nest', fledgedCount: number) {
     const Key = `${item.id}:${type}`;
     setQuickSaving(Key);
     const EntryId = item.entry_id ?? makeId();
@@ -380,7 +412,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       egg_count: 0, discarded_eggs: 0, young_count: 0,
       nestling_age_days: null, nestling_age_notes: null as null,
       dead_young_count: 0, dead_adult_male: false, dead_adult_female: false,
-      fledged_count: 0, renesting_attempt: false, notes: null,
+      fledged_count: fledgedCount, renesting_attempt: false, notes: null,
       observed_male_age: null, observed_female_age: null,
     };
     let savedLocally = false;
@@ -390,7 +422,6 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       syncNow();
     } catch {}
     if (!savedLocally) {
-      // Web: write directly to Supabase
       if (item.entry_id) {
         await supabase.from('nest_check_entries').update(QuickPayload).eq('id', item.entry_id);
       } else {
@@ -398,13 +429,79 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       }
     }
     setQuickSaving(null);
-    // Optimistic update: avoids racing loadData() against the background sync
     setSections(prev => prev.map(sec => ({
       ...sec,
       data: sec.data.map(row => row.id !== item.id ? row : {
         ...row,
         entry_id: EntryId,
-        entry_summary: type === 'empty' ? 'Empty cavity' : 'Purple Martin nest',
+        entry_summary: buildEntrySummary(QuickPayload),
+      }),
+    })));
+  }
+
+  async function handleQuick(item: CompartmentRow, type: 'empty' | 'pm_nest') {
+    if (item.prev_entry && item.prev_entry.young_count > 0) {
+      const Age = item.calculated_nestling_age;
+      if (Age !== null && Age >= 26) {
+        setFledgePromptCount(item.prev_entry.young_count);
+        setFledgePromptItem(item);
+        setFledgePromptType(type);
+        setFledgePromptVisible(true);
+        return;
+      }
+    }
+    await performQuickSave(item, type, 0);
+  }
+
+  async function handleSameAsPrior(item: CompartmentRow) {
+    if (!item.prev_entry) return;
+    const Key = `${item.id}:same`;
+    setQuickSaving(Key);
+    const EntryId = item.entry_id ?? makeId();
+    const Prev = item.prev_entry;
+    const Payload = {
+      species: Prev.species as 'PM',
+      is_empty_cavity: Prev.is_empty_cavity,
+      has_nest: Prev.has_nest,
+      adult_present: false,
+      nest_discarded: false,
+      nest_replaced: false,
+      egg_count: Math.max(0, Prev.egg_count - Prev.discarded_eggs),
+      discarded_eggs: 0,
+      young_count: Prev.young_count,
+      nestling_age_days: null,
+      nestling_age_notes: null as null,
+      dead_young_count: 0,
+      dead_adult_male: false,
+      dead_adult_female: false,
+      fledged_count: 0,
+      nesting_attempt: Prev.nesting_attempt,
+      renesting_attempt: false,
+      notes: null,
+      observed_male_age: null,
+      observed_female_age: null,
+    };
+    let savedLocally = false;
+    try {
+      await upsertLocalEntry({ id: EntryId, nest_check_id: CheckId, compartment_id: item.id, ...Payload });
+      savedLocally = true;
+    } catch {}
+    // Write-through to Supabase so loadEntry always reads the correct nesting_attempt
+    try {
+      if (item.entry_id) {
+        await supabase.from('nest_check_entries').update(Payload).eq('id', item.entry_id);
+      } else {
+        await supabase.from('nest_check_entries').upsert({ id: EntryId, nest_check_id: CheckId, compartment_id: item.id, ...Payload });
+      }
+    } catch {}
+    syncNow();
+    setQuickSaving(null);
+    setSections(prev => prev.map(sec => ({
+      ...sec,
+      data: sec.data.map(row => row.id !== item.id ? row : {
+        ...row,
+        entry_id: EntryId,
+        entry_summary: buildEntrySummary({ ...Payload, nestling_age_days: null }),
       }),
     })));
   }
@@ -507,6 +604,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
               <Button
                 compact mode="outlined"
                 style={styles.QuickBtn}
+                contentStyle={styles.QuickBtnContent}
                 loading={QuickSaving === `${item.id}:empty`}
                 disabled={QuickSaving !== null}
                 onPress={() => handleQuick(item, 'empty')}
@@ -516,12 +614,25 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
               <Button
                 compact mode="outlined"
                 style={styles.QuickBtn}
+                contentStyle={styles.QuickBtnContent}
                 loading={QuickSaving === `${item.id}:pm_nest`}
                 disabled={QuickSaving !== null}
                 onPress={() => handleQuick(item, 'pm_nest')}
               >
                 PM Nest
               </Button>
+              {!item.entry_id && item.prev_entry && (
+                <Button
+                  compact mode="outlined"
+                  style={styles.QuickBtn}
+                  contentStyle={styles.QuickBtnContent}
+                  loading={QuickSaving === `${item.id}:same`}
+                  disabled={QuickSaving !== null}
+                  onPress={() => handleSameAsPrior(item)}
+                >
+                  Copy Prev
+                </Button>
+              )}
             </Card.Actions>
           </Card>
         )}
@@ -541,6 +652,27 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       />
 
       <Portal>
+        {/* ── Fledge prompt ─────────────────────────────────────── */}
+        <Dialog visible={FledgePromptVisible} onDismiss={() => setFledgePromptVisible(false)}>
+          <Dialog.Title>Young old enough to fledge</Dialog.Title>
+          <Dialog.Content>
+            <Text>
+              {FledgePromptCount} young disappeared since the last check and {FledgePromptCount === 1 ? 'was' : 'were'} old enough to fledge. Mark {FledgePromptCount === 1 ? 'it' : 'them'} as fledged?
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setFledgePromptVisible(false)}>Keep editing</Button>
+            <Button onPress={() => {
+              setFledgePromptVisible(false);
+              if (FledgePromptItem) performQuickSave(FledgePromptItem, FledgePromptType, 0);
+            }}>No</Button>
+            <Button onPress={() => {
+              setFledgePromptVisible(false);
+              if (FledgePromptItem) performQuickSave(FledgePromptItem, FledgePromptType, FledgePromptCount);
+            }}>Yes</Button>
+          </Dialog.Actions>
+        </Dialog>
+
         {/* ── Edit date ─────────────────────────────────────────── */}
         <Dialog visible={EditDateVisible} onDismiss={() => setEditDateVisible(false)}>
           <Dialog.Title>Edit check date</Dialog.Title>
@@ -590,8 +722,9 @@ const styles = StyleSheet.create({
   DeleteBtn:        { borderColor: 'red' },
   SectionHeader:    { marginTop: 16, marginBottom: 6, paddingHorizontal: 4 },
   Card:             { marginBottom: 8 },
-  QuickActions:     { paddingHorizontal: 8, paddingBottom: 6, gap: 8, justifyContent: 'flex-start' },
-  QuickBtn:         { alignSelf: 'flex-start' },
+  QuickActions:     { paddingHorizontal: 4, paddingBottom: 4, gap: 3, justifyContent: 'flex-start' },
+  QuickBtn:         { alignSelf: 'flex-start', marginHorizontal: 0 },
+  QuickBtnContent:  { paddingHorizontal: 0 },
   EnteredText:      { color: '#2e7d32' },
   PendingText:      { color: '#999' },
   RowIcon:          { marginRight: 4 },
