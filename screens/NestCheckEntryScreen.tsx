@@ -203,6 +203,8 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [ProjectedHatchRange, setProjectedHatchRange] = useState<{min: string; max: string} | null>(null);
   const [ActualHatchDate, setActualHatchDate]         = useState<string | null>(null);
   const [ProjectedFledgeDate, setProjectedFledgeDate] = useState<string | null>(null);
+  const [AgeSourceDate, setAgeSourceDate]             = useState<string | null>(null);
+  const [AgeInfoVisible, setAgeInfoVisible]           = useState(false);
 
   // ── Loading / saving / deleting ───────────────────────────────────────
   const [InitLoading, setInitLoading]         = useState(!!ExistingEntryId);
@@ -337,12 +339,14 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           setActualHatchDate(null);
           setProjectedFledgeDate(null);
           setCalculatedNestlingAge(null);
+          setAgeSourceDate(null);
         } else {
           setActualHatchDate(HatchStr);
           setProjectedFledgeDate(ProjFledgeStr);
           const [cy, cm, cd] = CheckDate.split('-').map(Number);
           const DiffDays = Math.round((new Date(cy, cm - 1, cd).getTime() - Hatch.getTime()) / 86400000);
           setCalculatedNestlingAge(DiffDays > 0 ? DiffDays : null);
+          setAgeSourceDate(DiffDays > 0 ? AnchorE.check_date : null);
         }
         FoundHatch = true;
         break;
@@ -352,6 +356,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       setActualHatchDate(null);
       setProjectedFledgeDate(null);
       setCalculatedNestlingAge(null);
+      setAgeSourceDate(null);
     }
   }, [ContextLoaded, InitLoading, NestingAttempt]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1229,59 +1234,69 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               disabled={EggCount > 0 || YoungCount > 0}
               onPress={() => { MarkDirty(); const N = !HasNestOnly; setHasNestOnly(N); if (N) setIsEmpty(false); }}
               mode="android"
-              style={styles.CheckboxItem}
+              position="trailing"
+              style={[styles.CheckboxItem, { alignSelf: 'flex-start' }]}
             />
 
             <View style={styles.CountersRow}>
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
                 <Counter
                   label={L('Eggs (incl. discards)', 'E')} value={EggCount}
                   onChange={(N) => { MarkDirty(); setEggCount(N); if (N > 0) setIsEmpty(false); }}
                   prevValue={PrevEntry ? Math.max(0, PrevEntry.egg_count - PrevEntry.discarded_eggs) : undefined}
                 />
                 {EggCount > 0 && (
-                  <Counter label={L('Discarded eggs', 'ED')} value={DiscardedEggs} onChange={(N) => { MarkDirty(); setDiscardedEggs(N); }} horizontal />
+                  <Counter label={L('Discards', 'ED')} value={DiscardedEggs} onChange={(N) => { MarkDirty(); setDiscardedEggs(N); }} horizontal />
                 )}
               </View>
-              <Counter
-                label={L('Young', 'Y')} value={YoungCount}
-                onChange={(N) => { MarkDirty(); setYoungCount(N); if (N > 0) setIsEmpty(false); }}
-                prevValue={PrevEntry?.young_count}
-              />
-            </View>
-
-            {YoungCount > 0 && (
-              <>
-                {CalculatedNestlingAge !== null ? (
-                  <Text style={styles.CalcAge}>{L('Nestling age', 'Age')}: {CalculatedNestlingAge} days</Text>
-                ) : (
-                  <View style={styles.AgeRow}>
-                    <View style={[{ flex: 1 }, IsHatchingDay && { opacity: 0.4 }]}>
-                      <Counter label={L('Nestling age', 'Age')} value={NestlingAgeDays} onChange={(N) => { MarkDirty(); setNestlingAgeDays(N); }} horizontal />
-                    </View>
+              <View style={styles.ColumnDivider} />
+              <View style={{ flex: 1, paddingLeft: 8 }}>
+                <Counter
+                  label={L('Young', 'Y')} value={YoungCount}
+                  onChange={(N) => { MarkDirty(); setYoungCount(N); if (N > 0) setIsEmpty(false); }}
+                  prevValue={PrevEntry?.young_count}
+                />
+                {YoungCount > 0 && (
+                  <>
+                    {CalculatedNestlingAge !== null ? (
+                      <View style={styles.AgeRow}>
+                        <Text style={styles.CalcAge}>Age: {CalculatedNestlingAge} days</Text>
+                        <IconButton
+                          icon="information"
+                          size={18}
+                          iconColor="#1565c0"
+                          onPress={() => setAgeInfoVisible(true)}
+                          style={{ margin: 0 }}
+                        />
+                      </View>
+                    ) : (
+                      <>
+                        <View style={[IsHatchingDay && { opacity: 0.4 }]}>
+                          <Counter label={L('Age', 'Age')} value={NestlingAgeDays} onChange={(N) => { MarkDirty(); setNestlingAgeDays(N); if (N > 0) setIsHatchingDay(false); }} horizontal />
+                        </View>
+                        <Checkbox.Item
+                          label={L('Hatch Day', 'HD')}
+                          status={IsHatchingDay ? 'checked' : 'unchecked'}
+                          onPress={() => { MarkDirty(); const Next = !IsHatchingDay; setIsHatchingDay(Next); if (Next) setNestlingAgeDays(0); }}
+                          mode="android"
+                          style={styles.CheckboxItem}
+                        />
+                      </>
+                    )}
                     <Checkbox.Item
-                      label={L('Hatch Day', 'HD')}
-                      status={IsHatchingDay ? 'checked' : 'unchecked'}
-                      onPress={() => { MarkDirty(); setIsHatchingDay(!IsHatchingDay); }}
+                      label={L('Dead young', 'DY')}
+                      status={HasDeadYoung ? 'checked' : 'unchecked'}
+                      onPress={() => { MarkDirty(); setHasDeadYoung(!HasDeadYoung); }}
                       mode="android"
                       style={styles.CheckboxItem}
                     />
-                  </View>
+                    {HasDeadYoung && (
+                      <Counter label={L('# dead', 'DY#')} value={DeadYoungCount} onChange={(N) => { MarkDirty(); setDeadYoungCount(N); }} horizontal />
+                    )}
+                  </>
                 )}
-                <View style={styles.DeadYoungRow}>
-                  <Checkbox.Item
-                    label={L('Dead young', 'DY')}
-                    status={HasDeadYoung ? 'checked' : 'unchecked'}
-                    onPress={() => { MarkDirty(); setHasDeadYoung(!HasDeadYoung); }}
-                    mode="android"
-                    style={styles.CheckboxItem}
-                  />
-                  {HasDeadYoung && (
-                    <Counter label="" value={DeadYoungCount} onChange={(N) => { MarkDirty(); setDeadYoungCount(N); }} />
-                  )}
-                </View>
-              </>
-            )}
+              </View>
+            </View>
 
             {HasNest && (
               <>
@@ -1773,6 +1788,19 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           </Dialog.Actions>
         </Dialog>
 
+        {/* ── Age source info ─────────────────────────────────────── */}
+        <Dialog visible={AgeInfoVisible} onDismiss={() => setAgeInfoVisible(false)}>
+          <Dialog.Title>Age calculated</Dialog.Title>
+          <Dialog.Content>
+            <Text>
+              Nestling age was recorded on the check from {AgeSourceDate ? formatDate(AgeSourceDate) : 'a previous check'} and has been calculated forward to today.
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setAgeInfoVisible(false)}>OK</Button>
+          </Dialog.Actions>
+        </Dialog>
+
         {/* ── Fledge prompt ───────────────────────────────────────── */}
         <Dialog visible={FledgePromptVisible} onDismiss={() => setFledgePromptVisible(false)}>
           <Dialog.Title>Young old enough to fledge</Dialog.Title>
@@ -1826,17 +1854,18 @@ const styles = StyleSheet.create({
   CounterControls:   { flexDirection: 'row', alignItems: 'center' },
   StepBtn:           { marginHorizontal: 4 },
   CounterInput: {
-    width: 44, fontSize: 22, fontWeight: '600', textAlign: 'center',
+    width: 36, fontSize: 20, fontWeight: '600', textAlign: 'center',
     borderWidth: 1.5, borderColor: '#888', borderRadius: 4,
     paddingHorizontal: 4, paddingVertical: 4, color: '#000',
   },
-  PrevBtn:           { marginTop: 6, alignSelf: 'center' },
+  PrevBtn:           { marginTop: 1, alignSelf: 'center' },
   PrevBtnH:         { alignSelf: 'center' },
   PrevBtnLabel:      { fontSize: 14, marginVertical: 2, marginHorizontal: 4 },
   CheckboxItem:      { paddingVertical: 0 },
   PMStatusRow:       { flexDirection: 'row' },
   PMStatusItem:      { flex: 1 },
   AgeRow:            { flexDirection: 'row', alignItems: 'center' },
+  ColumnDivider:     { width: 1, backgroundColor: '#ddd', alignSelf: 'stretch' },
   DeadYoungRow:      { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   ExpandBtn:         { alignSelf: 'flex-start', marginTop: 4 },
   ExpandBtnContent:  { flexDirection: 'row-reverse' },
