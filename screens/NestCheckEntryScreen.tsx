@@ -94,11 +94,11 @@ function computeConfirmedAge(others: (string | null)[], current: string | null):
 function Counter({
   label, value, onChange, prevValue, horizontal,
 }: {
-  label: string; value: number; onChange: (n: number) => void; prevValue?: number | null; horizontal?: boolean;
+  label: React.ReactNode; value: number; onChange: (n: number) => void; prevValue?: number | null; horizontal?: boolean;
 }) {
   return (
     <View style={horizontal ? styles.CounterH : styles.Counter}>
-      {label !== '' && <Text style={horizontal ? styles.CounterLabelH : styles.CounterLabel}>{label}</Text>}
+      {!!label && <Text style={horizontal ? styles.CounterLabelH : styles.CounterLabel}>{label}</Text>}
       <View style={styles.CounterControls}>
         <IconButton icon="minus" size={14} mode="contained" containerColor="#c62828" iconColor="#fff" onPress={() => onChange(Math.max(0, value - 1))} style={styles.StepBtn} />
         <RNTextInput
@@ -1241,7 +1241,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             <View style={styles.CountersRow}>
               <View style={{ flex: 1, paddingRight: 8 }}>
                 <Counter
-                  label={L('Eggs (incl. discards)', 'E')} value={EggCount}
+                  label={CompactMode ? 'E' : <><Text style={{ fontWeight: '700' }}>Eggs</Text><Text> (incl. discards)</Text></>} value={EggCount}
                   onChange={(N) => { MarkDirty(); setEggCount(N); if (N > 0) setIsEmpty(false); }}
                   prevValue={PrevEntry ? Math.max(0, PrevEntry.egg_count - PrevEntry.discarded_eggs) : undefined}
                 />
@@ -1252,7 +1252,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               <View style={styles.ColumnDivider} />
               <View style={{ flex: 1, paddingLeft: 8 }}>
                 <Counter
-                  label={L('Young', 'Y')} value={YoungCount}
+                  label={CompactMode ? 'Y' : <Text style={{ fontWeight: '700' }}>Young</Text>} value={YoungCount}
                   onChange={(N) => { MarkDirty(); setYoungCount(N); if (N > 0) setIsEmpty(false); }}
                   prevValue={PrevEntry?.young_count}
                 />
@@ -1776,7 +1776,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         <Dialog visible={AbandonVisible} onDismiss={() => setAbandonVisible(false)}>
           <Dialog.Title>Discard changes?</Dialog.Title>
           <Dialog.Content>
-            <Text>You have unsaved changes. Go back and discard them?</Text>
+            <Text>You have unsaved changes. Go back and discard them? You may have to scroll down to see the Save/Update button.</Text>
           </Dialog.Content>
           <Dialog.Actions>
             <Button onPress={() => setAbandonVisible(false)}>Keep editing</Button>
