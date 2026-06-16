@@ -44,6 +44,7 @@ export type EntrySummaryInput = {
   male_age?: string | null;
   female_age?: string | null;
   has_banding?: boolean;
+  gourd_removed?: boolean;
 };
 
 export function buildEntrySummary(entry: EntrySummaryInput): string {
@@ -79,7 +80,8 @@ export function buildEntrySummary(entry: EntrySummaryInput): string {
     ].filter(Boolean);
     if (AgeParts.length > 0) Parts.push(AgeParts.join(' '));
   }
-  if (entry.has_banding) Parts.push('B');
+  if (entry.has_banding)    Parts.push('B');
+  if (entry.gourd_removed)  Parts.push('Gourd removed');
   return Parts.join(' · ');
 }
 

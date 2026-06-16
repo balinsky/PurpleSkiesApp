@@ -34,6 +34,7 @@ type CompartmentRow = {
   sort_order: number | null;
   unit_id: string;
   unit_name: string;
+  housing_type: string | null;
   entry_id: string | null;
   entry_summary: string | null;
   prev_summary: string | null;
@@ -83,8 +84,8 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
   useFocusEffect(useCallback(() => { loadData(); }, [CheckId, SiteId]));
 
   async function loadData() {
-    type UnitRow = { id: string; name: string; compartments: { id: string; cavity_label: string; sort_order: number | null }[] };
-    type EntryRow = { id: string; compartment_id: string; species: string; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean; adult_present: boolean; renesting_attempt: boolean; egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null; fledged_count: number };
+    type UnitRow = { id: string; name: string; compartments: { id: string; cavity_label: string; sort_order: number | null; housing_type: string | null }[] };
+    type EntryRow = { id: string; compartment_id: string; species: string; is_empty_cavity: boolean; has_nest: boolean; nest_discarded: boolean; adult_present: boolean; renesting_attempt: boolean; egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null; fledged_count: number; gourd_removed: boolean };
     type SeasonRow = { compartment_id: string; male_age: string | null; female_age: string | null };
 
     function buildSections(
@@ -127,6 +128,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
               sort_order:    C.sort_order,
               unit_id:       Unit.id,
               unit_name:     Unit.name,
+              housing_type:  (C as any).housing_type ?? null,
               entry_id:      Entry?.id ?? null,
               entry_summary: Entry ? buildEntrySummary({
                 ...Entry,
@@ -146,14 +148,14 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     try {
       const { data: Units, error: UnitsError } = await supabase
         .from('housing_units')
-        .select('id, name, compartments(id, cavity_label, sort_order)')
+        .select('id, name, compartments(id, cavity_label, sort_order, housing_type)')
         .eq('site_id', SiteId)
         .order('name');
       if (UnitsError) throw UnitsError;
 
       const { data: RemoteEntries, error: EntriesError } = await supabase
         .from('nest_check_entries')
-        .select('id, compartment_id, species, is_empty_cavity, has_nest, nest_discarded, adult_present, renesting_attempt, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count')
+        .select('id, compartment_id, species, is_empty_cavity, has_nest, nest_discarded, adult_present, renesting_attempt, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count, gourd_removed')
         .eq('nest_check_id', CheckId);
       if (EntriesError) throw EntriesError;
 
@@ -267,7 +269,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       const TypedUnits: UnitRow[] = (Units ?? []).map(U => ({
         id: U.id, name: U.name,
         compartments: ((U.compartments as any[]) ?? []).map((C: any) => ({
-          id: C.id, cavity_label: C.cavity_label, sort_order: C.sort_order ?? null,
+          id: C.id, cavity_label: C.cavity_label, sort_order: C.sort_order ?? null, housing_type: C.housing_type ?? null,
         })),
       }));
       buildSections(TypedUnits, (Entries ?? []) as EntryRow[], BandingSet, HatchDateMap, NestSeasonRows ?? [], PrevEntryMap);
@@ -278,7 +280,11 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
         const LocalEntries  = (await getLocalEntriesForCheck(CheckId)).map(localEntryToJs);
         const LocalBandSet  = await getLocalBandEntryIds(LocalEntries.map(E => E.id));
         const LocalSeasons  = await getLocalNestSeasons(SeasonId);
-        buildSections(LocalUnits, LocalEntries as EntryRow[], LocalBandSet, new Map(), LocalSeasons, new Map());
+        const LocalUnitsTyped = LocalUnits.map(U => ({
+          ...U,
+          compartments: U.compartments.map(C => ({ ...C, housing_type: null as string | null })),
+        }));
+        buildSections(LocalUnitsTyped, LocalEntries as EntryRow[], LocalBandSet, new Map(), LocalSeasons, new Map());
       } catch {
         buildSections([], [], new Set(), new Map(), [], new Map());
       }
@@ -329,7 +335,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       nestling_age_days: null, nestling_age_notes: null as null,
       dead_young_count: 0, dead_adult_male: false, dead_adult_female: false,
       fledged_count: 0, renesting_attempt: false, notes: null,
-      observed_male_age: null, observed_female_age: null,
+      observed_male_age: null, observed_female_age: null, gourd_removed: false,
     };
     let savedLocally = false;
     try {
@@ -368,7 +374,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       nestling_age_days: null, nestling_age_notes: null as null,
       dead_young_count: 0, dead_adult_male: false, dead_adult_female: false,
       fledged_count: fledgedCount, renesting_attempt: false, notes: null,
-      observed_male_age: null, observed_female_age: null,
+      observed_male_age: null, observed_female_age: null, gourd_removed: false,
     };
     let savedLocally = false;
     try {
@@ -435,6 +441,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       notes: null,
       observed_male_age: null,
       observed_female_age: null,
+      gourd_removed: false,
     };
     let savedLocally = false;
     try {
@@ -473,6 +480,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       CompartmentId:    item.id,
       CompartmentLabel: item.cavity_label,
       UnitName:         item.unit_name,
+      HousingType:      item.housing_type ?? undefined,
       ExistingEntryId:  item.entry_id,
       AllCompartments,
       CompartmentIndex: AllCompartments.findIndex(c => c.id === item.id),

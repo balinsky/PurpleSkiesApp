@@ -49,6 +49,7 @@ export async function initDb(): Promise<void> {
       notes TEXT,
       observed_male_age TEXT,
       observed_female_age TEXT,
+      gourd_removed INTEGER NOT NULL DEFAULT 0,
       sync_status TEXT NOT NULL DEFAULT 'pending',
       updated_at TEXT NOT NULL
     );
@@ -86,6 +87,9 @@ export async function initDb(): Promise<void> {
   } catch {}
   try {
     await _db.execAsync('ALTER TABLE nest_check_entries ADD COLUMN adult_present INTEGER NOT NULL DEFAULT 0');
+  } catch {}
+  try {
+    await _db.execAsync('ALTER TABLE nest_check_entries ADD COLUMN gourd_removed INTEGER NOT NULL DEFAULT 0');
   } catch {}
 }
 
@@ -204,6 +208,7 @@ export type LocalEntry = {
   dead_young_count: number; dead_adult_male: number; dead_adult_female: number;
   fledged_count: number; renesting_attempt: number; nesting_attempt: number;
   notes: string | null; observed_male_age: string | null; observed_female_age: string | null;
+  gourd_removed: number;
   sync_status: string; updated_at: string;
 };
 
@@ -219,6 +224,7 @@ export function localEntryToJs(E: LocalEntry) {
     dead_adult_male:   !!E.dead_adult_male,
     dead_adult_female: !!E.dead_adult_female,
     renesting_attempt: !!E.renesting_attempt,
+    gourd_removed:     !!E.gourd_removed,
   };
 }
 
@@ -232,8 +238,8 @@ export async function cacheEntries(entries: any[]): Promise<void> {
        (id,nest_check_id,compartment_id,species,is_empty_cavity,has_nest,nest_discarded,nest_replaced,adult_present,
         egg_count,discarded_eggs,young_count,nestling_age_days,nestling_age_notes,
         dead_young_count,dead_adult_male,dead_adult_female,fledged_count,renesting_attempt,nesting_attempt,
-        notes,observed_male_age,observed_female_age,sync_status,updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'synced',?)`,
+        notes,observed_male_age,observed_female_age,gourd_removed,sync_status,updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'synced',?)`,
       [
         E.id, E.nest_check_id, E.compartment_id, E.species ?? 'PM',
         E.is_empty_cavity ? 1 : 0, E.has_nest ? 1 : 0,
@@ -243,6 +249,7 @@ export async function cacheEntries(entries: any[]): Promise<void> {
         E.dead_young_count ?? 0, E.dead_adult_male ? 1 : 0, E.dead_adult_female ? 1 : 0,
         E.fledged_count ?? 0, E.renesting_attempt ? 1 : 0, E.nesting_attempt ?? 1,
         E.notes ?? null, E.observed_male_age ?? null, E.observed_female_age ?? null,
+        E.gourd_removed ? 1 : 0,
         now,
       ],
     );
@@ -258,6 +265,7 @@ export async function upsertLocalEntry(E: {
   dead_young_count: number; dead_adult_male: boolean; dead_adult_female: boolean;
   fledged_count: number; renesting_attempt: boolean; nesting_attempt?: number;
   notes: string | null; observed_male_age: string | null; observed_female_age: string | null;
+  gourd_removed: boolean;
 }): Promise<void> {
   const D = await db();
   await D.runAsync(
@@ -265,8 +273,8 @@ export async function upsertLocalEntry(E: {
      (id,nest_check_id,compartment_id,species,is_empty_cavity,has_nest,nest_discarded,nest_replaced,adult_present,
       egg_count,discarded_eggs,young_count,nestling_age_days,nestling_age_notes,
       dead_young_count,dead_adult_male,dead_adult_female,fledged_count,renesting_attempt,nesting_attempt,
-      notes,observed_male_age,observed_female_age,sync_status,updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?)`,
+      notes,observed_male_age,observed_female_age,gourd_removed,sync_status,updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?)`,
     [
       E.id, E.nest_check_id, E.compartment_id, E.species,
       E.is_empty_cavity ? 1 : 0, E.has_nest ? 1 : 0,
@@ -276,6 +284,7 @@ export async function upsertLocalEntry(E: {
       E.dead_young_count, E.dead_adult_male ? 1 : 0, E.dead_adult_female ? 1 : 0,
       E.fledged_count, E.renesting_attempt ? 1 : 0, E.nesting_attempt ?? 1,
       E.notes, E.observed_male_age, E.observed_female_age,
+      E.gourd_removed ? 1 : 0,
       new Date().toISOString(),
     ],
   );

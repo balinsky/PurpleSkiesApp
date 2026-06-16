@@ -51,6 +51,7 @@ type EntryData = {
   nest_discarded: boolean;
   has_banding: boolean;
   fledged_count: number;
+  gourd_removed: boolean;
 };
 
 function ordinal(n: number): string {
@@ -78,23 +79,25 @@ function addDays(iso: string, days: number): string {
 function checkCode(entry: EntryData | null): string {
   if (!entry || !entry.species) return 'X';
   if (entry.nest_discarded) return 'D';
+  let code = '';
   if (entry.species !== 'PM') {
     const parts = [
       entry.egg_count > 0 ? `${entry.egg_count}E` : '',
       entry.young_count > 0 ? `${entry.young_count}Y` : '',
     ].filter(Boolean).join(' ');
-    return parts ? `${entry.species} ${parts}` : entry.species;
-  }
-  let code = '';
-  if (entry.young_count > 0) {
-    const age = entry.nestling_age_days != null ? ` ${entry.nestling_age_days}do` : '';
-    code = `${entry.young_count}Y${age}`;
-  } else if (entry.egg_count > 0) {
-    code = `${entry.egg_count}E`;
+    code = parts ? `${entry.species} ${parts}` : entry.species;
   } else {
-    code = 'N';
+    if (entry.young_count > 0) {
+      const age = entry.nestling_age_days != null ? ` ${entry.nestling_age_days}do` : '';
+      code = `${entry.young_count}Y${age}`;
+    } else if (entry.egg_count > 0) {
+      code = `${entry.egg_count}E`;
+    } else {
+      code = 'N';
+    }
+    if (entry.has_banding) code += ' B';
   }
-  if (entry.has_banding) code += ' B';
+  if (entry.gourd_removed) code += ' GR';
   return code;
 }
 
@@ -184,6 +187,7 @@ function addInfoBlock(ws: any, colA: number, year: number, siteName: string, con
     'X=Empty Cavity', 'N=Nest', 'E=Egg(s)', 'Y=Young (living)',
     '3do=Young 3 days old', 'HD=Hatching Day', 'DY=Dead Young',
     'NR=Nest Replaced', 'D=Discarded', 'B=Banded', 'RA=Renesting Attempt',
+    'GR=Gourd Removed',
     'PM=Purple Martin', 'HS=House Sparrow', 'ST=Starling',
     'TS=Tree Swallow', 'BB=Bluebird', 'HW=House Wren',
   ];
@@ -239,7 +243,7 @@ export async function exportSeasonXls(
 
   const { data: Entries } = await supabase
     .from('nest_check_entries')
-    .select('id, nest_check_id, compartment_id, species, adult_present, egg_count, discarded_eggs, young_count, nestling_age_days, nest_discarded, fledged_count, nesting_attempt, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
+    .select('id, nest_check_id, compartment_id, species, adult_present, egg_count, discarded_eggs, young_count, nestling_age_days, nest_discarded, fledged_count, nesting_attempt, gourd_removed, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
     .in('nest_check_id', Checks.map(c => c.id));
 
   const BandingSet = new Set<string>();
@@ -335,6 +339,7 @@ export async function exportSeasonXls(
         nest_discarded:    E.nest_discarded ?? false,
         has_banding:       BandingSet.has(E.id),
         fledged_count:     (E as any).fledged_count ?? 0,
+        gourd_removed:     !!(E as any).gourd_removed,
       });
     }
 
@@ -351,6 +356,20 @@ export async function exportSeasonXls(
   }
   for (const [id, hist] of AllHistoryByCompartment)
     AllHistoryByCompartment.set(id, hist.sort((a, b) => a.check_date.localeCompare(b.check_date)));
+
+  // Track the most recent check date where gourd_removed was recorded per compartment
+  const GourdRemovedDate = new Map<string, string>();
+  for (const E of Entries) {
+    if ((E as any).gourd_removed) {
+      const Chk = Checks.find(c => c.id === E.nest_check_id);
+      if (Chk) {
+        const existing = GourdRemovedDate.get(E.compartment_id);
+        if (!existing || Chk.check_date > existing) {
+          GourdRemovedDate.set(E.compartment_id, Chk.check_date);
+        }
+      }
+    }
+  }
 
   // Compartments that have at least one renesting attempt row
   const MultiAttemptCompartments = new Set<string>();
@@ -441,12 +460,15 @@ export async function exportSeasonXls(
     HatchCount = EWD.length > 0 ? Math.max(...EWD.map(({ entry }) => entry?.young_count ?? 0)) : 0;
     const FledgeCount = EWD.reduce((sum, { entry }) => sum + (entry?.fledged_count ?? 0), 0);
 
-    // For multi-attempt compartments, show blank for checks belonging to a different attempt
-    const CheckCodes = Checks.map(c =>
-      MultiAttemptCompartments.has(Data.compartment_id)
-        ? (Data.byCheck.has(c.id) ? checkCode(Data.byCheck.get(c.id)!) : '')
-        : checkCode(Data.byCheck.get(c.id) ?? null)
-    );
+    // For multi-attempt compartments, show blank for checks belonging to a different attempt.
+    // For gourd-removed compartments, show blank for subsequent checks with no entry.
+    const GourdDate = GourdRemovedDate.get(Data.compartment_id);
+    const CheckCodes = Checks.map(c => {
+      if (Data.byCheck.has(c.id)) return checkCode(Data.byCheck.get(c.id)!);
+      if (GourdDate && c.check_date > GourdDate) return '';
+      if (MultiAttemptCompartments.has(Data.compartment_id)) return '';
+      return checkCode(null);
+    });
 
     DataRows.push([
       Data.housing_type,

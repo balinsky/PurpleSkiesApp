@@ -45,7 +45,7 @@ export type AppStackParamList = {
   CreateCompartment: { UnitId: string; UnitType: string; DefaultHoleType: string | null };
   SeasonDetail: { SeasonId: string; SiteId: string; Year: number };
   NestCheckDetail: { CheckId: string; CheckDate: string; SiteId: string; SeasonId: string; Year: number };
-  NestCheckEntry: { CheckId: string; CheckDate: string; SeasonId: string; SiteId: string; CompartmentId: string; CompartmentLabel: string; UnitName: string; ExistingEntryId: string | null; AllCompartments?: { id: string; cavity_label: string; unit_name: string; entry_id: string | null }[]; CompartmentIndex?: number };
+  NestCheckEntry: { CheckId: string; CheckDate: string; SeasonId: string; SiteId: string; CompartmentId: string; CompartmentLabel: string; UnitName: string; HousingType?: string; ExistingEntryId: string | null; AllCompartments?: { id: string; cavity_label: string; unit_name: string; entry_id: string | null }[]; CompartmentIndex?: number };
 };
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();

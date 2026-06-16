@@ -105,7 +105,8 @@ function Counter({
 
 // ── Screen ─────────────────────────────────────────────────────────────────
 export default function NestCheckEntryScreen({ navigation, route }: Props) {
-  const { CheckId, CheckDate, SeasonId, SiteId, CompartmentId, ExistingEntryId, AllCompartments, CompartmentIndex } = route.params;
+  const { CheckId, CheckDate, SeasonId, SiteId, CompartmentId, HousingType, ExistingEntryId, AllCompartments, CompartmentIndex } = route.params;
+  const IsGourd = HousingType === 'AG' || HousingType === 'NG';
   const NextCompartment = (AllCompartments && CompartmentIndex !== undefined && CompartmentIndex < AllCompartments.length - 1)
     ? AllCompartments[CompartmentIndex + 1]
     : null;
@@ -118,6 +119,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [SpeciesExpanded, setSpeciesExpanded] = useState(false);
 
   // ── Status ───────────────────────────────────────────────────────────
+  const [GourdRemoved, setGourdRemoved] = useState(false);
   const [IsEmpty, setIsEmpty]           = useState(false);
   const [AdultPresent, setAdultPresent] = useState(false);
   const [HasNestOnly, setHasNestOnly]   = useState(false); // nest w/ no eggs, or non-PM nest present
@@ -476,6 +478,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       }
       if (!E) return;
       setSpeciesVal(E.species ?? 'PM');
+      setGourdRemoved(!!(E as any).gourd_removed);
       setIsEmpty(!!E.is_empty_cavity);
       setAdultPresent(!!(E as any).adult_present);
       setEggCount(E.egg_count ?? 0);
@@ -687,6 +690,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       notes:              Notes.trim() || null,
       observed_male_age:  IsPM ? ObservedMaleAge : null,
       observed_female_age: IsPM ? ObservedFemaleAge : null,
+      gourd_removed:      IsGourd ? GourdRemoved : false,
     };
 
     const EntryId = ExistingEntryId ?? makeId();
@@ -1541,6 +1545,17 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               style={styles.CheckboxItem}
             />
           </View>
+        )}
+
+        {/* ── Gourd Removed (gourds only) ─────────────────────────── */}
+        {IsGourd && (
+          <Checkbox.Item
+            label="Gourd removed"
+            status={GourdRemoved ? 'checked' : 'unchecked'}
+            onPress={() => { MarkDirty(); setGourdRemoved(!GourdRemoved); }}
+            mode="android"
+            style={styles.CheckboxItem}
+          />
         )}
 
         {/* ── Notes (expandable) ──────────────────────────────────── */}

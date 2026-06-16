@@ -54,6 +54,7 @@ async function pushPendingEntries() {
       notes:               E.notes,
       observed_male_age:   E.observed_male_age,
       observed_female_age: E.observed_female_age,
+      gourd_removed:       !!E.gourd_removed,
     });
     if (!error) await markEntrySynced(E.id);
   }

@@ -119,6 +119,14 @@ describe('netEggs', () => {
 // ── buildEntrySummary ─────────────────────────────────────────────────────────
 
 describe('buildEntrySummary', () => {
+  it('appends "Gourd removed" to the summary when gourd_removed is true', () => {
+    expect(buildEntrySummary(entry({ gourd_removed: true }))).toBe('Purple Martin nest · Gourd removed');
+  });
+
+  it('stacks Gourd removed with egg count', () => {
+    expect(buildEntrySummary(entry({ egg_count: 3, gourd_removed: true }))).toBe('Purple Martin · 3 eggs · Gourd removed');
+  });
+
   it('returns "Empty cavity" for empty cavity', () => {
     expect(buildEntrySummary(entry({ is_empty_cavity: true }))).toBe('Empty cavity');
   });
