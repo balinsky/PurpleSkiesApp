@@ -595,6 +595,14 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   }, [CompartmentId, SeasonId, ExistingEntryId]);
 
   // ── Banding helpers ────────────────────────────────────────────────────
+  function validateNewFederalBand(code: string): string | null {
+    const digits = code.replace(/-/g, '');
+    if (!/^\d+$/.test(digits)) return 'Federal band number may only contain digits and an optional dash.';
+    if (digits.length < 8) return `Federal band numbers must be 8 or 9 digits (you entered ${digits.length}).`;
+    if (digits.length > 9) return `Federal band numbers must be 8 or 9 digits (you entered ${digits.length}).`;
+    return null;
+  }
+
   function openAddNestlingBand(Idx: number) {
     setAddNestlingBandIdx(Idx);
     setNewBandType('federal');
@@ -614,10 +622,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     setAddNestlingBandVisible(false);
   }
 
-  function handleConfirmNestlingBand() {
-    if (!NewBandCode.trim()) { setNewBandError('Please enter a band number or code.'); return; }
-    MarkDirty();
+  function commitNestlingBand() {
     if (AddNestlingBandIdx === null) return;
+    MarkDirty();
     const Band: NestlingBand = {
       band_type:  NewBandType,
       band_color: NewBandType === 'color' ? (NewBandColor.trim() || null) : null,
@@ -629,8 +636,29 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     setAddNestlingBandVisible(false);
   }
 
-  function handleConfirmAdultBand() {
-    if (!NewBandCode.trim()) { setNewBandError('Please enter a band number or code.'); return; }
+  function handleConfirmNestlingBand() {
+    const Code = NewBandCode.trim();
+    if (!Code) { setNewBandError('Please enter a band number or code.'); return; }
+    if (NewBandType === 'federal') {
+      const Err = validateNewFederalBand(Code);
+      if (Err) { setNewBandError(Err); return; }
+      const Digits = Code.replace(/-/g, '').length;
+      if (Digits === 8) {
+        Alert.alert(
+          'Check band number',
+          `You entered "${Code.toUpperCase()}" (${Digits} digits). Federal bands should have 8 or 9 digits — are you sure no digits are missing?`,
+          [
+            { text: 'Go back', style: 'cancel' },
+            { text: 'Add anyway', onPress: () => commitNestlingBand() },
+          ],
+        );
+        return;
+      }
+    }
+    commitNestlingBand();
+  }
+
+  function commitAdultBand() {
     MarkDirty();
     setAdultBands(Ab => [...Ab, {
       is_new_banding: NewAdultIsNew,
@@ -640,6 +668,36 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       band_code:      NewBandCode.trim().toUpperCase(),
     }]);
     setAddAdultBandVisible(false);
+  }
+
+  function handleConfirmAdultBand() {
+    const Code = NewBandCode.trim();
+    if (!Code) { setNewBandError('Please enter a band number or code.'); return; }
+    if (NewBandType === 'federal') {
+      if (NewAdultIsNew) {
+        const Err = validateNewFederalBand(Code);
+        if (Err) { setNewBandError(Err); return; }
+        const Digits = Code.replace(/-/g, '').length;
+        if (Digits === 8) {
+          Alert.alert(
+            'Check band number',
+            `You entered "${Code.toUpperCase()}" (${Digits} digits). Federal bands should have 8 or 9 digits — are you sure no digits are missing?`,
+            [
+              { text: 'Go back', style: 'cancel' },
+              { text: 'Add anyway', onPress: () => commitAdultBand() },
+            ],
+          );
+          return;
+        }
+      } else {
+        // Observed band: allow digits, dashes, and ? for unknown digits
+        if (!/^[\d\-?]+$/.test(Code)) {
+          setNewBandError('Use digits, a dash, or ? for any digit you can\'t read.');
+          return;
+        }
+      }
+    }
+    commitAdultBand();
   }
 
   function handleSpeciesChange(Val: string) {
@@ -1715,6 +1773,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 style={styles.BandInput}
                 onFocus={() => setTimeout(() => AdultBandScrollRef.current?.scrollToEnd({ animated: true }), 150)}
               />
+              {NewBandType === 'federal' && !NewAdultIsNew && (
+                <HelperText type="info" visible>
+                  Use ? for any digit you can't read — e.g. ?341? (unknown digits before/after) or ?3?5 (unknown in the middle)
+                </HelperText>
+              )}
               {NewBandError ? <HelperText type="error" visible>{NewBandError}</HelperText> : null}
             </ScrollView>
           </Dialog.ScrollArea>
