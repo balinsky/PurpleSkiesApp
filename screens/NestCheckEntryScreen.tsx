@@ -18,7 +18,7 @@ import {
   getLocalBands, cacheBands, getLocalPriorBandCounts,
   upsertLocalEntry, upsertLocalNestling, replaceLocalBands,
   upsertLocalNestSeason, deleteLocalEntry, makeId, setLocalEntriesNestingAttempt,
-  resetLocalNestingAttemptsForCompartment,
+  resetLocalNestingAttemptsForCompartment, lookupLocalBandLocation,
 } from '../lib/localDb';
 
 type Props = {
@@ -186,6 +186,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [LastFederalCode, setLastFederalCode]               = useState<string | null>(null);
   const [LastColorCode, setLastColorCode]                   = useState<string | null>(null);
   const [LastColorBandColor, setLastColorBandColor]         = useState<string | null>(null);
+  const [BandLookupPending, setBandLookupPending]           = useState(false);
 
   // ── Notes (expandable) ────────────────────────────────────────────────
   const [NotesExpanded, setNotesExpanded] = useState(false);
@@ -609,6 +610,56 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   }, [CompartmentId, SeasonId, ExistingEntryId]);
 
   // ── Banding helpers ────────────────────────────────────────────────────
+
+  async function lookupBandLocation(bandCode: string): Promise<{
+    site?: string; unit: string; cavity: string; date: string;
+  } | null> {
+    try {
+      if (isOnline) {
+        // Step 1: band → entry → compartment → unit
+        const { data: bandRow } = await supabase
+          .from('bands')
+          .select(`
+            nest_check_entries!inner(
+              nest_check_id,
+              compartments!inner(cavity_label, housing_units!inner(name))
+            )
+          `)
+          .eq('band_code', bandCode)
+          .eq('is_new_banding', true)
+          .limit(1)
+          .maybeSingle();
+        if (!bandRow) return null;
+        const entry = (bandRow as any).nest_check_entries;
+        const comp  = entry?.compartments;
+        // Step 2: nest_check → site
+        const { data: checkRow } = await supabase
+          .from('nest_checks')
+          .select('check_date, sites!inner(name)')
+          .eq('id', entry?.nest_check_id)
+          .maybeSingle();
+        return {
+          site:   (checkRow as any)?.sites?.name,
+          unit:   comp?.housing_units?.name ?? 'Unknown unit',
+          cavity: comp?.cavity_label ?? '?',
+          date:   checkRow?.check_date ?? '?',
+        };
+      } else {
+        return await lookupLocalBandLocation(bandCode);
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  function locationString(loc: { site?: string; unit: string; cavity: string; date: string }): string {
+    const parts: string[] = [];
+    if (loc.site) parts.push(loc.site);
+    parts.push(`${loc.unit}, compartment ${loc.cavity}`);
+    parts.push(formatDate(loc.date));
+    return parts.join(' · ');
+  }
+
   function validateNewFederalBand(code: string): string | null {
     const digits = code.replace(/-/g, '');
     if (!/^\d+$/.test(digits)) return 'Federal band number may only contain digits and an optional dash.';
@@ -680,22 +731,25 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     setAddNestlingBandVisible(false);
   }
 
-  function handleConfirmNestlingBand() {
+  async function handleConfirmNestlingBand() {
     const Code = NewBandCode.trim();
     if (!Code) { setNewBandError('Please enter a band number or code.'); return; }
-    if (NewBandType === 'federal') {
+    if (NewBandType === 'federal' && EditNestlingBandIdx === null) {
       const Err = validateNewFederalBand(Code);
       if (Err) { setNewBandError(Err); return; }
       const Digits = Code.replace(/-/g, '').length;
-      if (Digits === 8) {
-        Alert.alert(
-          'Check band number',
-          `You entered "${Code.toUpperCase()}" (${Digits} digits). Federal bands should have 8 or 9 digits — are you sure no digits are missing?`,
-          [
-            { text: 'Go back', style: 'cancel' },
-            { text: 'Add anyway', onPress: () => commitNestlingBand() },
-          ],
-        );
+      const is8Digit = Digits === 8;
+      setBandLookupPending(true);
+      const existing = await lookupBandLocation(Code.toUpperCase());
+      setBandLookupPending(false);
+      if (existing || is8Digit) {
+        const lines: string[] = [];
+        if (existing) lines.push(`Band ${Code.toUpperCase()} was already assigned at ${locationString(existing)}.`);
+        if (is8Digit) lines.push(`This band has ${Digits} digits — federal bands should have 8 or 9 digits. Are you sure no digits are missing?`);
+        Alert.alert('Check band number', lines.join('\n\n'), [
+          { text: 'Go back', style: 'cancel' },
+          { text: 'Add anyway', onPress: () => commitNestlingBand() },
+        ]);
         return;
       }
     }
@@ -740,30 +794,47 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     setAddAdultBandVisible(false);
   }
 
-  function handleConfirmAdultBand() {
+  async function handleConfirmAdultBand() {
     const Code = NewBandCode.trim();
     if (!Code) { setNewBandError('Please enter a band number or code.'); return; }
     if (NewBandType === 'federal') {
-      if (NewAdultIsNew) {
+      if (NewAdultIsNew && EditAdultBandIdx === null) {
         const Err = validateNewFederalBand(Code);
         if (Err) { setNewBandError(Err); return; }
         const Digits = Code.replace(/-/g, '').length;
-        if (Digits === 8) {
-          Alert.alert(
-            'Check band number',
-            `You entered "${Code.toUpperCase()}" (${Digits} digits). Federal bands should have 8 or 9 digits — are you sure no digits are missing?`,
-            [
-              { text: 'Go back', style: 'cancel' },
-              { text: 'Add anyway', onPress: () => commitAdultBand() },
-            ],
-          );
+        const is8Digit = Digits === 8;
+        setBandLookupPending(true);
+        const existing = await lookupBandLocation(Code.toUpperCase());
+        setBandLookupPending(false);
+        if (existing || is8Digit) {
+          const lines: string[] = [];
+          if (existing) lines.push(`Band ${Code.toUpperCase()} was already assigned at ${locationString(existing)}.`);
+          if (is8Digit) lines.push(`This band has ${Digits} digits — federal bands should have 8 or 9 digits. Are you sure no digits are missing?`);
+          Alert.alert('Check band number', lines.join('\n\n'), [
+            { text: 'Go back', style: 'cancel' },
+            { text: 'Add anyway', onPress: () => commitAdultBand() },
+          ]);
           return;
         }
-      } else {
+      } else if (!NewAdultIsNew) {
         // Observed band: allow digits, dashes, and ? for unknown digits
         if (!/^[\d\-?]+$/.test(Code)) {
           setNewBandError('Use digits, a dash, or ? for any digit you can\'t read.');
           return;
+        }
+        // If no ? present, look up the band and show its origin
+        if (!Code.includes('?')) {
+          setBandLookupPending(true);
+          const found = await lookupBandLocation(Code.toUpperCase());
+          setBandLookupPending(false);
+          if (found) {
+            Alert.alert(
+              'Band found in database',
+              `Band ${Code.toUpperCase()} was originally assigned at ${locationString(found)}.`,
+              [{ text: 'OK', onPress: () => commitAdultBand() }],
+            );
+            return;
+          }
         }
       }
     }
@@ -1820,7 +1891,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           </Dialog.ScrollArea>
           <Dialog.Actions>
             <Button onPress={handleCancelNestlingBand}>Cancel</Button>
-            <Button onPress={handleConfirmNestlingBand}>{EditNestlingBandIdx !== null ? 'Save' : 'Add'}</Button>
+            <Button onPress={handleConfirmNestlingBand} loading={BandLookupPending} disabled={BandLookupPending}>{EditNestlingBandIdx !== null ? 'Save' : 'Add'}</Button>
           </Dialog.Actions>
         </Dialog>
 
@@ -1895,7 +1966,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           </Dialog.ScrollArea>
           <Dialog.Actions>
             <Button onPress={() => { setEditAdultBandIdx(null); setAddAdultBandVisible(false); }}>Cancel</Button>
-            <Button onPress={handleConfirmAdultBand}>{EditAdultBandIdx !== null ? 'Save' : 'Add'}</Button>
+            <Button onPress={handleConfirmAdultBand} loading={BandLookupPending} disabled={BandLookupPending}>{EditAdultBandIdx !== null ? 'Save' : 'Add'}</Button>
           </Dialog.Actions>
         </Dialog>
 
