@@ -435,7 +435,9 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
   // ── Add nest check ─────────────────────────────────────────────────
   function openAddCheck(date?: string) {
-    setNewCheckDate(date ?? todayString());
+    const currentYear = new Date().getFullYear();
+    const defaultDate = Year === currentYear ? todayString() : `${Year}-06-01`;
+    setNewCheckDate(date ?? defaultDate);
     setAddCheckError('');
     setAddCheckVisible(true);
   }
@@ -504,7 +506,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   const MarkedDates = Object.fromEntries(
     NestChecks.map(c => [c.check_date, { selected: true, selectedColor: '#7b1fa2' }])
   );
-  const InitialDate = NestChecks.length > 0 ? NestChecks[0].check_date : undefined;
+  const InitialDate = NestChecks.length > 0 ? NestChecks[0].check_date : `${Year}-04-01`;
 
   return (
     <>
