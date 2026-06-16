@@ -479,6 +479,10 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
       setAddCheckError('Use YYYY-MM-DD format, e.g. 2026-06-01.');
       return;
     }
+    if (parseInt(DateVal.slice(0, 4), 10) !== Year) {
+      setAddCheckError(`Date must be in the ${Year} season (year must be ${Year}).`);
+      return;
+    }
     await createAndNavigateToCheck(DateVal);
   }
 

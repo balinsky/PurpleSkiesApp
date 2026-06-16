@@ -36,6 +36,10 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
   const [HousingUnits, setHousingUnits]               = useState<HousingUnit[]>([]);
   const [SiteSeasons, setSiteSeasons]                 = useState<SiteSeason[]>([]);
   const [StartingSeasonLoading, setStartingSeasonLoading] = useState(false);
+  const [OtherSeasonVisible, setOtherSeasonVisible]       = useState(false);
+  const [OtherSeasonYear, setOtherSeasonYear]             = useState('');
+  const [OtherSeasonLoading, setOtherSeasonLoading]       = useState(false);
+  const [OtherSeasonError, setOtherSeasonError]           = useState('');
   const [DeleteDialogVisible, setDeleteDialogVisible] = useState(false);
   const [Deleting, setDeleting]                       = useState(false);
   const [DeleteError, setDeleteError]                 = useState('');
@@ -117,6 +121,43 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
     setStartingSeasonLoading(false);
     if (data) {
       navigation.navigate('SeasonDetail', { SeasonId: data.id, SiteId, Year: CurrentYear });
+    }
+  }
+
+  async function handleOpenOtherSeason() {
+    const Yr = parseInt(OtherSeasonYear.trim(), 10);
+    if (isNaN(Yr) || OtherSeasonYear.trim().length !== 4) {
+      setOtherSeasonError('Enter a valid 4-digit year.');
+      return;
+    }
+    if (Yr < 1990 || Yr > CurrentYear) {
+      setOtherSeasonError(`Year must be between 1990 and ${CurrentYear}.`);
+      return;
+    }
+    setOtherSeasonLoading(true);
+    setOtherSeasonError('');
+    const { data: existing } = await supabase
+      .from('site_seasons')
+      .select('id')
+      .eq('site_id', SiteId)
+      .eq('year', Yr)
+      .maybeSingle();
+    if (existing) {
+      setOtherSeasonLoading(false);
+      setOtherSeasonVisible(false);
+      navigation.navigate('SeasonDetail', { SeasonId: existing.id, SiteId, Year: Yr });
+      return;
+    }
+    const { data, error } = await supabase
+      .from('site_seasons')
+      .insert({ site_id: SiteId, year: Yr })
+      .select()
+      .single();
+    setOtherSeasonLoading(false);
+    if (error) { setOtherSeasonError(error.message); return; }
+    if (data) {
+      setOtherSeasonVisible(false);
+      navigation.navigate('SeasonDetail', { SeasonId: data.id, SiteId, Year: Yr });
     }
   }
 
@@ -294,21 +335,33 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
               </Card>
             ))
           )}
-          {!HasCurrentSeason && (
-            HousingUnits.length === 0 ? (
+          {HousingUnits.length === 0 ? (
+            !HasCurrentSeason && (
               <HelperText type="info" visible style={styles.SectionButton}>
                 Add at least one housing unit before starting a season.
               </HelperText>
-            ) : (
+            )
+          ) : (
+            <>
+              {!HasCurrentSeason && (
+                <Button
+                  mode="outlined"
+                  style={styles.SectionButton}
+                  loading={StartingSeasonLoading}
+                  onPress={handleStartSeason}
+                >
+                  Start {CurrentYear} Season
+                </Button>
+              )}
               <Button
                 mode="outlined"
                 style={styles.SectionButton}
-                loading={StartingSeasonLoading}
-                onPress={handleStartSeason}
+                icon="calendar-plus"
+                onPress={() => { setOtherSeasonYear(''); setOtherSeasonError(''); setOtherSeasonVisible(true); }}
               >
-                Start {CurrentYear} Season
+                Enter data for another year
               </Button>
-            )
+            </>
           )}
         </List.Section>
 
@@ -422,6 +475,32 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
           <Dialog.Actions>
             <Button onPress={() => setEditVisible(false)}>Cancel</Button>
             <Button loading={EditLoading} disabled={EditFetching} onPress={handleSaveSite}>Save</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        {/* ── Other Season ───────────────────────────────────────── */}
+        <Dialog visible={OtherSeasonVisible} onDismiss={() => setOtherSeasonVisible(false)}>
+          <Dialog.Title>Open Another Season</Dialog.Title>
+          <Dialog.Content>
+            <TextInput
+              label="Year"
+              value={OtherSeasonYear}
+              onChangeText={v => { setOtherSeasonYear(v); setOtherSeasonError(''); }}
+              keyboardType="number-pad"
+              maxLength={4}
+              autoFocus
+            />
+            {OtherSeasonError ? (
+              <HelperText type="error" visible>{OtherSeasonError}</HelperText>
+            ) : (
+              <HelperText type="info" visible>
+                Enter a year from 1990 to {CurrentYear}. A new season will be created if it doesn't exist.
+              </HelperText>
+            )}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setOtherSeasonVisible(false)}>Cancel</Button>
+            <Button loading={OtherSeasonLoading} disabled={OtherSeasonLoading} onPress={handleOpenOtherSeason}>Open</Button>
           </Dialog.Actions>
         </Dialog>
 
