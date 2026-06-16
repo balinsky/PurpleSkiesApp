@@ -2068,7 +2068,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           <Dialog.Title>Age calculated</Dialog.Title>
           <Dialog.Content>
             <Text>
-              Nestling age was recorded on the check from {AgeSourceDate ? formatDate(AgeSourceDate) : 'a previous check'} and has been calculated forward to today.
+              Nestling age was recorded on the check from {AgeSourceDate ? formatDate(AgeSourceDate) : 'a previous check'} and has been calculated forward to this check date ({formatDate(CheckDate)}).
             </Text>
           </Dialog.Content>
           <Dialog.Actions>
