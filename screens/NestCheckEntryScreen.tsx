@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput as RNTextInput, View } from 'react-native';
+import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput as RNTextInput, View, useWindowDimensions } from 'react-native';
 import {
   Button, Checkbox, Dialog, Divider, HelperText,
   Icon, IconButton, Portal, RadioButton, Text, TextInput,
@@ -112,7 +112,10 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     : null;
   const { CompactMode, toggleCompactMode } = useSettings();
   const { isOnline, syncNow } = useSync();
+  const { height: ScreenHeight } = useWindowDimensions();
   function L(full: string, compact: string) { return CompactMode ? compact : full; }
+
+  const [BandKeyboardHeight, setBandKeyboardHeight] = useState(0);
 
   // ── Species ──────────────────────────────────────────────────────────
   const [SpeciesVal, setSpeciesVal]           = useState('PM');
@@ -197,7 +200,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [FledgePromptVisible, setFledgePromptVisible] = useState(false);
   const [FledgePromptCount, setFledgePromptCount]     = useState(0);
   const FledgeSaveAndNextRef = useRef(false);
-  const ScrollViewRef = useRef<ScrollView>(null);
+  const ScrollViewRef        = useRef<ScrollView>(null);
+  const NestlingBandScrollRef = useRef<ScrollView>(null);
+  const AdultBandScrollRef    = useRef<ScrollView>(null);
 
   // ── Unsaved-changes guard ─────────────────────────────────────────────
   const IsDirty = useRef(false);
@@ -215,6 +220,12 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   // Keep a ref to handleSave that's always current, so the header button never closes over a stale version
   const handleSaveRef = useRef<() => Promise<void>>(async () => {});
   useEffect(() => { handleSaveRef.current = handleSave; });
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardWillShow', e => setBandKeyboardHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardWillHide', () => setBandKeyboardHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
 
   // Header right: Save button (when dirty) + compact toggle
   useEffect(() => {
@@ -1612,14 +1623,21 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
       <Portal>
         {/* ── Add Nestling Band ────────────────────────────────────── */}
-        <Dialog visible={AddNestlingBandVisible} onDismiss={handleCancelNestlingBand}>
+        <Dialog
+          visible={AddNestlingBandVisible}
+          onDismiss={handleCancelNestlingBand}
+          style={BandKeyboardHeight > 0 ? { marginBottom: BandKeyboardHeight } : undefined}
+        >
           <Dialog.Title>
             {AddNestlingBandIdx !== null && Nestlings[AddNestlingBandIdx]
               ? `Band: ${Nestlings[AddNestlingBandIdx].label}`
               : 'Add Nestling Band'}
           </Dialog.Title>
-          <Dialog.ScrollArea style={styles.BandDialogScroll}>
-            <ScrollView keyboardShouldPersistTaps="handled">
+          <Dialog.ScrollArea style={BandKeyboardHeight > 0
+            ? { maxHeight: Math.max(120, ScreenHeight - BandKeyboardHeight - 200) }
+            : styles.BandDialogScroll}
+          >
+            <ScrollView ref={NestlingBandScrollRef} keyboardShouldPersistTaps="handled">
               <Text style={styles.BandFormLabel}>Band type</Text>
               <RadioButton.Group value={NewBandType} onValueChange={v => setNewBandType(v as 'federal' | 'color')}>
                 <RadioButton.Item label="Federal (USFWS silver)" value="federal" style={styles.RadioItem} />
@@ -1632,6 +1650,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                   onChangeText={setNewBandColor}
                   placeholder="e.g. Red, Blue, Green"
                   style={styles.BandInput}
+                  onFocus={() => setTimeout(() => NestlingBandScrollRef.current?.scrollToEnd({ animated: true }), 150)}
                 />
               )}
               <TextInput
@@ -1640,6 +1659,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 onChangeText={setNewBandCode}
                 autoCapitalize="characters"
                 style={styles.BandInput}
+                onFocus={() => setTimeout(() => NestlingBandScrollRef.current?.scrollToEnd({ animated: true }), 150)}
               />
               {NewBandError ? <HelperText type="error" visible>{NewBandError}</HelperText> : null}
             </ScrollView>
@@ -1651,10 +1671,17 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         </Dialog>
 
         {/* ── Add Adult Band ───────────────────────────────────────── */}
-        <Dialog visible={AddAdultBandVisible} onDismiss={() => setAddAdultBandVisible(false)}>
+        <Dialog
+          visible={AddAdultBandVisible}
+          onDismiss={() => setAddAdultBandVisible(false)}
+          style={BandKeyboardHeight > 0 ? { marginBottom: BandKeyboardHeight } : undefined}
+        >
           <Dialog.Title>Add Adult Band</Dialog.Title>
-          <Dialog.ScrollArea style={styles.BandDialogScroll}>
-            <ScrollView keyboardShouldPersistTaps="handled">
+          <Dialog.ScrollArea style={BandKeyboardHeight > 0
+            ? { maxHeight: Math.max(120, ScreenHeight - BandKeyboardHeight - 200) }
+            : styles.BandDialogScroll}
+          >
+            <ScrollView ref={AdultBandScrollRef} keyboardShouldPersistTaps="handled">
               <Text style={styles.BandFormLabel}>Bird</Text>
               <RadioButton.Group value={NewAdultBirdType} onValueChange={v => setNewAdultBirdType(v as AdultBand['bird_type'])}>
                 <RadioButton.Item label="Adult male"   value="adult_male"   style={styles.RadioItem} />
@@ -1677,6 +1704,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                   onChangeText={setNewBandColor}
                   placeholder="e.g. Red, Blue, Green"
                   style={styles.BandInput}
+                  onFocus={() => setTimeout(() => AdultBandScrollRef.current?.scrollToEnd({ animated: true }), 150)}
                 />
               )}
               <TextInput
@@ -1685,6 +1713,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 onChangeText={setNewBandCode}
                 autoCapitalize="characters"
                 style={styles.BandInput}
+                onFocus={() => setTimeout(() => AdultBandScrollRef.current?.scrollToEnd({ animated: true }), 150)}
               />
               {NewBandError ? <HelperText type="error" visible>{NewBandError}</HelperText> : null}
             </ScrollView>
