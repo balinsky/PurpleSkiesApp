@@ -165,7 +165,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [BandingExpanded, setBandingExpanded]               = useState(false);
   const [AddNestlingBandVisible, setAddNestlingBandVisible] = useState(false);
   const [AddNestlingBandIdx, setAddNestlingBandIdx]         = useState<number | null>(null);
+  const [EditNestlingBandIdx, setEditNestlingBandIdx]       = useState<number | null>(null); // band index within nestling
   const [AddAdultBandVisible, setAddAdultBandVisible]       = useState(false);
+  const [EditAdultBandIdx, setEditAdultBandIdx]             = useState<number | null>(null);
   const [NewBandType, setNewBandType]                       = useState<'federal' | 'color'>('federal');
   const [NewBandColor, setNewBandColor]                     = useState('');
   const [NewBandCode, setNewBandCode]                       = useState('');
@@ -605,6 +607,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
   function openAddNestlingBand(Idx: number) {
     setAddNestlingBandIdx(Idx);
+    setEditNestlingBandIdx(null);
     setNewBandType('federal');
     setNewBandColor('');
     setNewBandCode('');
@@ -612,13 +615,25 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     setAddNestlingBandVisible(true);
   }
 
+  function openEditNestlingBand(NIdx: number, BIdx: number) {
+    const Band = Nestlings[NIdx].bandsThisCheck[BIdx];
+    setAddNestlingBandIdx(NIdx);
+    setEditNestlingBandIdx(BIdx);
+    setNewBandType(Band.band_type);
+    setNewBandColor(Band.band_color ?? '');
+    setNewBandCode(Band.band_code);
+    setNewBandError('');
+    setAddNestlingBandVisible(true);
+  }
+
   function handleCancelNestlingBand() {
-    if (AddNestlingBandIdx !== null) {
+    if (EditNestlingBandIdx === null && AddNestlingBandIdx !== null) {
       const N = Nestlings[AddNestlingBandIdx];
       if (N && N.id === null && N.bandsThisCheck.length === 0) {
         setNestlings(Ns => Ns.filter((_, I) => I !== AddNestlingBandIdx));
       }
     }
+    setEditNestlingBandIdx(null);
     setAddNestlingBandVisible(false);
   }
 
@@ -630,9 +645,19 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       band_color: NewBandType === 'color' ? (NewBandColor.trim() || null) : null,
       band_code:  NewBandCode.trim().toUpperCase(),
     };
-    setNestlings(Ns => Ns.map((N, I) =>
-      I === AddNestlingBandIdx ? { ...N, bandsThisCheck: [...N.bandsThisCheck, Band] } : N
-    ));
+    if (EditNestlingBandIdx !== null) {
+      const BIdx = EditNestlingBandIdx;
+      setNestlings(Ns => Ns.map((N, I) =>
+        I === AddNestlingBandIdx
+          ? { ...N, bandsThisCheck: N.bandsThisCheck.map((B, BI) => BI === BIdx ? Band : B) }
+          : N
+      ));
+    } else {
+      setNestlings(Ns => Ns.map((N, I) =>
+        I === AddNestlingBandIdx ? { ...N, bandsThisCheck: [...N.bandsThisCheck, Band] } : N
+      ));
+    }
+    setEditNestlingBandIdx(null);
     setAddNestlingBandVisible(false);
   }
 
@@ -658,15 +683,34 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     commitNestlingBand();
   }
 
+  function openEditAdultBand(Idx: number) {
+    const Band = AdultBands[Idx];
+    setEditAdultBandIdx(Idx);
+    setNewAdultBirdType(Band.bird_type);
+    setNewAdultIsNew(Band.is_new_banding);
+    setNewBandType(Band.band_type);
+    setNewBandColor(Band.band_color ?? '');
+    setNewBandCode(Band.band_code);
+    setNewBandError('');
+    setAddAdultBandVisible(true);
+  }
+
   function commitAdultBand() {
     MarkDirty();
-    setAdultBands(Ab => [...Ab, {
+    const Band: AdultBand = {
       is_new_banding: NewAdultIsNew,
       bird_type:      NewAdultBirdType,
       band_type:      NewBandType,
       band_color:     NewBandType === 'color' ? (NewBandColor.trim() || null) : null,
       band_code:      NewBandCode.trim().toUpperCase(),
-    }]);
+    };
+    if (EditAdultBandIdx !== null) {
+      const Idx = EditAdultBandIdx;
+      setAdultBands(Ab => Ab.map((B, I) => I === Idx ? Band : B));
+    } else {
+      setAdultBands(Ab => [...Ab, Band]);
+    }
+    setEditAdultBandIdx(null);
     setAddAdultBandVisible(false);
   }
 
@@ -1513,6 +1557,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                             {B.band_code}
                           </Text>
                           <IconButton
+                            icon="pencil" size={16}
+                            onPress={() => openEditNestlingBand(NIdx, BIdx)}
+                            style={styles.BandDeleteBtn}
+                          />
+                          <IconButton
                             icon="close" size={16}
                             onPress={() => { MarkDirty(); setNestlings(Ns => Ns.map((Nn, I) =>
                               I === NIdx ? { ...Nn, bandsThisCheck: Nn.bandsThisCheck.filter((_, BI) => BI !== BIdx) } : Nn
@@ -1555,6 +1604,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                         {' · '}{B.band_type === 'federal' ? 'Federal ' : (B.band_color ? `${B.band_color} ` : 'Color ')}
                         {B.band_code}
                       </Text>
+                      <IconButton
+                        icon="pencil" size={16}
+                        onPress={() => openEditAdultBand(Idx)}
+                        style={styles.BandDeleteBtn}
+                      />
                       <IconButton
                         icon="close" size={16}
                         onPress={() => { MarkDirty(); setAdultBands(Ab => Ab.filter((_, I) => I !== Idx)); }}
@@ -1688,7 +1742,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         >
           <Dialog.Title>
             {AddNestlingBandIdx !== null && Nestlings[AddNestlingBandIdx]
-              ? `Band: ${Nestlings[AddNestlingBandIdx].label}`
+              ? `${EditNestlingBandIdx !== null ? 'Edit' : 'Add'} band: ${Nestlings[AddNestlingBandIdx].label}`
               : 'Add Nestling Band'}
           </Dialog.Title>
           <Dialog.ScrollArea style={BandKeyboardHeight > 0
@@ -1724,17 +1778,17 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           </Dialog.ScrollArea>
           <Dialog.Actions>
             <Button onPress={handleCancelNestlingBand}>Cancel</Button>
-            <Button onPress={handleConfirmNestlingBand}>Add</Button>
+            <Button onPress={handleConfirmNestlingBand}>{EditNestlingBandIdx !== null ? 'Save' : 'Add'}</Button>
           </Dialog.Actions>
         </Dialog>
 
-        {/* ── Add Adult Band ───────────────────────────────────────── */}
+        {/* ── Add / Edit Adult Band ────────────────────────────────── */}
         <Dialog
           visible={AddAdultBandVisible}
-          onDismiss={() => setAddAdultBandVisible(false)}
+          onDismiss={() => { setEditAdultBandIdx(null); setAddAdultBandVisible(false); }}
           style={BandKeyboardHeight > 0 ? { marginBottom: BandKeyboardHeight } : undefined}
         >
-          <Dialog.Title>Add Adult Band</Dialog.Title>
+          <Dialog.Title>{EditAdultBandIdx !== null ? 'Edit Adult Band' : 'Add Adult Band'}</Dialog.Title>
           <Dialog.ScrollArea style={BandKeyboardHeight > 0
             ? { maxHeight: Math.max(120, ScreenHeight - BandKeyboardHeight - 200) }
             : styles.BandDialogScroll}
@@ -1782,8 +1836,8 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             </ScrollView>
           </Dialog.ScrollArea>
           <Dialog.Actions>
-            <Button onPress={() => setAddAdultBandVisible(false)}>Cancel</Button>
-            <Button onPress={handleConfirmAdultBand}>Add</Button>
+            <Button onPress={() => { setEditAdultBandIdx(null); setAddAdultBandVisible(false); }}>Cancel</Button>
+            <Button onPress={handleConfirmAdultBand}>{EditAdultBandIdx !== null ? 'Save' : 'Add'}</Button>
           </Dialog.Actions>
         </Dialog>
 
