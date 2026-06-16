@@ -103,6 +103,15 @@ function Counter({
   );
 }
 
+// Increments the last run of digits in a band code by 1, preserving leading zeros.
+// e.g. "2841-74209" → "2841-74210",  "TX 403" → "TX 404",  "Red" → "Red"
+function incrementBandCode(code: string): string {
+  const m = /\d+(?=\D*$)/.exec(code);
+  if (!m) return code;
+  const incremented = (parseInt(m[0], 10) + 1).toString().padStart(m[0].length, '0');
+  return code.slice(0, m.index) + incremented + code.slice(m.index + m[0].length);
+}
+
 // ── Screen ─────────────────────────────────────────────────────────────────
 export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const { CheckId, CheckDate, SeasonId, SiteId, CompartmentId, HousingType, ExistingEntryId, AllCompartments, CompartmentIndex } = route.params;
@@ -174,6 +183,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [NewBandError, setNewBandError]                     = useState('');
   const [NewAdultBirdType, setNewAdultBirdType]             = useState<'adult_male' | 'adult_female'>('adult_male');
   const [NewAdultIsNew, setNewAdultIsNew]                   = useState(true);
+  const [LastFederalCode, setLastFederalCode]               = useState<string | null>(null);
+  const [LastColorCode, setLastColorCode]                   = useState<string | null>(null);
+  const [LastColorBandColor, setLastColorBandColor]         = useState<string | null>(null);
 
   // ── Notes (expandable) ────────────────────────────────────────────────
   const [NotesExpanded, setNotesExpanded] = useState(false);
@@ -640,10 +652,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   function commitNestlingBand() {
     if (AddNestlingBandIdx === null) return;
     MarkDirty();
+    const Code = NewBandCode.trim().toUpperCase();
     const Band: NestlingBand = {
       band_type:  NewBandType,
       band_color: NewBandType === 'color' ? (NewBandColor.trim() || null) : null,
-      band_code:  NewBandCode.trim().toUpperCase(),
+      band_code:  Code,
     };
     if (EditNestlingBandIdx !== null) {
       const BIdx = EditNestlingBandIdx;
@@ -656,6 +669,12 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       setNestlings(Ns => Ns.map((N, I) =>
         I === AddNestlingBandIdx ? { ...N, bandsThisCheck: [...N.bandsThisCheck, Band] } : N
       ));
+      if (NewBandType === 'federal') {
+        setLastFederalCode(Code);
+      } else {
+        setLastColorCode(Code);
+        setLastColorBandColor(NewBandColor.trim() || null);
+      }
     }
     setEditNestlingBandIdx(null);
     setAddNestlingBandVisible(false);
@@ -697,18 +716,25 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
   function commitAdultBand() {
     MarkDirty();
+    const Code = NewBandCode.trim().toUpperCase();
     const Band: AdultBand = {
       is_new_banding: NewAdultIsNew,
       bird_type:      NewAdultBirdType,
       band_type:      NewBandType,
       band_color:     NewBandType === 'color' ? (NewBandColor.trim() || null) : null,
-      band_code:      NewBandCode.trim().toUpperCase(),
+      band_code:      Code,
     };
     if (EditAdultBandIdx !== null) {
       const Idx = EditAdultBandIdx;
       setAdultBands(Ab => Ab.map((B, I) => I === Idx ? Band : B));
     } else {
       setAdultBands(Ab => [...Ab, Band]);
+      if (NewBandType === 'federal') {
+        setLastFederalCode(Code);
+      } else {
+        setLastColorCode(Code);
+        setLastColorBandColor(NewBandColor.trim() || null);
+      }
     }
     setEditAdultBandIdx(null);
     setAddAdultBandVisible(false);
@@ -1755,6 +1781,22 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 <RadioButton.Item label="Federal (USFWS silver)" value="federal" style={styles.RadioItem} />
                 <RadioButton.Item label="Color band"             value="color"   style={styles.RadioItem} />
               </RadioButton.Group>
+              {EditNestlingBandIdx === null && (() => {
+                const prev = NewBandType === 'federal' ? LastFederalCode : LastColorCode;
+                if (!prev) return null;
+                return (
+                  <Button
+                    mode="outlined" compact
+                    style={styles.IncrementBtn}
+                    onPress={() => {
+                      if (NewBandType === 'color') setNewBandColor(LastColorBandColor ?? '');
+                      setNewBandCode(incrementBandCode(prev));
+                    }}
+                  >
+                    Increment from previous ({prev})
+                  </Button>
+                );
+              })()}
               {NewBandType === 'color' && (
                 <TextInput
                   label="Band color"
@@ -1809,6 +1851,22 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 <RadioButton.Item label="Federal (USFWS silver)" value="federal" style={styles.RadioItem} />
                 <RadioButton.Item label="Color band"             value="color"   style={styles.RadioItem} />
               </RadioButton.Group>
+              {EditAdultBandIdx === null && (() => {
+                const prev = NewBandType === 'federal' ? LastFederalCode : LastColorCode;
+                if (!prev) return null;
+                return (
+                  <Button
+                    mode="outlined" compact
+                    style={styles.IncrementBtn}
+                    onPress={() => {
+                      if (NewBandType === 'color') setNewBandColor(LastColorBandColor ?? '');
+                      setNewBandCode(incrementBandCode(prev));
+                    }}
+                  >
+                    Increment from previous ({prev})
+                  </Button>
+                );
+              })()}
               {NewBandType === 'color' && (
                 <TextInput
                   label="Band color"
@@ -2045,5 +2103,6 @@ const styles = StyleSheet.create({
   BandDialogScroll:     { maxHeight: 440 },
   BandFormLabel:        { fontWeight: '600', fontSize: 13, marginTop: 12, marginBottom: 2, paddingHorizontal: 4 },
   BandInput:            { marginTop: 8, marginBottom: 4 },
+  IncrementBtn:         { alignSelf: 'flex-start', marginTop: 8 },
   RadioItem:            { paddingVertical: 0 },
 });
