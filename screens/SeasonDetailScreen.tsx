@@ -59,6 +59,7 @@ type CompartmentProgress = {
   male_age: string | null;
   female_age: string | null;
   young_count: number;
+  banded_count: number;
 };
 
 function progressLine(P: CompartmentProgress): string {
@@ -248,7 +249,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         const [EntriesResult, NestSeasonsResult] = await Promise.all([
           supabase
             .from('nest_check_entries')
-            .select('nest_check_id, compartment_id, adult_present, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count, dead_young_count, nesting_attempt, compartments(cavity_label, housing_units(name))')
+            .select('id, nest_check_id, compartment_id, adult_present, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count, dead_young_count, nesting_attempt, compartments(cavity_label, housing_units(name))')
             .in('nest_check_id', Checks.map(c => c.id))
             .eq('species', 'PM'),
           supabase
@@ -283,6 +284,33 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         setAdultAges(Ages);
 
         if (!Entries) { setNestProgress([]); return; }
+
+        // Count banded nestlings per (compartment_id, nesting_attempt) so the histogram
+        // shows only birds that still need a band.
+        const BandedByKey = new Map<string, number>();
+        const EntryIdList = (Entries as any[]).map(e => e.id).filter(Boolean);
+        if (EntryIdList.length > 0) {
+          const { data: BandRows } = await supabase
+            .from('bands')
+            .select('nest_check_entry_id, nestling_id')
+            .in('nest_check_entry_id', EntryIdList)
+            .eq('bird_type', 'nestling')
+            .eq('is_new_banding', true)
+            .not('nestling_id', 'is', null);
+          if (BandRows) {
+            const EntryKeyMap = new Map(
+              (Entries as any[]).map(e => [e.id, `${e.compartment_id}:${e.nesting_attempt ?? 1}`])
+            );
+            const BandedSets = new Map<string, Set<string>>();
+            for (const B of BandRows) {
+              const key = EntryKeyMap.get(B.nest_check_entry_id);
+              if (!key || !B.nestling_id) continue;
+              if (!BandedSets.has(key)) BandedSets.set(key, new Set());
+              BandedSets.get(key)!.add(B.nestling_id);
+            }
+            for (const [key, set] of BandedSets) BandedByKey.set(key, set.size);
+          }
+        }
 
         // Full check history per compartment (all attempts, sorted ascending) for RA first-egg uncertainty.
         // Stores egg_count alongside date so the trough's count can inform how far back to look.
@@ -394,8 +422,9 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           const Ages = AgeMap.get(Data.compartment_id);
           // Use the last recorded young_count — if young disappeared after hatching, they're excluded from banding
           const YoungCount = EWD[EWD.length - 1]?.young_count ?? 0;
+          const BandedCount = BandedByKey.get(`${Data.compartment_id}:${Data.nesting_attempt}`) ?? 0;
           const AttemptSuffix = Data.nesting_attempt > 1 ? ` (Attempt ${Data.nesting_attempt})` : '';
-          Progress.push({ compartment_id: Data.compartment_id, nesting_attempt: Data.nesting_attempt, label: Data.label + AttemptSuffix, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount });
+          Progress.push({ compartment_id: Data.compartment_id, nesting_attempt: Data.nesting_attempt, label: Data.label + AttemptSuffix, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount, banded_count: BandedCount });
         }
 
         setNestProgress(Progress.sort((a, b) => {
@@ -492,10 +521,11 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
     const counts = new Map<string, number>();
     for (const P of NestProgress) {
       const hatch = P.actual_hatch ?? P.proj_hatch_min;
-      if (!hatch || P.young_count <= 0) continue;
+      const unbanded = Math.max(0, P.young_count - P.banded_count);
+      if (!hatch || unbanded <= 0) continue;
       for (let day = BandingMin; day <= BandingMax; day++) {
         const date = addDays(hatch, day);
-        counts.set(date, (counts.get(date) ?? 0) + P.young_count);
+        counts.set(date, (counts.get(date) ?? 0) + unbanded);
       }
     }
     return [...counts.entries()]
