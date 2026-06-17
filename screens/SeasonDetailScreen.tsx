@@ -488,6 +488,15 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
     setDeletingSeason(true);
     setDeleteSeasonError('');
     try {
+      // Verify permission before touching any data — fail fast if RLS would block the season delete
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated.');
+      const { data: Site } = await supabase.from('sites').select('owner_id').eq('id', SiteId).maybeSingle();
+      const { data: Member } = await supabase.from('site_members').select('role').eq('site_id', SiteId).eq('user_id', user.id).maybeSingle();
+      if (Site?.owner_id !== user.id && Member?.role !== 'manager') {
+        throw new Error('Only the site owner or a manager can delete a season.');
+      }
+
       // Query all checks for this season by date range — don't rely on NestChecks state
       const { data: CheckRows, error: CheckFetchErr } = await supabase
         .from('nest_checks')
@@ -515,9 +524,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
       if (NsErr) throw new Error(`Delete nest_seasons: ${NsErr.message}`);
       const { error: NlErr } = await supabase.from('nestlings').delete().eq('site_season_id', SeasonId);
       if (NlErr) throw new Error(`Delete nestlings: ${NlErr.message}`);
-      const { error: SsErr, count: SsCount } = await supabase.from('site_seasons').delete({ count: 'exact' }).eq('id', SeasonId);
+      const { error: SsErr } = await supabase.from('site_seasons').delete().eq('id', SeasonId);
       if (SsErr) throw new Error(`Delete site_seasons: ${SsErr.message}`);
-      if (!SsCount) throw new Error('Season was not deleted — check database permissions (RLS).');
       setDeleteSeasonVisible(false);
       navigation.goBack();
     } catch (e: any) {
