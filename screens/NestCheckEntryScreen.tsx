@@ -56,6 +56,7 @@ type AdultBand = {
   band_type: 'federal' | 'color';
   band_color: string | null;
   band_code: string;
+  group_id: string;   // client-side only — groups bands that belong to the same observed bird
 };
 
 const SpeciesList = [
@@ -182,6 +183,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [EditNestlingBandIdx, setEditNestlingBandIdx]       = useState<number | null>(null); // band index within nestling
   const [AddAdultBandVisible, setAddAdultBandVisible]       = useState(false);
   const [EditAdultBandIdx, setEditAdultBandIdx]             = useState<number | null>(null);
+  const [PendingAdultGroupId, setPendingAdultGroupId]       = useState<string | null>(null);
   const [NewBandType, setNewBandType]                       = useState<'federal' | 'color'>('federal');
   const [NewBandColor, setNewBandColor]                     = useState('');
   const [NewBandCode, setNewBandCode]                       = useState('');
@@ -246,6 +248,12 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     const hide = Keyboard.addListener('keyboardWillHide', () => setBandKeyboardHeight(0));
     return () => { show.remove(); hide.remove(); };
   }, []);
+
+  useEffect(() => {
+    if (AddAdultBandVisible && NewBandError) {
+      setTimeout(() => AdultBandScrollRef.current?.scrollToEnd({ animated: true }), 50);
+    }
+  }, [NewBandError, AddAdultBandVisible]);
 
   // Header right: Save button (when dirty) + compact toggle
   useEffect(() => {
@@ -605,6 +613,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           band_type:      B.band_type as AdultBand['band_type'],
           band_color:     B.band_color ?? null,
           band_code:      B.band_code,
+          group_id:       makeId(),
         }));
 
       setNestlings(records);
@@ -782,6 +791,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       band_type:      NewBandType,
       band_color:     NewBandType === 'color' ? (NewBandColor.trim() || null) : null,
       band_code:      Code,
+      group_id:       EditAdultBandIdx !== null
+        ? AdultBands[EditAdultBandIdx].group_id
+        : (PendingAdultGroupId ?? makeId()),
     };
     if (EditAdultBandIdx !== null) {
       const Idx = EditAdultBandIdx;
@@ -796,6 +808,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       }
     }
     setEditAdultBandIdx(null);
+    setPendingAdultGroupId(null);
     setAddAdultBandVisible(false);
   }
 
@@ -1702,36 +1715,84 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
                   {/* Adults */}
                   <Text style={[styles.BandSubheader, styles.BandSubheaderSpaced]}>Adults</Text>
-                  {AdultBands.map((B, Idx) => (
-                    <View key={Idx} style={styles.BandRow}>
-                      <Text style={styles.BandLabel}>
-                        {B.bird_type === 'adult_male' ? 'Adult ♂' : 'Adult ♀'}
-                        {' · '}{B.is_new_banding ? 'New' : 'Obs'}
-                        {' · '}{B.band_type === 'federal' ? 'Federal ' : (B.band_color ? `${B.band_color} ` : 'Color ')}
-                        {B.band_code}
-                      </Text>
-                      <IconButton
-                        icon="pencil" size={16}
-                        onPress={() => openEditAdultBand(Idx)}
-                        style={styles.BandDeleteBtn}
-                      />
-                      <IconButton
-                        icon="close" size={16}
-                        onPress={() => { MarkDirty(); setAdultBands(Ab => Ab.filter((_, I) => I !== Idx)); }}
-                        style={styles.BandDeleteBtn}
-                      />
-                    </View>
-                  ))}
+                  {(() => {
+                    const groupOrder: string[] = [];
+                    const groupMap = new Map<string, { band: AdultBand; idx: number }[]>();
+                    AdultBands.forEach((B, Idx) => {
+                      if (!groupMap.has(B.group_id)) {
+                        groupOrder.push(B.group_id);
+                        groupMap.set(B.group_id, []);
+                      }
+                      groupMap.get(B.group_id)!.push({ band: B, idx: Idx });
+                    });
+                    return groupOrder.map(gid => {
+                      const entries = groupMap.get(gid)!;
+                      const first = entries[0].band;
+                      return (
+                        <View key={gid} style={styles.AdultBandGroup}>
+                          <View style={styles.AdultBandGroupHeader}>
+                            <Text style={styles.AdultBandGroupLabel}>
+                              {first.bird_type === 'adult_male' ? 'Adult ♂' : 'Adult ♀'}
+                              {' · '}{first.is_new_banding ? 'New' : 'Obs'}
+                            </Text>
+                            <IconButton
+                              icon="close" size={16}
+                              onPress={() => { MarkDirty(); setAdultBands(Ab => Ab.filter(B => B.group_id !== gid)); }}
+                              style={styles.BandDeleteBtn}
+                            />
+                          </View>
+                          {entries.map(({ band: B, idx: Idx }) => (
+                            <View key={Idx} style={styles.AdultBandRow}>
+                              <Text style={styles.AdultBandRowLabel}>
+                                {B.band_type === 'federal' ? 'Federal ' : (B.band_color ? `${B.band_color} ` : 'Color ')}
+                                {B.band_code}
+                              </Text>
+                              <IconButton
+                                icon="pencil" size={16}
+                                onPress={() => openEditAdultBand(Idx)}
+                                style={styles.BandDeleteBtn}
+                              />
+                              <IconButton
+                                icon="close" size={16}
+                                onPress={() => { MarkDirty(); setAdultBands(Ab => Ab.filter((_, I) => I !== Idx)); }}
+                                style={styles.BandDeleteBtn}
+                              />
+                            </View>
+                          ))}
+                          <Button
+                            mode="text" compact icon="plus"
+                            style={styles.AddNestlingBandBtn}
+                            labelStyle={styles.AddNestlingBandLabel}
+                            onPress={() => {
+                              setPendingAdultGroupId(gid);
+                              setNewAdultBirdType(first.bird_type);
+                              setNewAdultIsNew(first.is_new_banding);
+                              setNewBandType('color');
+                              setNewBandColor('');
+                              setNewBandCode('');
+                              setNewBandError('');
+                              setEditAdultBandIdx(null);
+                              setAddAdultBandVisible(true);
+                            }}
+                          >
+                            Add another band to this bird
+                          </Button>
+                        </View>
+                      );
+                    });
+                  })()}
                   <Button
                     mode="outlined" compact icon="plus"
                     style={styles.AddBandBtn}
                     onPress={() => {
+                      setPendingAdultGroupId(makeId());
                       setNewAdultBirdType('adult_male');
                       setNewAdultIsNew(true);
                       setNewBandType('federal');
                       setNewBandColor('');
                       setNewBandCode('');
                       setNewBandError('');
+                      setEditAdultBandIdx(null);
                       setAddAdultBandVisible(true);
                     }}
                   >
@@ -1907,7 +1968,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         {/* ── Add / Edit Adult Band ────────────────────────────────── */}
         <Dialog
           visible={AddAdultBandVisible}
-          onDismiss={() => { setEditAdultBandIdx(null); setAddAdultBandVisible(false); }}
+          onDismiss={() => { setEditAdultBandIdx(null); setPendingAdultGroupId(null); setAddAdultBandVisible(false); }}
           style={BandKeyboardHeight > 0 ? { marginBottom: BandKeyboardHeight } : undefined}
         >
           <Dialog.Title>{EditAdultBandIdx !== null ? 'Edit Adult Band' : 'Add Adult Band'}</Dialog.Title>
@@ -1974,7 +2035,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             </ScrollView>
           </Dialog.ScrollArea>
           <Dialog.Actions>
-            <Button onPress={() => { setEditAdultBandIdx(null); setAddAdultBandVisible(false); }}>Cancel</Button>
+            <Button onPress={() => { setEditAdultBandIdx(null); setPendingAdultGroupId(null); setAddAdultBandVisible(false); }}>Cancel</Button>
             <Button onPress={() => ConfirmAdultBandRef.current()} loading={BandLookupPending} disabled={BandLookupPending}>{EditAdultBandIdx !== null ? 'Save' : 'Add'}</Button>
           </Dialog.Actions>
         </Dialog>
@@ -2180,6 +2241,11 @@ const styles = StyleSheet.create({
   BandLabel:            { flex: 1, fontSize: 13, color: '#333' },
   BandDeleteBtn:        { margin: 0 },
   AddBandBtn:           { alignSelf: 'flex-start', marginTop: 4 },
+  AdultBandGroup:       { marginBottom: 8, paddingLeft: 4, borderLeftWidth: 2, borderLeftColor: '#9c27b0' },
+  AdultBandGroupHeader: { flexDirection: 'row', alignItems: 'center' },
+  AdultBandGroupLabel:  { fontWeight: '600', fontSize: 13, color: '#222', flex: 1 },
+  AdultBandRow:         { flexDirection: 'row', alignItems: 'center', paddingLeft: 8, marginBottom: 2 },
+  AdultBandRowLabel:    { flex: 1, fontSize: 13, color: '#333' },
   BandDialogScroll:     { maxHeight: 440 },
   BandFormLabel:        { fontWeight: '600', fontSize: 13, marginTop: 12, marginBottom: 2, paddingHorizontal: 4 },
   BandInput:            { marginTop: 8, marginBottom: 4 },
