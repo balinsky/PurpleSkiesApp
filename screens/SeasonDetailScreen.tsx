@@ -169,6 +169,11 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   const [AddCheckLoading, setAddCheckLoading]   = useState(false);
   const [AddCheckError, setAddCheckError]       = useState('');
 
+  // ── Delete season ──────────────────────────────────────────────────
+  const [DeleteSeasonVisible, setDeleteSeasonVisible] = useState(false);
+  const [DeletingSeason, setDeletingSeason]           = useState(false);
+  const [DeleteSeasonError, setDeleteSeasonError]     = useState('');
+
   useEffect(() => {
     navigation.setOptions({
       headerRight: () => (
@@ -188,12 +193,19 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             icon={SeasonCalendarView ? 'format-list-bulleted' : 'calendar-month'}
             size={22}
             onPress={toggleSeasonCalendarView}
+          />
+          <IconButton
+            icon="trash-can-outline"
+            size={22}
+            iconColor="red"
+            disabled={DeletingSeason}
             style={{ marginRight: 4 }}
+            onPress={handleDeleteSeasonPress}
           />
         </View>
       ),
     });
-  }, [SeasonCalendarView, Exporting]);
+  }, [SeasonCalendarView, Exporting, DeletingSeason, NestChecks.length]);
 
   useEffect(() => {
     AsyncStorage.multiGet([`banding_min_${SiteId}`, `banding_max_${SiteId}`])
@@ -463,6 +475,59 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   }
 
   // ── Add nest check ─────────────────────────────────────────────────
+  function handleDeleteSeasonPress() {
+    if (NestChecks.length === 0) {
+      doDeleteSeason();
+    } else {
+      setDeleteSeasonError('');
+      setDeleteSeasonVisible(true);
+    }
+  }
+
+  async function doDeleteSeason() {
+    setDeletingSeason(true);
+    setDeleteSeasonError('');
+    try {
+      // Query all checks for this season by date range — don't rely on NestChecks state
+      const { data: CheckRows, error: CheckFetchErr } = await supabase
+        .from('nest_checks')
+        .select('id')
+        .eq('site_id', SiteId)
+        .gte('check_date', `${Year}-01-01`)
+        .lte('check_date', `${Year}-12-31`);
+      if (CheckFetchErr) throw new Error(`Fetch checks: ${CheckFetchErr.message}`);
+      const CheckIds = (CheckRows ?? []).map(c => c.id);
+      if (CheckIds.length > 0) {
+        const { data: EntryRows, error: EntryFetchErr } = await supabase
+          .from('nest_check_entries').select('id').in('nest_check_id', CheckIds);
+        if (EntryFetchErr) throw new Error(`Fetch entries: ${EntryFetchErr.message}`);
+        const EntryIds = (EntryRows ?? []).map(e => e.id);
+        if (EntryIds.length > 0) {
+          const { error: BandErr } = await supabase.from('bands').delete().in('nest_check_entry_id', EntryIds);
+          if (BandErr) throw new Error(`Delete bands: ${BandErr.message}`);
+          const { error: EntryErr } = await supabase.from('nest_check_entries').delete().in('id', EntryIds);
+          if (EntryErr) throw new Error(`Delete entries: ${EntryErr.message}`);
+        }
+        const { error: CheckErr } = await supabase.from('nest_checks').delete().in('id', CheckIds);
+        if (CheckErr) throw new Error(`Delete checks: ${CheckErr.message}`);
+      }
+      const { error: NsErr } = await supabase.from('nest_seasons').delete().eq('site_season_id', SeasonId);
+      if (NsErr) throw new Error(`Delete nest_seasons: ${NsErr.message}`);
+      const { error: NlErr } = await supabase.from('nestlings').delete().eq('site_season_id', SeasonId);
+      if (NlErr) throw new Error(`Delete nestlings: ${NlErr.message}`);
+      const { error: SsErr, count: SsCount } = await supabase.from('site_seasons').delete({ count: 'exact' }).eq('id', SeasonId);
+      if (SsErr) throw new Error(`Delete site_seasons: ${SsErr.message}`);
+      if (!SsCount) throw new Error('Season was not deleted — check database permissions (RLS).');
+      setDeleteSeasonVisible(false);
+      navigation.goBack();
+    } catch (e: any) {
+      setDeletingSeason(false);
+      const msg = e.message ?? 'Delete failed.';
+      setDeleteSeasonError(msg);
+      Alert.alert('Delete failed', msg);
+    }
+  }
+
   function openAddCheck(date?: string) {
     const currentYear = new Date().getFullYear();
     const defaultDate = Year === currentYear ? todayString() : `${Year}-06-01`;
@@ -906,6 +971,21 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
       </View>
 
       <Portal>
+        {/* ── Delete season confirmation ─────────────────────────── */}
+        <Dialog visible={DeleteSeasonVisible} onDismiss={() => setDeleteSeasonVisible(false)}>
+          <Dialog.Title>Delete {Year} Season?</Dialog.Title>
+          <Dialog.Content>
+            <Text>
+              This season has {NestChecks.length} nest {NestChecks.length === 1 ? 'check' : 'checks'}. Deleting it will permanently remove all check data. This cannot be undone.
+            </Text>
+            {DeleteSeasonError ? <HelperText type="error" visible>{DeleteSeasonError}</HelperText> : null}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setDeleteSeasonVisible(false)}>Cancel</Button>
+            <Button textColor="red" loading={DeletingSeason} onPress={doDeleteSeason}>Delete</Button>
+          </Dialog.Actions>
+        </Dialog>
+
         <Dialog visible={AddCheckVisible} onDismiss={() => setAddCheckVisible(false)}>
           <Dialog.Title>New Nest Check</Dialog.Title>
           <Dialog.Content>
