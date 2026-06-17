@@ -126,6 +126,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
   const [BandKeyboardHeight, setBandKeyboardHeight] = useState(0);
 
+  // Refs so Portal-hosted dialogs always call the latest handler even when
+  // TextInput changes cause re-renders that don't propagate into the Portal tree.
+  const ConfirmNestlingBandRef = useRef<() => void>(() => {});
+  const ConfirmAdultBandRef    = useRef<() => void>(() => {});
+
   // ── Species ──────────────────────────────────────────────────────────
   const [SpeciesVal, setSpeciesVal]           = useState('PM');
   const [SpeciesExpanded, setSpeciesExpanded] = useState(false);
@@ -1326,6 +1331,10 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
   const DeadAdultLabel = [DeadAdultMale && 'M', DeadAdultFemale && 'F'].filter(Boolean).join(' + ');
 
+  // Keep refs pointing at the latest handlers so Portal dialogs never call stale closures.
+  ConfirmNestlingBandRef.current = handleConfirmNestlingBand;
+  ConfirmAdultBandRef.current    = handleConfirmAdultBand;
+
   return (
     <>
       <KeyboardAvoidingView
@@ -1891,7 +1900,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           </Dialog.ScrollArea>
           <Dialog.Actions>
             <Button onPress={handleCancelNestlingBand}>Cancel</Button>
-            <Button onPress={handleConfirmNestlingBand} loading={BandLookupPending} disabled={BandLookupPending}>{EditNestlingBandIdx !== null ? 'Save' : 'Add'}</Button>
+            <Button onPress={() => ConfirmNestlingBandRef.current()} loading={BandLookupPending} disabled={BandLookupPending}>{EditNestlingBandIdx !== null ? 'Save' : 'Add'}</Button>
           </Dialog.Actions>
         </Dialog>
 
@@ -1966,7 +1975,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           </Dialog.ScrollArea>
           <Dialog.Actions>
             <Button onPress={() => { setEditAdultBandIdx(null); setAddAdultBandVisible(false); }}>Cancel</Button>
-            <Button onPress={handleConfirmAdultBand} loading={BandLookupPending} disabled={BandLookupPending}>{EditAdultBandIdx !== null ? 'Save' : 'Add'}</Button>
+            <Button onPress={() => ConfirmAdultBandRef.current()} loading={BandLookupPending} disabled={BandLookupPending}>{EditAdultBandIdx !== null ? 'Save' : 'Add'}</Button>
           </Dialog.Actions>
         </Dialog>
 
