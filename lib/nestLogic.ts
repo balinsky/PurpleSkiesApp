@@ -56,7 +56,13 @@ export function buildEntrySummary(entry: EntrySummaryInput): string | null {
     (entry.fledged_count ?? 0) > 0 ||
     (entry.discarded_eggs ?? 0) > 0 ||
     entry.nest_discarded;
-  if (!effectivelyHasNest) return null;
+  if (!effectivelyHasNest) {
+    const obsParts: string[] = [];
+    if (entry.male_age)   obsParts.push(`♂ ${entry.male_age}`);
+    if (entry.female_age) obsParts.push(`♀ ${entry.female_age}`);
+    if (entry.has_banding) obsParts.push('B');
+    return obsParts.length > 0 ? obsParts.join(' · ') : null;
+  }
   const IsPM = entry.species === 'PM';
   const SpeciesName = SpeciesLabel[entry.species] ?? entry.species;
   const NetEggs = Math.max(0, entry.egg_count - entry.discarded_eggs);

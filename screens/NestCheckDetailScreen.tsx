@@ -133,7 +133,8 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
               entry_summary: Entry ? buildEntrySummary({
                 ...Entry,
                 nestling_age_days: effectiveAge(C.id, Entry.nestling_age_days),
-                ...AgeMap.get(C.id),
+                male_age:   AgeMap.get(C.id)?.male_age   ?? (Entry as any).observed_male_age   ?? null,
+                female_age: AgeMap.get(C.id)?.female_age ?? (Entry as any).observed_female_age ?? null,
                 has_banding: BandingSet.has(Entry.id),
               }) : null,
               prev_summary:           PrevEntryMap.get(C.id)?.summary ?? null,
