@@ -482,9 +482,17 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       setOtherFemaleObs(FemaleObs);
       // Adult ages section stays closed by default
 
-      // Prev entry: most recent checked entry before current date (skip adult_present)
+      // Prev entry: most recent entry before current date that actually checked the nest
+      // (skip adult_present observations and entries with nothing nest-related recorded)
       const Prev = [...Entries]
-        .filter(e => e.check_date < CheckDate && !(e as any).adult_present)
+        .filter(e => {
+          if (e.check_date >= CheckDate) return false;
+          if ((e as any).adult_present) return false;
+          if (!e.is_empty_cavity && !e.has_nest &&
+              e.egg_count === 0 && (e.discarded_eggs ?? 0) === 0 &&
+              e.young_count === 0 && !e.nest_discarded) return false;
+          return true;
+        })
         .sort((a, b) => b.check_date.localeCompare(a.check_date))[0];
       if (Prev) {
         setPrevEntry({
