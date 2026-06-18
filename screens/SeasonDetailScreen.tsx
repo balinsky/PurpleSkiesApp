@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, ScrollView, StyleSheet, View } from 'react-native';
-import { Button, Card, Dialog, FAB, HelperText, IconButton, List, Portal, Text, TextInput } from 'react-native-paper';
+import { Button, Card, Dialog, FAB, HelperText, Icon, IconButton, List, Portal, Text, TextInput, TouchableRipple } from 'react-native-paper';
 import { exportSeasonXls } from '../lib/exportXls';
 import { Calendar } from 'react-native-calendars';
 import DateInput from '../components/DateInput';
@@ -134,6 +134,30 @@ function BandingHistogram({ bars, today }: {
   );
 }
 
+function AgeGenderDisplay({ symbol, confirmed, observations, onIconPress }: {
+  symbol: string;
+  confirmed: string | null;
+  observations: string[];
+  onIconPress: () => void;
+}) {
+  if (observations.length === 0 && !confirmed) return null;
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginRight: 10 }}>
+      <Text style={{ fontSize: 12, color: '#555' }}>{symbol}</Text>
+      <TouchableRipple onPress={onIconPress} borderless style={{ padding: 2 }}>
+        <Icon
+          source={confirmed ? 'check-circle' : 'help-circle-outline'}
+          color={confirmed ? '#22c55e' : '#f59e0b'}
+          size={15}
+        />
+      </TouchableRipple>
+      <Text style={{ fontSize: 12, color: '#555' }}>
+        {observations.length > 0 ? observations.join(', ') : confirmed}
+      </Text>
+    </View>
+  );
+}
+
 export default function SeasonDetailScreen({ navigation, route }: Props) {
   const { SeasonId, SiteId, Year } = route.params;
   const { SeasonCalendarView, toggleSeasonCalendarView } = useSettings();
@@ -154,9 +178,18 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   const [NestProgressExpanded, setNestProgressExpanded] = useState(false);
   const [ColonyStats, setColonyStats]           = useState<{ eggs: number; hatched: number; fledged: number } | null>(null);
 
-  type AdultAge = { compartment_id: string; label: string; unit_name: string; male_age: string | null; female_age: string | null };
+  type AdultAge = {
+    compartment_id: string;
+    label: string;
+    unit_name: string;
+    confirmed_male: string | null;
+    confirmed_female: string | null;
+    male_observations: string[];
+    female_observations: string[];
+  };
   const [AdultAges, setAdultAges]               = useState<AdultAge[]>([]);
   const [AdultAgesExpanded, setAdultAgesExpanded] = useState(false);
+  const [AgeConfirmInfoVisible, setAgeConfirmInfoVisible] = useState(false);
 
   const [BandingExpanded, setBandingExpanded]   = useState(false);
   const [BandingMin, setBandingMin]             = useState(14);
@@ -262,7 +295,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         const [EntriesResult, NestSeasonsResult] = await Promise.all([
           supabase
             .from('nest_check_entries')
-            .select('id, nest_check_id, compartment_id, adult_present, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count, dead_young_count, nesting_attempt, compartments(cavity_label, housing_units(name))')
+            .select('id, nest_check_id, compartment_id, adult_present, is_empty_cavity, has_nest, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count, dead_young_count, nesting_attempt, observed_male_age, observed_female_age, compartments(cavity_label, housing_units(name))')
             .in('nest_check_id', Checks.map(c => c.id))
             .eq('species', 'PM'),
           supabase
@@ -273,27 +306,68 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         const Entries        = EntriesResult.data;
         const NestSeasonRows = NestSeasonsResult.data;
 
-        // Adult ages — independent of entries
+        // Build confirmed-age map from nest_seasons
         const AgeMap = new Map<string, { male_age: string | null; female_age: string | null }>();
         if (NestSeasonRows) {
           for (const NS of NestSeasonRows) AgeMap.set(NS.compartment_id, NS);
         }
-        const Ages: AdultAge[] = (NestSeasonRows ?? [])
-          .filter(NS => NS.male_age || NS.female_age)
-          .map(NS => {
-            const comp = (NS as any).compartments;
-            return {
-              compartment_id: NS.compartment_id,
-              label:     comp?.cavity_label ?? '?',
-              unit_name: comp?.housing_units?.name ?? '',
-              male_age:  NS.male_age,
-              female_age: NS.female_age,
-            };
-          })
-          .sort((a, b) => {
-            const u = a.unit_name.localeCompare(b.unit_name);
-            return u !== 0 ? u : a.label.localeCompare(b.label);
+
+        // Build per-compartment observation lists from entries
+        type ObsData = { male: string[]; female: string[]; label: string; unit_name: string };
+        const ObsMap = new Map<string, ObsData>();
+        if (Entries) {
+          for (const E of Entries as any[]) {
+            if (!E.observed_male_age && !E.observed_female_age) continue;
+            if (!ObsMap.has(E.compartment_id)) {
+              const comp = E.compartments;
+              ObsMap.set(E.compartment_id, {
+                male: [], female: [],
+                label:     comp?.cavity_label ?? '?',
+                unit_name: comp?.housing_units?.name ?? '',
+              });
+            }
+            const obs = ObsMap.get(E.compartment_id)!;
+            if (E.observed_male_age)   obs.male.push(E.observed_male_age);
+            if (E.observed_female_age) obs.female.push(E.observed_female_age);
+          }
+        }
+
+        // Merge: show all compartments with confirmed ages OR any observation
+        const AllCompIds = new Set<string>([
+          ...(NestSeasonRows ?? []).map(NS => NS.compartment_id),
+          ...ObsMap.keys(),
+        ]);
+        const Ages: AdultAge[] = [];
+        for (const cid of AllCompIds) {
+          const obsData = ObsMap.get(cid);
+          const ageData = AgeMap.get(cid);
+          const hasObs = obsData && (obsData.male.length > 0 || obsData.female.length > 0);
+          const hasConfirmed = ageData && (ageData.male_age || ageData.female_age);
+          if (!hasObs && !hasConfirmed) continue;
+          let label: string;
+          let unit_name: string;
+          if (obsData) {
+            label = obsData.label; unit_name = obsData.unit_name;
+          } else {
+            const NS = (NestSeasonRows ?? []).find(ns => ns.compartment_id === cid);
+            const comp = NS ? (NS as any).compartments : null;
+            label = comp?.cavity_label ?? '?';
+            unit_name = comp?.housing_units?.name ?? '';
+          }
+          Ages.push({
+            compartment_id:    cid,
+            label,
+            unit_name,
+            confirmed_male:    ageData?.male_age ?? null,
+            confirmed_female:  ageData?.female_age ?? null,
+            male_observations:   obsData?.male ?? [],
+            female_observations: obsData?.female ?? [],
           });
+        }
+        Ages.sort((a, b) => {
+          const u = a.unit_name.localeCompare(b.unit_name);
+          return u !== 0 ? u : a.label.localeCompare(b.label);
+        });
         setAdultAges(Ages);
 
         if (!Entries) { setNestProgress([]); return; }
@@ -325,6 +399,13 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           }
         }
 
+        // Entries that only carry adult age observations (no nest status, eggs, or young) must be
+        // excluded from nest-progress and banding-window logic — they don't represent a nest check.
+        const hasNestData = (E: any) =>
+          E.is_empty_cavity || E.has_nest ||
+          (E.egg_count ?? 0) > 0 || (E.young_count ?? 0) > 0 ||
+          (E.fledged_count ?? 0) > 0 || (E.dead_young_count ?? 0) > 0;
+
         // Full check history per compartment (all attempts, sorted ascending) for RA first-egg uncertainty.
         // Stores egg_count alongside date so the trough's count can inform how far back to look.
         type CheckSnapshot = { check_date: string; egg_count: number; discarded_eggs: number };
@@ -332,7 +413,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         for (const E of Entries) {
           const Chk = Checks.find(c => c.id === E.nest_check_id);
           if (!Chk) continue;
-          if (!(E as any).adult_present) {
+          if (!(E as any).adult_present && hasNestData(E)) {
             if (!AllHistoryByCompartment.has(E.compartment_id)) AllHistoryByCompartment.set(E.compartment_id, []);
             const hist = AllHistoryByCompartment.get(E.compartment_id)!;
             if (!hist.some(h => h.check_date === Chk.check_date))
@@ -361,7 +442,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
               ewd:            [],
             });
           }
-          if (!(E as any).adult_present) {
+          if (!(E as any).adult_present && hasNestData(E)) {
             CompMap.get(CompKey)!.ewd.push({
               check_date:        Chk.check_date,
               egg_count:         E.egg_count ?? 0,
@@ -737,9 +818,10 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                 {AdultAgesExpanded && AdultAges.map((A) => (
                   <View key={A.compartment_id} style={styles.ProgressRow}>
                     <Text style={styles.ProgressTitle}>{A.unit_name} · {A.label}</Text>
-                    <Text style={styles.ProgressDates}>
-                      {[A.male_age && `♂ ${A.male_age}`, A.female_age && `♀ ${A.female_age}`].filter(Boolean).join('  ')}
-                    </Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 2 }}>
+                      <AgeGenderDisplay symbol="♂" confirmed={A.confirmed_male} observations={A.male_observations} onIconPress={() => setAgeConfirmInfoVisible(true)} />
+                      <AgeGenderDisplay symbol="♀" confirmed={A.confirmed_female} observations={A.female_observations} onIconPress={() => setAgeConfirmInfoVisible(true)} />
+                    </View>
                   </View>
                 ))}
               </>
@@ -893,9 +975,10 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                   {AdultAgesExpanded && AdultAges.map((A) => (
                     <View key={A.compartment_id} style={styles.ProgressRow}>
                       <Text style={styles.ProgressTitle}>{A.unit_name} · {A.label}</Text>
-                      <Text style={styles.ProgressDates}>
-                        {[A.male_age && `♂ ${A.male_age}`, A.female_age && `♀ ${A.female_age}`].filter(Boolean).join('  ')}
-                      </Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 2 }}>
+                        <AgeGenderDisplay symbol="♂" confirmed={A.confirmed_male} observations={A.male_observations} onIconPress={() => setAgeConfirmInfoVisible(true)} />
+                        <AgeGenderDisplay symbol="♀" confirmed={A.confirmed_female} observations={A.female_observations} onIconPress={() => setAgeConfirmInfoVisible(true)} />
+                      </View>
                     </View>
                   ))}
                 </>
@@ -993,6 +1076,19 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           <Dialog.Actions>
             <Button onPress={() => setDeleteSeasonVisible(false)}>Cancel</Button>
             <Button textColor="red" loading={DeletingSeason} onPress={doDeleteSeason}>Delete</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        <Dialog visible={AgeConfirmInfoVisible} onDismiss={() => setAgeConfirmInfoVisible(false)}>
+          <Dialog.Title>About Age Confirmation</Dialog.Title>
+          <Dialog.Content>
+            <Text>
+              Age confirmation requires 3 consistent observations of an adult entering the nest.
+              Until 3 matching observations have been recorded, the age is shown as unconfirmed (?).
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setAgeConfirmInfoVisible(false)}>Got it</Button>
           </Dialog.Actions>
         </Dialog>
 
