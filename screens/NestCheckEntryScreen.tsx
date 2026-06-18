@@ -34,6 +34,7 @@ type PrevEntry = {
   egg_count: number;
   discarded_eggs: number;
   young_count: number;
+  dead_young_count: number;
   nesting_attempt: number;
 };
 
@@ -390,7 +391,8 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         id: string; check_date: string; species: string;
         is_empty_cavity: boolean | number; has_nest: boolean | number;
         nest_discarded: boolean | number; adult_present: boolean | number;
-        egg_count: number; discarded_eggs: number; young_count: number; nestling_age_days: number | null;
+        egg_count: number; discarded_eggs: number; young_count: number; dead_young_count: number;
+        nestling_age_days: number | null;
         observed_male_age: string | null; observed_female_age: string | null;
         nesting_attempt: number; renesting_attempt: boolean | number;
         nest_check_id: string;
@@ -411,7 +413,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
         const { data: OtherEntries, error: EErr } = await supabase
           .from('nest_check_entries')
-          .select('id, nest_check_id, species, is_empty_cavity, has_nest, nest_discarded, adult_present, renesting_attempt, egg_count, discarded_eggs, young_count, nestling_age_days, observed_male_age, observed_female_age, nesting_attempt')
+          .select('id, nest_check_id, species, is_empty_cavity, has_nest, nest_discarded, adult_present, renesting_attempt, egg_count, discarded_eggs, young_count, dead_young_count, nestling_age_days, observed_male_age, observed_female_age, nesting_attempt')
           .in('nest_check_id', SeasonChecks.map(c => c.id))
           .eq('compartment_id', CompartmentId);
         if (EErr) throw EErr;
@@ -493,6 +495,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           egg_count:        Prev.egg_count,
           discarded_eggs:   Prev.discarded_eggs ?? 0,
           young_count:      Prev.young_count,
+          dead_young_count: (Prev as any).dead_young_count ?? 0,
           nesting_attempt:  (Prev as any).nesting_attempt ?? 1,
         });
       }
@@ -1222,8 +1225,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
   function checkFledgeUnaccounted(): number {
     if (!IsPM || !PrevEntry || PrevEntry.nesting_attempt !== NestingAttempt) return 0;
-    if (PrevEntry.young_count <= 0) return 0;
-    const Reduction = PrevEntry.young_count - YoungCount;
+    const PrevNetYoung = Math.max(0, PrevEntry.young_count - PrevEntry.dead_young_count);
+    if (PrevNetYoung <= 0) return 0;
+    const Reduction = PrevNetYoung - YoungCount;
     if (Reduction <= 0) return 0;
     const Age = CalculatedNestlingAge ?? (YoungCount > 0 && !IsHatchingDay ? NestlingAgeDays : null);
     if (Age === null || Age < 26) return 0;
@@ -1473,7 +1477,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 <Counter
                   label={CompactMode ? 'Y' : <Text style={{ fontWeight: '700' }}>Young</Text>} value={YoungCount}
                   onChange={(N) => { MarkDirty(); setYoungCount(N); if (N > 0) setIsEmpty(false); }}
-                  prevValue={PrevEntry?.young_count}
+                  prevValue={PrevEntry ? Math.max(0, PrevEntry.young_count - PrevEntry.dead_young_count) : undefined}
                 />
                 {YoungCount > 0 && (
                   <>
