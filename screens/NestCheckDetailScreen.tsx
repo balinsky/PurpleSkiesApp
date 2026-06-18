@@ -37,6 +37,7 @@ type CompartmentRow = {
   housing_type: string | null;
   entry_id: string | null;
   entry_summary: string | null;
+  entry_has_nest: boolean;
   prev_summary: string | null;
   prev_entry: PrevEntryData | null;
   calculated_nestling_age: number | null;
@@ -129,7 +130,11 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
               unit_id:       Unit.id,
               unit_name:     Unit.name,
               housing_type:  (C as any).housing_type ?? null,
-              entry_id:      Entry?.id ?? null,
+              entry_id:       Entry?.id ?? null,
+              entry_has_nest: !!(Entry?.is_empty_cavity || Entry?.has_nest ||
+                (Entry?.egg_count ?? 0) > 0 || (Entry?.young_count ?? 0) > 0 ||
+                (Entry?.fledged_count ?? 0) > 0 || Entry?.nest_discarded ||
+                Entry?.adult_present),
               entry_summary: Entry ? buildEntrySummary({
                 ...Entry,
                 nestling_age_days: effectiveAge(C.id, Entry.nestling_age_days),
@@ -561,7 +566,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
                 />
               )}
             />
-            {item.prev_summary && !item.entry_id && (
+            {item.prev_summary && (!item.entry_id || !item.entry_has_nest) && (
               <Card.Content style={styles.PrevContent}>
                 <Text style={styles.PrevText}>Prev: {item.prev_summary}</Text>
               </Card.Content>
