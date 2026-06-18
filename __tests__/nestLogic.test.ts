@@ -135,8 +135,8 @@ describe('buildEntrySummary', () => {
     expect(buildEntrySummary(entry({ adult_present: true }))).toBe('Adult present · not checked');
   });
 
-  it('returns "No nest" when has_nest is false', () => {
-    expect(buildEntrySummary(entry({ has_nest: false }))).toBe('No nest');
+  it('returns null when has_nest is false (not entered)', () => {
+    expect(buildEntrySummary(entry({ has_nest: false }))).toBeNull();
   });
 
   it('returns "Purple Martin nest" for PM with no eggs or young', () => {

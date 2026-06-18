@@ -17,7 +17,7 @@ import {
 } from '../lib/localDb';
 
 type PrevEntryData = {
-  summary: string;
+  summary: string | null;
   species: string;
   is_empty_cavity: boolean;
   has_nest: boolean;

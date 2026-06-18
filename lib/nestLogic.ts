@@ -47,10 +47,10 @@ export type EntrySummaryInput = {
   gourd_removed?: boolean;
 };
 
-export function buildEntrySummary(entry: EntrySummaryInput): string {
+export function buildEntrySummary(entry: EntrySummaryInput): string | null {
   if (entry.is_empty_cavity) return 'Empty cavity';
   if (entry.adult_present)   return 'Adult present · not checked';
-  if (!entry.has_nest)       return 'Unchecked';
+  if (!entry.has_nest)       return null;
   const IsPM = entry.species === 'PM';
   const SpeciesName = SpeciesLabel[entry.species] ?? entry.species;
   const NetEggs = Math.max(0, entry.egg_count - entry.discarded_eggs);
