@@ -1,6 +1,25 @@
 // Pure business logic — no React Native, Supabase, or SQLite dependencies.
 // Extracted here so it can be unit-tested without mocking native modules.
 
+// Increments the last run of digits in a band code, preserving leading zeros.
+// e.g. "2841-74209" → "2841-74210",  "TX 403" → "TX 404",  "Red" → "Red"
+export function incrementBandCode(code: string): string {
+  const m = /\d+(?=\D*$)/.exec(code);
+  if (!m) return code;
+  const incremented = (parseInt(m[0], 10) + 1).toString().padStart(m[0].length, '0');
+  return code.slice(0, m.index) + incremented + code.slice(m.index + m[0].length);
+}
+
+// Returns an error string if the federal band code is invalid, or null if valid.
+// Valid: digits and at most one dash, total 8-9 digits.
+export function validateFederalBandCode(code: string): string | null {
+  const digits = code.replace(/-/g, '');
+  if (!/^\d+$/.test(digits)) return 'Federal band number may only contain digits and an optional dash.';
+  if (digits.length < 8) return `Federal band numbers must be 8 or 9 digits (you entered ${digits.length}).`;
+  if (digits.length > 9) return `Federal band numbers must be 8 or 9 digits (you entered ${digits.length}).`;
+  return null;
+}
+
 export const SpeciesLabel: Record<string, string> = {
   PM: 'Purple Martin', HS: 'House Sparrow', ST: 'Starling',
   TS: 'Tree Swallow',  BB: 'Bluebird',      HW: 'House Wren',

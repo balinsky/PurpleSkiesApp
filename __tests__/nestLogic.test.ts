@@ -5,6 +5,8 @@ import {
   netEggs,
   buildEntrySummary,
   fledgeUnaccounted,
+  incrementBandCode,
+  validateFederalBandCode,
   EntrySummaryInput,
   FledgeParams,
 } from '../lib/nestLogic';
@@ -278,5 +280,57 @@ describe('fledgeUnaccounted', () => {
 
   it('returns 0 when nesting attempts differ', () => {
     expect(fledgeUnaccounted(fledge({ prevNestingAttempt: 1, currentNestingAttempt: 2 }))).toBe(0);
+  });
+});
+
+// ── incrementBandCode ─────────────────────────────────────────────────────────
+
+describe('incrementBandCode', () => {
+  it('increments a federal band number', () => {
+    expect(incrementBandCode('2841-74209')).toBe('2841-74210');
+  });
+  it('increments a code with a prefix', () => {
+    expect(incrementBandCode('TX 403')).toBe('TX 404');
+  });
+  it('preserves leading zeros when incrementing', () => {
+    expect(incrementBandCode('2841-07009')).toBe('2841-07010');
+  });
+  it('returns unchanged when there are no digits', () => {
+    expect(incrementBandCode('Red')).toBe('Red');
+  });
+  it('increments a plain number', () => {
+    expect(incrementBandCode('12345678')).toBe('12345679');
+  });
+  it('increments the last digit group, not the first', () => {
+    expect(incrementBandCode('2841-74999')).toBe('2841-75000');
+  });
+});
+
+// ── validateFederalBandCode ───────────────────────────────────────────────────
+
+describe('validateFederalBandCode', () => {
+  it('accepts an 8-digit code', () => {
+    expect(validateFederalBandCode('12345678')).toBeNull();
+  });
+  it('accepts a 9-digit code', () => {
+    expect(validateFederalBandCode('123456789')).toBeNull();
+  });
+  it('accepts an 8-digit code with a dash', () => {
+    expect(validateFederalBandCode('1234-5678')).toBeNull();
+  });
+  it('rejects a code that is too short', () => {
+    expect(validateFederalBandCode('1234567')).toMatch(/8 or 9 digits/);
+  });
+  it('reports the actual length when too short', () => {
+    expect(validateFederalBandCode('123456')).toMatch(/you entered 6/);
+  });
+  it('rejects a code that is too long', () => {
+    expect(validateFederalBandCode('1234567890')).toMatch(/8 or 9 digits/);
+  });
+  it('rejects a code with letters', () => {
+    expect(validateFederalBandCode('TX1234567')).toMatch(/only contain digits/);
+  });
+  it('rejects a code with special characters other than a dash', () => {
+    expect(validateFederalBandCode('1234.5678')).toMatch(/only contain digits/);
   });
 });

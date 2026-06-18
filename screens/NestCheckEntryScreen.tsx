@@ -10,7 +10,7 @@ import { supabase } from '../lib/supabase';
 import { AppStackParamList } from '../App';
 import { useSettings } from '../contexts/SettingsContext';
 import { useSync } from '../contexts/SyncContext';
-import { SpeciesLabel, formatDate, addDays, computeConfirmedAge } from '../lib/nestLogic';
+import { SpeciesLabel, formatDate, addDays, computeConfirmedAge, incrementBandCode, validateFederalBandCode } from '../lib/nestLogic';
 import {
   getLocalEntriesForCompartment,
   cacheEntries, getLocalEntry,
@@ -103,15 +103,6 @@ function Counter({
       )}
     </View>
   );
-}
-
-// Increments the last run of digits in a band code by 1, preserving leading zeros.
-// e.g. "2841-74209" → "2841-74210",  "TX 403" → "TX 404",  "Red" → "Red"
-function incrementBandCode(code: string): string {
-  const m = /\d+(?=\D*$)/.exec(code);
-  if (!m) return code;
-  const incremented = (parseInt(m[0], 10) + 1).toString().padStart(m[0].length, '0');
-  return code.slice(0, m.index) + incremented + code.slice(m.index + m[0].length);
 }
 
 // ── Screen ─────────────────────────────────────────────────────────────────
@@ -685,14 +676,6 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     return parts.join(' · ');
   }
 
-  function validateNewFederalBand(code: string): string | null {
-    const digits = code.replace(/-/g, '');
-    if (!/^\d+$/.test(digits)) return 'Federal band number may only contain digits and an optional dash.';
-    if (digits.length < 8) return `Federal band numbers must be 8 or 9 digits (you entered ${digits.length}).`;
-    if (digits.length > 9) return `Federal band numbers must be 8 or 9 digits (you entered ${digits.length}).`;
-    return null;
-  }
-
   function openAddNestlingBand(Idx: number) {
     setAddNestlingBandIdx(Idx);
     setEditNestlingBandIdx(null);
@@ -760,7 +743,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     const Code = NewBandCode.trim();
     if (!Code) { setNewBandError('Please enter a band number or code.'); return; }
     if (NewBandType === 'federal' && EditNestlingBandIdx === null) {
-      const Err = validateNewFederalBand(Code);
+      const Err = validateFederalBandCode(Code);
       if (Err) { setNewBandError(Err); return; }
       const Digits = Code.replace(/-/g, '').length;
       const is8Digit = Digits === 8;
@@ -828,7 +811,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     if (!Code) { setNewBandError('Please enter a band number or code.'); return; }
     if (NewBandType === 'federal') {
       if (NewAdultIsNew && EditAdultBandIdx === null) {
-        const Err = validateNewFederalBand(Code);
+        const Err = validateFederalBandCode(Code);
         if (Err) { setNewBandError(Err); return; }
         const Digits = Code.replace(/-/g, '').length;
         const is8Digit = Digits === 8;
