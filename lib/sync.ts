@@ -9,6 +9,9 @@ import {
 
 export { getPendingCount } from './localDb';
 
+const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+const INTER_RECORD_DELAY_MS = 100;
+
 // Push all locally-pending records to Supabase in dependency order.
 // Each record is pushed independently — a failure on one doesn't block the rest.
 export async function pushPending(): Promise<void> {
@@ -26,6 +29,7 @@ async function pushPendingNestChecks() {
       id: C.id, site_id: C.site_id, check_date: C.check_date, created_by: C.created_by,
     });
     if (!error) await markNestCheckSynced(C.id);
+    await pause(INTER_RECORD_DELAY_MS);
   }
 }
 
@@ -57,6 +61,7 @@ async function pushPendingEntries() {
       gourd_removed:       !!E.gourd_removed,
     });
     if (!error) await markEntrySynced(E.id);
+    await pause(INTER_RECORD_DELAY_MS);
   }
 }
 
@@ -68,6 +73,7 @@ async function pushPendingNestlings() {
       site_season_id: N.site_season_id, label: N.label,
     });
     if (!error) await markNestlingSynced(N.id);
+    await pause(INTER_RECORD_DELAY_MS);
   }
 }
 
@@ -94,6 +100,7 @@ async function pushPendingBands() {
     } else {
       await markBandsSyncedForEntry(entryId);
     }
+    await pause(INTER_RECORD_DELAY_MS);
   }
 }
 
@@ -121,5 +128,6 @@ async function pushPendingNestSeasons() {
       }));
     }
     if (!error) await markNestSeasonSynced(NS.id);
+    await pause(INTER_RECORD_DELAY_MS);
   }
 }

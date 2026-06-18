@@ -17,7 +17,9 @@ const SyncContext = createContext<SyncContextValue>({
 export function SyncProvider({ children }: { children: React.ReactNode }) {
   const [isOnline, setIsOnline]       = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
-  const syncing = useRef(false);
+  const syncing      = useRef(false);
+  const failCount    = useRef(0);
+  const nextRetryAt  = useRef(0);
 
   const refreshPendingCount = useCallback(async () => {
     try { setPendingCount(await getPendingCount()); } catch {}
@@ -25,16 +27,29 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 
   const syncNow = useCallback(async () => {
     if (syncing.current) return;
+    if (Date.now() < nextRetryAt.current) return;   // respect backoff window
     syncing.current = true;
+    const before = await getPendingCount().catch(() => 0);
     try {
       await pushPending();
     } catch {
       // Network errors are expected; individual record failures are handled inside pushPending
     } finally {
       syncing.current = false;
-      await refreshPendingCount();
+      const after = await getPendingCount().catch(() => before);
+      setPendingCount(after);
+      if (after === 0 || after < before) {
+        // Progress made — reset backoff
+        failCount.current   = 0;
+        nextRetryAt.current = 0;
+      } else if (before > 0) {
+        // No progress despite pending records — back off exponentially (5 s, 10 s, 20 s … 5 min)
+        failCount.current  += 1;
+        const delay = Math.min(5_000 * 2 ** (failCount.current - 1), 300_000);
+        nextRetryAt.current = Date.now() + delay;
+      }
     }
-  }, [refreshPendingCount]);
+  }, []);
 
   useEffect(() => {
     // Get initial network state
