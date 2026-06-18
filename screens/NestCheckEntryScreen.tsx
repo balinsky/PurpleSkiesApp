@@ -1340,7 +1340,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
 
   const PrevSummary = PrevEntry
     ? PrevEntry.is_empty_cavity ? 'Empty'
-      : !PrevEntry.has_nest ? 'No nest'
+      : !PrevEntry.has_nest ? 'Unchecked'
       : PrevEntry.species === 'PM'
         ? `PM · ${PrevEntry.egg_count}E${PrevEntry.discarded_eggs > 0 ? '/D' : ''} · ${PrevEntry.young_count}Y`
         : `${SpeciesLabel[PrevEntry.species] ?? PrevEntry.species} nest`

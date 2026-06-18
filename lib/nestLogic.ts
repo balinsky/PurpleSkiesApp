@@ -50,7 +50,7 @@ export type EntrySummaryInput = {
 export function buildEntrySummary(entry: EntrySummaryInput): string {
   if (entry.is_empty_cavity) return 'Empty cavity';
   if (entry.adult_present)   return 'Adult present · not checked';
-  if (!entry.has_nest)       return 'No nest';
+  if (!entry.has_nest)       return 'Unchecked';
   const IsPM = entry.species === 'PM';
   const SpeciesName = SpeciesLabel[entry.species] ?? entry.species;
   const NetEggs = Math.max(0, entry.egg_count - entry.discarded_eggs);
