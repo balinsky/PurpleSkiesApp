@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet } from 'react-native';
 import { Button, Card, HelperText, Text, TextInput } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
+import { friendlyError } from '../lib/errorUtils';
 import { AppStackParamList } from '../App';
 
 type Props = {
@@ -44,7 +45,7 @@ export default function CreateSiteScreen({ navigation }: Props) {
     });
     setLoading(false);
     if (error) {
-      setErrorMessage(error.message);
+      setErrorMessage(friendlyError(error, 'Failed to create site.'));
     } else {
       navigation.goBack();
     }

@@ -5,6 +5,7 @@ import DateInput from '../components/DateInput';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
+import { friendlyError } from '../lib/errorUtils';
 import { AppStackParamList } from '../App';
 import { useSync } from '../contexts/SyncContext';
 import { SpeciesLabel, buildEntrySummary } from '../lib/nestLogic';
@@ -316,7 +317,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     setEditDateLoading(true);
     const { error } = await supabase.from('nest_checks').update({ check_date: Val }).eq('id', CheckId);
     setEditDateLoading(false);
-    if (error) { setEditDateError(error.message); return; }
+    if (error) { setEditDateError(friendlyError(error, 'Failed to update date.')); return; }
     setEditDateVisible(false);
     navigation.setParams({ CheckDate: Val });
   }
@@ -327,7 +328,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     setDeleteError('');
     const { error } = await supabase.from('nest_checks').delete().eq('id', CheckId);
     setDeleting(false);
-    if (error) { setDeleteError(error.message); return; }
+    if (error) { setDeleteError(friendlyError(error, 'Failed to delete check.')); return; }
     setDeleteVisible(false);
     navigation.goBack();
   }

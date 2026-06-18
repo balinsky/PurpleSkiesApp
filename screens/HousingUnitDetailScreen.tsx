@@ -7,6 +7,7 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
+import { friendlyError } from '../lib/errorUtils';
 import { AppStackParamList } from '../App';
 
 type Compartment = {
@@ -104,7 +105,7 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
       .update({ name: EditUnitName.trim(), default_hole_type: EditDefaultHole })
       .eq('id', UnitId);
     setEditUnitLoading(false);
-    if (error) { setEditUnitError(error.message); return; }
+    if (error) { setEditUnitError(friendlyError(error)); return; }
     setEditUnitVisible(false);
     navigation.setParams({ UnitName: EditUnitName.trim(), DefaultHoleType: EditDefaultHole });
   }
@@ -115,7 +116,7 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
     setDeleteUnitError('');
     const { error } = await supabase.from('housing_units').delete().eq('id', UnitId);
     setDeleteUnitLoading(false);
-    if (error) { setDeleteUnitError(error.message); return; }
+    if (error) { setDeleteUnitError(friendlyError(error, 'Failed to delete housing unit.')); return; }
     setDeleteUnitVisible(false);
     navigation.goBack();
   }
@@ -144,7 +145,7 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
       })
       .eq('id', EditingComp.id);
     setEditCompLoading(false);
-    if (error) { setEditCompError(error.message); return; }
+    if (error) { setEditCompError(friendlyError(error)); return; }
     setEditCompVisible(false);
     loadCompartments();
   }
@@ -162,7 +163,7 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
     setDeleteCompError('');
     const { error } = await supabase.from('compartments').delete().eq('id', DeletingComp.id);
     setDeleteCompLoading(false);
-    if (error) { setDeleteCompError(error.message); return; }
+    if (error) { setDeleteCompError(friendlyError(error, 'Failed to delete compartment.')); return; }
     setDeleteCompVisible(false);
     loadCompartments();
   }

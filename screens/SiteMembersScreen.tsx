@@ -7,6 +7,7 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
+import { friendlyError } from '../lib/errorUtils';
 import { AppStackParamList } from '../App';
 
 type Member = {
@@ -157,7 +158,7 @@ export default function SiteMembersScreen({ navigation, route }: Props) {
     });
     setInviteLoading(false);
     if (error) {
-      setInviteError(error.code === '23505' ? 'This person is already invited.' : error.message);
+      setInviteError(error.code === '23505' ? 'This person is already invited.' : friendlyError(error, 'Failed to send invitation.'));
       return;
     }
     setInviteVisible(false);
@@ -199,7 +200,7 @@ export default function SiteMembersScreen({ navigation, route }: Props) {
     const { error } = await supabase.from('site_members')
       .update({ role: RoleDialogValue }).eq('id', RoleDialogMember.memberId);
     setRoleDialogLoading(false);
-    if (error) { setRoleDialogError(error.message); return; }
+    if (error) { setRoleDialogError(friendlyError(error)); return; }
     setRoleDialogVisible(false);
     loadAll();
   }

@@ -4,6 +4,7 @@ import { Button, HelperText, RadioButton, Text, TextInput } from 'react-native-p
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
+import { friendlyError } from '../lib/errorUtils';
 import { AppStackParamList } from '../App';
 
 type Props = {
@@ -68,7 +69,7 @@ export default function CreateCompartmentScreen({ navigation, route }: Props) {
 
     setLoading(false);
     if (error) {
-      setErrorMessage(error.message);
+      setErrorMessage(friendlyError(error, 'Failed to create compartment.'));
     } else {
       setCavityLabel('');
       navigation.goBack();
@@ -100,7 +101,7 @@ export default function CreateCompartmentScreen({ navigation, route }: Props) {
 
     setLoading(false);
     if (error) {
-      setErrorMessage(error.message);
+      setErrorMessage(friendlyError(error, 'Failed to create compartment.'));
     } else {
       setCavityLabel('');
     }

@@ -8,6 +8,7 @@ import DateInput from '../components/DateInput';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
+import { friendlyError } from '../lib/errorUtils';
 import { AppStackParamList } from '../App';
 import { useSettings } from '../contexts/SettingsContext';
 import { useSync } from '../contexts/SyncContext';
@@ -461,7 +462,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
       })
       .eq('id', SeasonId);
     setDatesLoading(false);
-    if (error) setDatesError(error.message);
+    if (error) setDatesError(friendlyError(error, 'Failed to save dates.'));
   }
 
   function saveBandingWindow() {
@@ -530,7 +531,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
       navigation.goBack();
     } catch (e: any) {
       setDeletingSeason(false);
-      const msg = e.message ?? 'Delete failed.';
+      console.error(e);
+      const msg = 'Failed to delete season. Please try again.';
       setDeleteSeasonError(msg);
       Alert.alert('Delete failed', msg);
     }
@@ -562,7 +564,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
     if (!savedLocally) {
       const { error } = await supabase.from('nest_checks')
         .insert({ id: CheckId, site_id: SiteId, check_date: DateVal, created_by: user?.id ?? null });
-      if (error) { setAddCheckError(error.message); setAddCheckLoading(false); return; }
+      if (error) { setAddCheckError(friendlyError(error, 'Failed to create check.')); setAddCheckLoading(false); return; }
     }
 
     setAddCheckLoading(false);

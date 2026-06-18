@@ -4,6 +4,7 @@ import { Button, HelperText, RadioButton, Text, TextInput } from 'react-native-p
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
+import { friendlyError } from '../lib/errorUtils';
 import { AppStackParamList } from '../App';
 
 type Props = {
@@ -90,7 +91,7 @@ export default function CreateHousingUnitScreen({ navigation, route }: Props) {
       .select()
       .single();
 
-    if (UnitError) { setErrorMessage(UnitError.message); setLoading(false); return; }
+    if (UnitError) { setErrorMessage(friendlyError(UnitError, 'Failed to create housing unit.')); setLoading(false); return; }
 
     const HousingType = housingTypeForUnit(UnitType, GourdType);
     const Compartments = Labels.map((Label, I) => ({
@@ -104,7 +105,7 @@ export default function CreateHousingUnitScreen({ navigation, route }: Props) {
     const { error: CompError } = await supabase.from('compartments').insert(Compartments);
     setLoading(false);
 
-    if (CompError) { setErrorMessage(CompError.message); return; }
+    if (CompError) { setErrorMessage(friendlyError(CompError, 'Failed to create compartments.')); return; }
 
     navigation.replace('HousingUnitDetail', {
       UnitId: Unit.id,

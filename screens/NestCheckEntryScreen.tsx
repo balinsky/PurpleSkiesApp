@@ -7,6 +7,7 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
+import { friendlyError } from '../lib/errorUtils';
 import { AppStackParamList } from '../App';
 import { useSettings } from '../contexts/SettingsContext';
 import { useSync } from '../contexts/SyncContext';
@@ -984,7 +985,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       } else {
         ({ error: SaveErr } = await supabase.from('nest_check_entries').insert({ id: EntryId, ...EntryPayload }));
       }
-      if (SaveErr) { setErrorMessage(SaveErr.message); setSaving(false); return false; }
+      if (SaveErr) { setErrorMessage(friendlyError(SaveErr, 'Failed to save entry.')); setSaving(false); return false; }
 
       // Nestlings
       const NewLabelToId = new Map<string, string>();
@@ -994,7 +995,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           .from('nestlings')
           .insert(NestlingsToCreate.map(N => ({ compartment_id: CompartmentId, site_season_id: SeasonId, label: N.label })))
           .select('id, label');
-        if (NestlingErr) { setErrorMessage(`Nestlings: ${NestlingErr.message}`); setSaving(false); return false; }
+        if (NestlingErr) { setErrorMessage(friendlyError(NestlingErr, 'Failed to save nestlings.')); setSaving(false); return false; }
         if (Created) for (const N of Created) NewLabelToId.set(N.label, N.id);
       }
 
@@ -1013,7 +1014,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       }
       if (SupaBandRows.length > 0) {
         const { error: BandErr } = await supabase.from('bands').insert(SupaBandRows);
-        if (BandErr) { setErrorMessage(`Bands: ${BandErr.message}`); setSaving(false); return false; }
+        if (BandErr) { setErrorMessage(friendlyError(BandErr, 'Failed to save bands.')); setSaving(false); return false; }
       }
 
       // Nest seasons
@@ -1319,7 +1320,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     await deleteLocalEntry(ExistingEntryId);
     const { error } = await supabase.from('nest_check_entries').delete().eq('id', ExistingEntryId);
     setDeleting(false);
-    if (error) { setErrorMessage(error.message); return; }
+    if (error) { setErrorMessage(friendlyError(error, 'Failed to delete entry.')); return; }
     setDeleteVisible(false);
     ClearDirty();
     navigation.goBack();

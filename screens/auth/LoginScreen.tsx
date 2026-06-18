@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { Button, Text, TextInput, HelperText } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../lib/supabase';
+import { friendlyAuthError } from '../../lib/errorUtils';
 import { AuthStackParamList } from '../../App';
 
 type Props = {
@@ -24,7 +25,7 @@ export default function LoginScreen({ navigation }: Props) {
       if (error.message.toLowerCase().includes('email not confirmed')) {
         setErrorMessage('Please confirm your email address before logging in. Check your inbox.');
       } else {
-        setErrorMessage(error.message);
+        setErrorMessage(friendlyAuthError(error));
       }
     }
   }

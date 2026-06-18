@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet } from 'react-native';
 import { Button, Divider, HelperText, Text, TextInput } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
+import { friendlyAuthError } from '../lib/errorUtils';
 import { AppStackParamList } from '../App';
 
 type Props = {
@@ -37,7 +38,7 @@ export default function ProfileScreen({ navigation }: Props) {
     const { data: { user }, error: AuthErr } = await supabase.auth.updateUser({
       data: { name: Name.trim() || null, phone: Phone.trim() || null },
     });
-    if (AuthErr) { setSaving(false); setSaveError(AuthErr.message); return; }
+    if (AuthErr) { setSaving(false); setSaveError(friendlyAuthError(AuthErr)); return; }
     if (user) {
       await supabase.from('profiles').upsert({
         id:           user.id,

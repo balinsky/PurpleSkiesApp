@@ -4,6 +4,7 @@ import { Button, Card, Dialog, Divider, HelperText, List, Portal, Text, TextInpu
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
+import { friendlyError } from '../lib/errorUtils';
 import { AppStackParamList } from '../App';
 
 type HousingUnit = {
@@ -154,7 +155,7 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
       .select()
       .single();
     setOtherSeasonLoading(false);
-    if (error) { setOtherSeasonError(error.message); return; }
+    if (error) { setOtherSeasonError(friendlyError(error, 'Failed to create season.')); return; }
     if (data) {
       setOtherSeasonVisible(false);
       navigation.navigate('SeasonDetail', { SeasonId: data.id, SiteId, Year: Yr });
@@ -203,7 +204,7 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
       })
       .eq('id', SiteId);
     setEditLoading(false);
-    if (error) { setEditError(error.message); return; }
+    if (error) { setEditError(friendlyError(error)); return; }
     setEditVisible(false);
     navigation.setParams({ SiteName: EditName.trim() });
   }
@@ -215,7 +216,7 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
     const { error } = await supabase.from('sites').delete().eq('id', SiteId);
     setDeleting(false);
     if (error) {
-      setDeleteError(error.message);
+      setDeleteError(friendlyError(error, 'Failed to delete site.'));
     } else {
       setDeleteDialogVisible(false);
       navigation.goBack();
