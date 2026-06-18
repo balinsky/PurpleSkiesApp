@@ -243,8 +243,10 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
             (CheckDateMap.get(a.nest_check_id) ?? '').localeCompare(CheckDateMap.get(b.nest_check_id) ?? '')
           );
           for (const E of sorted) {
+            const summary = buildEntrySummary(E as any);
+            if (summary === null) continue; // unchecked entries don't overwrite real prior data
             PrevEntryMap.set(E.compartment_id, {
-              summary:          buildEntrySummary(E as any),
+              summary,
               species:          E.species,
               is_empty_cavity:  E.is_empty_cavity,
               has_nest:         E.has_nest,
