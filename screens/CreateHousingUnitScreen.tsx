@@ -123,6 +123,7 @@ export default function CreateHousingUnitScreen({ navigation, route }: Props) {
         value={UnitName}
         onChangeText={setUnitName}
         placeholder="e.g. Main House, East Rack"
+        maxLength={100}
         style={styles.Input}
       />
 
@@ -159,6 +160,7 @@ export default function CreateHousingUnitScreen({ navigation, route }: Props) {
             onChangeText={setCustomLabels}
             placeholder="e.g. A1, A2, B1, B2, North, South"
             multiline
+            maxLength={500}
             style={styles.Input}
           />
           {CustomLabels.trim().length > 0 && (
@@ -183,6 +185,7 @@ export default function CreateHousingUnitScreen({ navigation, route }: Props) {
                 value={Prefix}
                 onChangeText={setPrefix}
                 placeholder="e.g. A"
+                maxLength={10}
                 style={styles.Input}
               />
               {Prefix.trim().length > 0 && (

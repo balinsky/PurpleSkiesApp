@@ -58,6 +58,7 @@ export default function CreateSiteScreen({ navigation }: Props) {
         value={SiteName}
         onChangeText={setSiteName}
         placeholder="e.g. Patterson Park, XYZ Elementary School"
+        maxLength={100}
         style={styles.Input}
       />
       <TextInput
@@ -65,6 +66,7 @@ export default function CreateSiteScreen({ navigation }: Props) {
         value={SiteLocation}
         onChangeText={setSiteLocation}
         placeholder="Address or description of where the housing is"
+        maxLength={200}
         style={styles.Input}
       />
       <HelperText type="info" visible>
@@ -76,6 +78,7 @@ export default function CreateSiteScreen({ navigation }: Props) {
         label="Housing provider name"
         value={ContactName}
         onChangeText={setContactName}
+        maxLength={100}
         style={styles.Input}
       />
       <TextInput
@@ -84,6 +87,7 @@ export default function CreateSiteScreen({ navigation }: Props) {
         onChangeText={setContactEmail}
         keyboardType="email-address"
         autoCapitalize="none"
+        maxLength={200}
         style={styles.Input}
       />
       <TextInput
@@ -91,24 +95,28 @@ export default function CreateSiteScreen({ navigation }: Props) {
         value={ContactPhone}
         onChangeText={setContactPhone}
         keyboardType="phone-pad"
+        maxLength={20}
         style={styles.Input}
       />
       <TextInput
         label="Address"
         value={ContactAddress}
         onChangeText={setContactAddress}
+        maxLength={200}
         style={styles.Input}
       />
       <TextInput
         label="City"
         value={ContactCity}
         onChangeText={setContactCity}
+        maxLength={100}
         style={styles.Input}
       />
       <TextInput
         label="State"
         value={ContactState}
         onChangeText={setContactState}
+        maxLength={50}
         style={styles.Input}
       />
       <TextInput
@@ -116,6 +124,7 @@ export default function CreateSiteScreen({ navigation }: Props) {
         value={ContactZip}
         onChangeText={setContactZip}
         keyboardType="number-pad"
+        maxLength={10}
         style={styles.Input}
       />
 

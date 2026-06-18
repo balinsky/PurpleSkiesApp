@@ -409,6 +409,7 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
                   label="Site name *"
                   value={EditName}
                   onChangeText={setEditName}
+                  maxLength={100}
                   style={styles.DialogInput}
                 />
                 <TextInput
@@ -417,6 +418,7 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
                   onChangeText={setEditAddress}
                   placeholder="Address or description of where the housing is"
                   multiline
+                  maxLength={200}
                   style={styles.DialogInput}
                 />
                 <HelperText type="info" visible>
@@ -427,6 +429,7 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
                   label="Housing provider name"
                   value={EditContactName}
                   onChangeText={setEditContactName}
+                  maxLength={100}
                   style={styles.DialogInput}
                 />
                 <TextInput
@@ -435,6 +438,7 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
                   onChangeText={setEditContactEmail}
                   keyboardType="email-address"
                   autoCapitalize="none"
+                  maxLength={200}
                   style={styles.DialogInput}
                 />
                 <TextInput
@@ -442,24 +446,28 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
                   value={EditContactPhone}
                   onChangeText={setEditContactPhone}
                   keyboardType="phone-pad"
+                  maxLength={20}
                   style={styles.DialogInput}
                 />
                 <TextInput
                   label="Address"
                   value={EditContactAddr}
                   onChangeText={setEditContactAddr}
+                  maxLength={200}
                   style={styles.DialogInput}
                 />
                 <TextInput
                   label="City"
                   value={EditContactCity}
                   onChangeText={setEditContactCity}
+                  maxLength={100}
                   style={styles.DialogInput}
                 />
                 <TextInput
                   label="State"
                   value={EditContactState}
                   onChangeText={setEditContactState}
+                  maxLength={50}
                   style={styles.DialogInput}
                 />
                 <TextInput
@@ -467,6 +475,7 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
                   value={EditContactZip}
                   onChangeText={setEditContactZip}
                   keyboardType="number-pad"
+                  maxLength={10}
                   style={styles.DialogInput}
                 />
                 {EditError ? <HelperText type="error" visible>{EditError}</HelperText> : null}

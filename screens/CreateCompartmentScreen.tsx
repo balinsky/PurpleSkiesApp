@@ -114,6 +114,7 @@ export default function CreateCompartmentScreen({ navigation, route }: Props) {
         value={CavityLabel}
         onChangeText={setCavityLabel}
         placeholder="e.g. A1, 3, North Gourd"
+        maxLength={20}
         style={styles.Input}
         autoFocus
       />

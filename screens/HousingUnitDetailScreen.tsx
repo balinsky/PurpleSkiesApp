@@ -235,6 +235,7 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
               label="Unit name *"
               value={EditUnitName}
               onChangeText={setEditUnitName}
+              maxLength={100}
               style={styles.DialogInput}
             />
             <Text variant="labelMedium" style={styles.DialogLabel}>Default hole type</Text>
@@ -274,6 +275,7 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
                 label="Compartment label *"
                 value={EditCompLabel}
                 onChangeText={setEditCompLabel}
+                maxLength={20}
                 style={styles.DialogInput}
               />
               {IsGourdRack && (

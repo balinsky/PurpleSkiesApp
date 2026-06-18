@@ -1863,6 +1863,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             onChangeText={(T) => { MarkDirty(); setNotes(T); }}
             placeholder="Any additional observations"
             multiline
+            maxLength={500}
             style={styles.NotesInput}
             onFocus={() => setTimeout(() => ScrollViewRef.current?.scrollToEnd({ animated: true }), 100)}
           />
@@ -1940,6 +1941,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                   value={NewBandColor}
                   onChangeText={setNewBandColor}
                   placeholder="e.g. Red, Blue, Green"
+                  maxLength={30}
                   style={styles.BandInput}
                   onFocus={() => setTimeout(() => NestlingBandScrollRef.current?.scrollToEnd({ animated: true }), 150)}
                 />
@@ -1949,6 +1951,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 value={NewBandCode}
                 onChangeText={setNewBandCode}
                 autoCapitalize="characters"
+                maxLength={20}
                 style={styles.BandInput}
                 onFocus={() => setTimeout(() => NestlingBandScrollRef.current?.scrollToEnd({ animated: true }), 150)}
               />
@@ -2010,6 +2013,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                   value={NewBandColor}
                   onChangeText={setNewBandColor}
                   placeholder="e.g. Red, Blue, Green"
+                  maxLength={30}
                   style={styles.BandInput}
                   onFocus={() => setTimeout(() => AdultBandScrollRef.current?.scrollToEnd({ animated: true }), 150)}
                 />
@@ -2019,6 +2023,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 value={NewBandCode}
                 onChangeText={setNewBandCode}
                 autoCapitalize="characters"
+                maxLength={20}
                 style={styles.BandInput}
                 onFocus={() => setTimeout(() => AdultBandScrollRef.current?.scrollToEnd({ animated: true }), 150)}
               />

@@ -73,6 +73,7 @@ export default function ProfileScreen({ navigation }: Props) {
         value={Name}
         onChangeText={v => { setName(v); setSaveSuccess(false); }}
         autoCapitalize="words"
+        maxLength={100}
         style={styles.Input}
       />
       <TextInput
@@ -80,6 +81,7 @@ export default function ProfileScreen({ navigation }: Props) {
         value={Phone}
         onChangeText={v => { setPhone(v); setSaveSuccess(false); }}
         keyboardType="phone-pad"
+        maxLength={20}
         style={styles.Input}
       />
       {SaveError  ? <HelperText type="error"   visible>{SaveError}</HelperText>  : null}

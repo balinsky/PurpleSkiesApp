@@ -307,6 +307,7 @@ export default function SiteMembersScreen({ navigation, route }: Props) {
                 onChangeText={setInviteEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
+                maxLength={200}
                 style={styles.DialogInput}
               />
               <Text style={styles.RolePickerLabel}>Role</Text>

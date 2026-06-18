@@ -39,6 +39,7 @@ export default function LoginScreen({ navigation }: Props) {
         onChangeText={setEmail}
         autoCapitalize="none"
         keyboardType="email-address"
+        maxLength={200}
         style={styles.Input}
       />
       <TextInput
@@ -46,6 +47,7 @@ export default function LoginScreen({ navigation }: Props) {
         value={Password}
         onChangeText={setPassword}
         secureTextEntry
+        maxLength={128}
         style={styles.Input}
       />
       {ErrorMessage ? <HelperText type="error" visible>{ErrorMessage}</HelperText> : null}

@@ -56,6 +56,7 @@ export default function SignUpScreen({ navigation }: Props) {
         value={Name}
         onChangeText={setName}
         autoCapitalize="words"
+        maxLength={100}
         style={styles.Input}
       />
       <TextInput
@@ -64,6 +65,7 @@ export default function SignUpScreen({ navigation }: Props) {
         onChangeText={setEmail}
         autoCapitalize="none"
         keyboardType="email-address"
+        maxLength={200}
         style={styles.Input}
       />
       <TextInput
@@ -71,6 +73,7 @@ export default function SignUpScreen({ navigation }: Props) {
         value={Password}
         onChangeText={setPassword}
         secureTextEntry
+        maxLength={128}
         style={styles.Input}
       />
       {ErrorMessage ? <HelperText type="error" visible>{ErrorMessage}</HelperText> : null}
