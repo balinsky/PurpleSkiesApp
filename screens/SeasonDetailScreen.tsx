@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Card, Dialog, FAB, HelperText, Icon, IconButton, List, Portal, Text, TextInput, TouchableRipple } from 'react-native-paper';
 import { exportSeasonXls } from '../lib/exportXls';
@@ -45,6 +45,20 @@ function addDays(dateStr: string, days: number): string {
   dt.setDate(dt.getDate() + days);
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }
+
+type BandRow = {
+  year: number;
+  compartment_label: string;
+  unit_name: string;
+  check_date: string;
+  band_type: string;
+  band_color: string | null;
+  band_code: string;
+  bird_type: string;       // 'nestling' | 'adult_male' | 'adult_female'
+  is_new_banding: boolean;
+  nestling_id: string | null;
+  nest_check_entry_id: string;
+};
 
 type CompartmentProgress = {
   compartment_id: string;
@@ -93,18 +107,29 @@ function BandingHistogram({ bars, today }: {
   bars: { date: string; count: number }[];
   today: string;
 }) {
+  const ScrollRef = useRef<ScrollView>(null);
+  const BAR_W    = 44;
+  const BAR_SLOT = BAR_W + 4; // BAR_W + marginHorizontal * 2
+
+  useEffect(() => {
+    if (bars.length === 0) return;
+    const idx = bars.findIndex(b => b.date >= today);
+    if (idx > 0) {
+      setTimeout(() => ScrollRef.current?.scrollTo({ x: idx * BAR_SLOT, animated: false }), 50);
+    }
+  }, [bars, today]);
+
   if (bars.length === 0) {
     return (
       <Text style={{ color: '#888', fontSize: 12, marginBottom: 12, fontStyle: 'italic' }}>
-        No nestlings with known hatch dates yet.
+        No banding window available.
       </Text>
     );
   }
   const MaxCount = Math.max(...bars.map(b => b.count), 1);
   const BAR_MAX = 100;
-  const BAR_W   = 44;
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+    <ScrollView ref={ScrollRef} horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
       <View>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: BAR_MAX + 28 }}>
           {bars.map(({ date, count }) => {
@@ -158,9 +183,78 @@ function AgeGenderDisplay({ symbol, confirmed, observations, onIconPress }: {
   );
 }
 
+function BandsList({ rows }: { rows: BandRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <Text style={{ color: '#888', fontSize: 12, marginBottom: 12, fontStyle: 'italic' }}>
+        No bands recorded.
+      </Text>
+    );
+  }
+
+  // Group rows into per-bird boxes. Nestlings share nestling_id across checks;
+  // adults use entry+bird_type (group_id isn't persisted to DB).
+  type BirdGroup = { key: string; year: number; unit_name: string; compartment_label: string; bird_type: string; check_date: string; bands: BandRow[] };
+  const groups: BirdGroup[] = [];
+  const seen = new Map<string, BirdGroup>();
+  for (const row of rows) {
+    const key = row.nestling_id
+      ? `n:${row.nestling_id}`
+      : `a:${row.nest_check_entry_id}:${row.bird_type}`;
+    if (!seen.has(key)) {
+      const g: BirdGroup = { key, year: row.year, unit_name: row.unit_name, compartment_label: row.compartment_label, bird_type: row.bird_type, check_date: row.check_date, bands: [] };
+      seen.set(key, g);
+      groups.push(g);
+    }
+    seen.get(key)!.bands.push(row);
+  }
+
+  const byYear = new Map<number, BirdGroup[]>();
+  for (const g of groups) {
+    if (!byYear.has(g.year)) byYear.set(g.year, []);
+    byYear.get(g.year)!.push(g);
+  }
+
+  return (
+    <View style={{ marginBottom: 8 }}>
+      {[...byYear.entries()].map(([year, yearGroups]) => (
+        <View key={year} style={{ marginBottom: 8 }}>
+          <Text style={{ fontWeight: '700', fontSize: 13, color: '#444', marginTop: 4, marginBottom: 6 }}>{year}</Text>
+          {yearGroups.map((g) => {
+            const genderSymbol = g.bird_type === 'adult_male' ? '♂' : g.bird_type === 'adult_female' ? '♀' : null;
+            const isReSight = g.bands.every(b => !b.is_new_banding);
+            const typeLabel = genderSymbol
+              ? `${genderSymbol}${isReSight ? '  re-sight' : ''}`
+              : 'Nestling';
+            return (
+              <View key={g.key} style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 6, padding: 8, marginBottom: 6 }}>
+                <View style={{ flexDirection: 'row', marginBottom: g.bands.length > 0 ? 4 : 0 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#333', width: 48 }}>{g.compartment_label}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#333', flex: 1 }}>
+                    {typeLabel}{'  '}{shortDate(g.check_date)}
+                  </Text>
+                </View>
+                {[...g.bands].sort((a, b) => a.band_type === 'federal' ? -1 : b.band_type === 'federal' ? 1 : 0).map((b, i) => {
+                  const parts = [b.band_type, b.band_color, b.band_code].filter(Boolean).join('  ');
+                  const reSightSuffix = !b.is_new_banding && !isReSight ? '  (re-sight)' : '';
+                  return (
+                    <View key={i} style={{ flexDirection: 'row', paddingLeft: 48, paddingVertical: 1 }}>
+                      <Text style={{ fontSize: 12, color: '#555' }}>{parts}{reSightSuffix}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export default function SeasonDetailScreen({ navigation, route }: Props) {
   const { SeasonId, SiteId, Year } = route.params;
-  const { SeasonCalendarView, toggleSeasonCalendarView } = useSettings();
+  const { SeasonCalendarView, toggleSeasonCalendarView, BandingEnabled } = useSettings();
   const { isOnline, syncNow } = useSync();
 
   const [FirstAsySeen, setFirstAsySeen]           = useState('');
@@ -196,6 +290,9 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   const [BandingMax, setBandingMax]             = useState(19);
   const [BandingMinText, setBandingMinText]     = useState('14');
   const [BandingMaxText, setBandingMaxText]     = useState('19');
+
+  const [AllBandsData, setAllBandsData]         = useState<BandRow[]>([]);
+  const [BandsExpanded, setBandsExpanded]       = useState(false);
 
   // ── Add check dialog ───────────────────────────────────────────────
   const [AddCheckVisible, setAddCheckVisible]   = useState(false);
@@ -527,7 +624,62 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         }));
         setColonyStats(Progress.length > 0 ? { eggs: StatEggs, hatched: StatHatched, fledged: StatFledged } : null);
       }
+
+      async function loadBands() {
+        const { data: Chks } = await supabase
+          .from('nest_checks')
+          .select('id, check_date')
+          .eq('site_id', SiteId);
+        if (!Chks?.length) { setAllBandsData([]); return; }
+
+        const CheckMap = new Map((Chks as any[]).map(c => [c.id as string, c.check_date as string]));
+        const { data: Ents } = await supabase
+          .from('nest_check_entries')
+          .select('id, nest_check_id, compartments(cavity_label, housing_units(name))')
+          .in('nest_check_id', Chks.map(c => c.id));
+        if (!Ents?.length) { setAllBandsData([]); return; }
+
+        const EntMap = new Map((Ents as any[]).map(e => [e.id as string, e]));
+        const { data: Bands } = await supabase
+          .from('bands')
+          .select('nest_check_entry_id, nestling_id, bird_type, is_new_banding, band_type, band_color, band_code')
+          .in('nest_check_entry_id', Ents.map(e => (e as any).id));
+
+        const Rows: BandRow[] = [];
+        for (const B of (Bands ?? []) as any[]) {
+          const Ent = EntMap.get(B.nest_check_entry_id);
+          if (!Ent) continue;
+          const CheckDate = CheckMap.get(Ent.nest_check_id);
+          if (!CheckDate) continue;
+          const comp = Ent.compartments as any;
+          Rows.push({
+            year:                parseInt(CheckDate.substring(0, 4), 10),
+            compartment_label:   comp?.cavity_label ?? '',
+            unit_name:           comp?.housing_units?.name ?? '',
+            check_date:          CheckDate,
+            band_type:           B.band_type,
+            band_color:          B.band_color ?? null,
+            band_code:           B.band_code,
+            bird_type:           B.bird_type,
+            is_new_banding:      !!B.is_new_banding,
+            nestling_id:         B.nestling_id ?? null,
+            nest_check_entry_id: B.nest_check_entry_id,
+          });
+        }
+
+        Rows.sort((a, b) => {
+          if (a.year !== b.year) return a.year - b.year;
+          const u = a.unit_name.localeCompare(b.unit_name);
+          if (u !== 0) return u;
+          const l = a.compartment_label.localeCompare(b.compartment_label);
+          if (l !== 0) return l;
+          return a.check_date.localeCompare(b.check_date);
+        });
+        setAllBandsData(Rows);
+      }
+
       loadAll();
+      loadBands();
     }, [SeasonId, SiteId, Year])
   );
 
@@ -827,45 +979,61 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
               </>
             )}
 
-            {/* ── Banding ── */}
-            <Button
-              mode="text"
-              compact
-              icon={BandingExpanded ? 'chevron-up' : 'chevron-down'}
-              contentStyle={styles.ExpandBtnContent}
-              onPress={() => setBandingExpanded(!BandingExpanded)}
-              style={styles.ExpandBtn}
-            >
-              Banding
-            </Button>
-            {BandingExpanded && (
+            {/* ── Banding Window ── */}
+            {BandingEnabled && (
               <>
-                <View style={styles.BandingWindowRow}>
-                  <Text style={styles.BandingWindowLabel}>Window (days):</Text>
-                  <TextInput
-                    mode="outlined"
-                    label="Min"
-                    value={BandingMinText}
-                    onChangeText={setBandingMinText}
-                    keyboardType="number-pad"
-                    style={styles.BandingWindowInput}
-                    dense
-                  />
-                  <Text style={styles.BandingWindowSep}>–</Text>
-                  <TextInput
-                    mode="outlined"
-                    label="Max"
-                    value={BandingMaxText}
-                    onChangeText={setBandingMaxText}
-                    keyboardType="number-pad"
-                    style={styles.BandingWindowInput}
-                    dense
-                  />
-                  <Button compact mode="outlined" onPress={saveBandingWindow} style={styles.BandingWindowSaveBtn}>
-                    Save
-                  </Button>
-                </View>
-                <BandingHistogram bars={BandingData} today={todayString()} />
+                <Button
+                  mode="text"
+                  compact
+                  icon={BandingExpanded ? 'chevron-up' : 'chevron-down'}
+                  contentStyle={styles.ExpandBtnContent}
+                  onPress={() => setBandingExpanded(!BandingExpanded)}
+                  style={styles.ExpandBtn}
+                >
+                  Banding Window
+                </Button>
+                {BandingExpanded && (
+                  <>
+                    <View style={styles.BandingWindowRow}>
+                      <Text style={styles.BandingWindowLabel}>Window (days):</Text>
+                      <TextInput
+                        mode="outlined"
+                        label="Min"
+                        value={BandingMinText}
+                        onChangeText={setBandingMinText}
+                        keyboardType="number-pad"
+                        style={styles.BandingWindowInput}
+                        dense
+                      />
+                      <Text style={styles.BandingWindowSep}>–</Text>
+                      <TextInput
+                        mode="outlined"
+                        label="Max"
+                        value={BandingMaxText}
+                        onChangeText={setBandingMaxText}
+                        keyboardType="number-pad"
+                        style={styles.BandingWindowInput}
+                        dense
+                      />
+                      <Button compact mode="outlined" onPress={saveBandingWindow} style={styles.BandingWindowSaveBtn}>
+                        Save
+                      </Button>
+                    </View>
+                    <BandingHistogram bars={BandingData} today={todayString()} />
+                  </>
+                )}
+                {/* ── Bands ── */}
+                <Button
+                  mode="text"
+                  compact
+                  icon={BandsExpanded ? 'chevron-up' : 'chevron-down'}
+                  contentStyle={styles.ExpandBtnContent}
+                  onPress={() => setBandsExpanded(!BandsExpanded)}
+                  style={styles.ExpandBtn}
+                >
+                  Bands
+                </Button>
+                {BandsExpanded && <BandsList rows={AllBandsData} />}
               </>
             )}
           </ScrollView>
@@ -984,45 +1152,60 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                 </>
               )}
 
-              {/* ── Banding ── */}
-              <Button
-                mode="text"
-                compact
-                icon={BandingExpanded ? 'chevron-up' : 'chevron-down'}
-                contentStyle={styles.ExpandBtnContent}
-                onPress={() => setBandingExpanded(!BandingExpanded)}
-                style={styles.ExpandBtn}
-              >
-                Banding
-              </Button>
-              {BandingExpanded && (
+              {/* ── Banding Window + Bands ── */}
+              {BandingEnabled && (
                 <>
-                  <View style={styles.BandingWindowRow}>
-                    <Text style={styles.BandingWindowLabel}>Window (days):</Text>
-                    <TextInput
-                      mode="outlined"
-                      label="Min"
-                      value={BandingMinText}
-                      onChangeText={setBandingMinText}
-                      keyboardType="number-pad"
-                      style={styles.BandingWindowInput}
-                      dense
-                    />
-                    <Text style={styles.BandingWindowSep}>–</Text>
-                    <TextInput
-                      mode="outlined"
-                      label="Max"
-                      value={BandingMaxText}
-                      onChangeText={setBandingMaxText}
-                      keyboardType="number-pad"
-                      style={styles.BandingWindowInput}
-                      dense
-                    />
-                    <Button compact mode="outlined" onPress={saveBandingWindow} style={styles.BandingWindowSaveBtn}>
-                      Save
-                    </Button>
-                  </View>
-                  <BandingHistogram bars={BandingData} today={todayString()} />
+                  <Button
+                    mode="text"
+                    compact
+                    icon={BandingExpanded ? 'chevron-up' : 'chevron-down'}
+                    contentStyle={styles.ExpandBtnContent}
+                    onPress={() => setBandingExpanded(!BandingExpanded)}
+                    style={styles.ExpandBtn}
+                  >
+                    Banding Window
+                  </Button>
+                  {BandingExpanded && (
+                    <>
+                      <View style={styles.BandingWindowRow}>
+                        <Text style={styles.BandingWindowLabel}>Window (days):</Text>
+                        <TextInput
+                          mode="outlined"
+                          label="Min"
+                          value={BandingMinText}
+                          onChangeText={setBandingMinText}
+                          keyboardType="number-pad"
+                          style={styles.BandingWindowInput}
+                          dense
+                        />
+                        <Text style={styles.BandingWindowSep}>–</Text>
+                        <TextInput
+                          mode="outlined"
+                          label="Max"
+                          value={BandingMaxText}
+                          onChangeText={setBandingMaxText}
+                          keyboardType="number-pad"
+                          style={styles.BandingWindowInput}
+                          dense
+                        />
+                        <Button compact mode="outlined" onPress={saveBandingWindow} style={styles.BandingWindowSaveBtn}>
+                          Save
+                        </Button>
+                      </View>
+                      <BandingHistogram bars={BandingData} today={todayString()} />
+                    </>
+                  )}
+                  <Button
+                    mode="text"
+                    compact
+                    icon={BandsExpanded ? 'chevron-up' : 'chevron-down'}
+                    contentStyle={styles.ExpandBtnContent}
+                    onPress={() => setBandsExpanded(!BandsExpanded)}
+                    style={styles.ExpandBtn}
+                  >
+                    Bands
+                  </Button>
+                  {BandsExpanded && <BandsList rows={AllBandsData} />}
                 </>
               )}
 

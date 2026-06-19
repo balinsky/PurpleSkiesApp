@@ -26,6 +26,7 @@ import NestCheckDetailScreen from './screens/NestCheckDetailScreen';
 import NestCheckEntryScreen from './screens/NestCheckEntryScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import SiteMembersScreen from './screens/SiteMembersScreen';
+import SettingsScreen from './screens/SettingsScreen';
 
 enableScreens();
 
@@ -37,6 +38,7 @@ export type AuthStackParamList = {
 export type AppStackParamList = {
   Home: undefined;
   Profile: undefined;
+  Settings: undefined;
   SiteMembers: { SiteId: string; SiteName: string };
   CreateSite: undefined;
   SiteDetail: { SiteId: string; SiteName: string };
@@ -65,6 +67,7 @@ function AppNavigator() {
     <AppStack.Navigator>
       <AppStack.Screen name="Home" component={HomeScreen} options={{ title: 'Purple Skies' }} />
       <AppStack.Screen name="Profile" component={ProfileScreen} options={{ title: 'My Profile' }} />
+      <AppStack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
       <AppStack.Screen name="SiteMembers" component={SiteMembersScreen} options={{ title: 'Members' }} />
       <AppStack.Screen name="CreateSite" component={CreateSiteScreen} options={{ title: 'New Site' }} />
       <AppStack.Screen name="SiteDetail" component={SiteDetailScreen} options={({ route }) => ({ title: route.params.SiteName })} />

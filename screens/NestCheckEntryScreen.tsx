@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput as RNTextInput, View, useWindowDimensions } from 'react-native';
 import {
   Button, Checkbox, Dialog, Divider, HelperText,
-  Icon, IconButton, Portal, RadioButton, Text, TextInput,
+  Icon, IconButton, Portal, RadioButton, Text, TextInput, TouchableRipple,
 } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -114,7 +114,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const NextCompartment = (AllCompartments && CompartmentIndex !== undefined && CompartmentIndex < AllCompartments.length - 1)
     ? AllCompartments[CompartmentIndex + 1]
     : null;
-  const { CompactMode, toggleCompactMode } = useSettings();
+  const { CompactMode, toggleCompactMode, BandingEnabled } = useSettings();
   const { isOnline, syncNow } = useSync();
   const { height: ScreenHeight } = useWindowDimensions();
   function L(full: string, compact: string) { return CompactMode ? compact : full; }
@@ -157,8 +157,9 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [NestReplaced, setNestReplaced]   = useState(false);
 
   // ── Adult bird ages ───────────────────────────────────────────────────
-  const [ObservedMaleAge, setObservedMaleAge]     = useState<'SY' | 'ASY' | 'UNK' | null>(null);
-  const [ObservedFemaleAge, setObservedFemaleAge] = useState<'SY' | 'ASY' | 'UNK' | null>(null);
+  const [ObservedMaleAge, setObservedMaleAge]         = useState<'SY' | 'ASY' | 'UNK' | null>(null);
+  const [ObservedFemaleAge, setObservedFemaleAge]     = useState<'SY' | 'ASY' | 'UNK' | null>(null);
+  const [AgeConfirmInfoVisible, setAgeConfirmInfoVisible] = useState(false);
   const [OtherMaleObs, setOtherMaleObs]           = useState<(string | null)[]>([]);
   const [OtherFemaleObs, setOtherFemaleObs]       = useState<(string | null)[]>([]);
   const [AdultAgesExpanded, setAdultAgesExpanded] = useState(false);
@@ -1375,7 +1376,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       } catch {}
       try { await resetLocalNestingAttemptsForCompartment(CompartmentId, SiteId, parseInt(YearStr, 10), RevertFrom, RevertTo); } catch {}
     }
-    await deleteLocalEntry(ExistingEntryId);
+    try { await deleteLocalEntry(ExistingEntryId); } catch {}
     const { error } = await supabase.from('nest_check_entries').delete().eq('id', ExistingEntryId);
     setDeleting(false);
     if (error) { setErrorMessage(friendlyError(error, 'Failed to delete entry.')); return; }
@@ -1515,7 +1516,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               <View style={{ flex: 1, paddingRight: 8 }}>
                 <Counter
                   label={CompactMode ? 'E' : <><Text style={{ fontWeight: '700' }}>Eggs</Text><Text> (incl. discards)</Text></>} value={EggCount}
-                  onChange={(N) => { MarkDirty(); setEggCount(N); if (N > 0) setIsEmpty(false); }}
+                  onChange={(N) => { MarkDirty(); setEggCount(N); if (N > 0) { setIsEmpty(false); setHasNestOnly(false); } }}
                   prevValue={PrevEntry ? Math.max(0, PrevEntry.egg_count - PrevEntry.discarded_eggs) : undefined}
                 />
                 {EggCount > 0 && (
@@ -1526,7 +1527,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               <View style={{ flex: 1, paddingLeft: 8 }}>
                 <Counter
                   label={CompactMode ? 'Y' : <Text style={{ fontWeight: '700' }}>Young</Text>} value={YoungCount}
-                  onChange={(N) => { MarkDirty(); setYoungCount(N); if (N > 0) setIsEmpty(false); }}
+                  onChange={(N) => { MarkDirty(); setYoungCount(N); if (N > 0) { setIsEmpty(false); setHasNestOnly(false); } }}
                   prevValue={PrevEntry ? Math.max(0, PrevEntry.young_count - PrevEntry.dead_young_count) : undefined}
                 />
                 {YoungCount > 0 && (
@@ -1634,11 +1635,13 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           return (
             <>
               <View style={styles.ExpandRow}>
-                <Icon
-                  source={AgeStatus === 'complete' ? 'check-circle' : 'help-circle-outline'}
-                  size={16}
-                  color={AgeStatus === 'complete' ? '#22c55e' : AgeStatus === 'partial' ? '#f59e0b' : '#9e9e9e'}
-                />
+                <TouchableRipple onPress={() => setAgeConfirmInfoVisible(true)} borderless style={{ padding: 2, borderRadius: 12 }}>
+                  <Icon
+                    source={AgeStatus === 'complete' ? 'check-circle' : 'help-circle-outline'}
+                    size={16}
+                    color={AgeStatus === 'complete' ? '#22c55e' : AgeStatus === 'partial' ? '#f59e0b' : '#9e9e9e'}
+                  />
+                </TouchableRipple>
                 <Button
                   mode="text" compact
                   icon={AdultAgesExpanded ? 'chevron-up' : 'chevron-down'}
@@ -1691,7 +1694,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         })()}
 
         {/* ── Banding (expandable) ────────────────────────────────── */}
-        {(() => {
+        {BandingEnabled && (() => {
           const HasBands = Nestlings.some(N => N.bandsThisCheck.length > 0) || AdultBands.length > 0;
           const BandedCount = Nestlings.filter(N => N.totalPriorBands > 0 || N.bandsThisCheck.length > 0).length;
           const BandingStatus = Nestlings.length === 0 ? 'none'
@@ -1739,7 +1742,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                           </View>
                         )}
                       </View>
-                      {N.bandsThisCheck.map((B, BIdx) => (
+                      {[...N.bandsThisCheck].sort((a, b) => a.band_type === 'federal' ? -1 : b.band_type === 'federal' ? 1 : 0).map((B, BIdx) => (
                         <View key={BIdx} style={styles.BandRow}>
                           <Text style={styles.BandLabel}>
                             {B.band_type === 'federal' ? 'Federal ' : (B.band_color ? `${B.band_color} ` : 'Color ')}
@@ -1811,7 +1814,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                               style={styles.BandDeleteBtn}
                             />
                           </View>
-                          {entries.map(({ band: B, idx: Idx }) => (
+                          {[...entries].sort((a, b) => a.band.band_type === 'federal' ? -1 : b.band.band_type === 'federal' ? 1 : 0).map(({ band: B, idx: Idx }) => (
                             <View key={Idx} style={styles.AdultBandRow}>
                               <Text style={styles.AdultBandRowLabel}>
                                 {B.band_type === 'federal' ? 'Federal ' : (B.band_color ? `${B.band_color} ` : 'Color ')}
@@ -2217,7 +2220,10 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             {PriorBandsInfoLoading
               ? <Text>Loading…</Text>
               : PriorBandsInfoData && PriorBandsInfoData.length > 0
-                ? PriorBandsInfoData.map((B, I) => (
+                ? [...PriorBandsInfoData].sort((a, b) => {
+                    if (a.check_date !== b.check_date) return a.check_date.localeCompare(b.check_date);
+                    return a.band_type === 'federal' ? -1 : b.band_type === 'federal' ? 1 : 0;
+                  }).map((B, I) => (
                     <Text key={I} style={{ marginBottom: 4 }}>
                       {B.check_date ? `${formatDate(B.check_date)}: ` : ''}
                       {B.band_type === 'federal' ? 'Federal' : (B.band_color ?? 'Color')} {B.band_code}
@@ -2284,6 +2290,19 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           <Dialog.Actions>
             <Button onPress={() => setDeleteVisible(false)}>Cancel</Button>
             <Button textColor="red" loading={Deleting} onPress={handleDelete}>Delete</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        <Dialog visible={AgeConfirmInfoVisible} onDismiss={() => setAgeConfirmInfoVisible(false)}>
+          <Dialog.Title>About Age Confirmation</Dialog.Title>
+          <Dialog.Content>
+            <Text>
+              Age confirmation requires 3 consistent observations of an adult entering the nest.
+              Until 3 matching observations have been recorded, the age is shown as unconfirmed (?).
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setAgeConfirmInfoVisible(false)}>Got it</Button>
           </Dialog.Actions>
         </Dialog>
       </Portal>

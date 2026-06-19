@@ -35,12 +35,19 @@ export default function HomeScreen({ navigation }: Props) {
   useEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <IconButton
-          icon="account-circle-outline"
-          size={24}
-          onPress={() => navigation.navigate('Profile')}
-          style={{ marginRight: 4 }}
-        />
+        <View style={{ flexDirection: 'row' }}>
+          <IconButton
+            icon="cog-outline"
+            size={24}
+            onPress={() => navigation.navigate('Settings')}
+          />
+          <IconButton
+            icon="account-circle-outline"
+            size={24}
+            onPress={() => navigation.navigate('Profile')}
+            style={{ marginRight: 4 }}
+          />
+        </View>
       ),
     });
   }, [navigation]);
