@@ -965,7 +965,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       dead_young_count:   IsPM && YoungCount > 0 && HasDeadYoung ? DeadYoungCount : 0,
       dead_adult_male:    DeadAdultMale,
       dead_adult_female:  DeadAdultFemale,
-      fledged_count:      IsPM && HasNest ? (fledgeCountOverride ?? FledgedCount) : 0,
+      fledged_count:      IsPM ? (fledgeCountOverride ?? FledgedCount) : 0,
       renesting_attempt:  IsPM && HasNest ? Renesting : false,
       nesting_attempt:      NestingAttempt,
       notes:              Notes.trim() || null,
@@ -1572,21 +1572,28 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             </View>
 
             {HasNest && (
-              <>
-                <Divider style={styles.Divider} />
-                <Counter label={L('Fledged', 'F')} value={FledgedCount} onChange={(N) => { MarkDirty(); setFledgedCount(N); }} horizontal />
-                <Checkbox.Item
-                  label={L('Renesting attempt', 'RA')}
-                  status={Renesting ? 'checked' : 'unchecked'}
-                  onPress={handleRenestingToggle}
-                  mode="android"
-                  style={styles.CheckboxItem}
-                />
-              </>
+              <Checkbox.Item
+                label={L('Renesting attempt', 'RA')}
+                status={Renesting ? 'checked' : 'unchecked'}
+                onPress={handleRenestingToggle}
+                mode="android"
+                style={styles.CheckboxItem}
+              />
             )}
           </>
         )}
 
+        {/* ── Fledge counter — visible whenever prior young exist and nestlings are old enough ── */}
+        {IsPM && !AdultPresent && (PriorYoungSeen || YoungCount > 0) && (() => {
+          const AgeForFledge = CalculatedNestlingAge ?? (YoungCount > 0 && !IsHatchingDay ? NestlingAgeDays : null);
+          if (AgeForFledge !== null && AgeForFledge < 20) return null;
+          return (
+            <>
+              <Divider style={styles.Divider} />
+              <Counter label={L('Fledged', 'F')} value={FledgedCount} onChange={(N) => { MarkDirty(); setFledgedCount(N); }} horizontal />
+            </>
+          );
+        })()}
 
         {/* ── Nest management (shared) ─────────────────────────────── */}
         {HasNest && (
