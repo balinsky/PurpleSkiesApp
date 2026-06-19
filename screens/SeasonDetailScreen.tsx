@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Card, Dialog, FAB, HelperText, Icon, IconButton, List, Portal, Text, TextInput, TouchableRipple } from 'react-native-paper';
 import { exportSeasonXls } from '../lib/exportXls';
 import { Calendar } from 'react-native-calendars';
@@ -44,6 +44,16 @@ function addDays(dateStr: string, days: number): string {
   const dt = new Date(y, m - 1, d);
   dt.setDate(dt.getDate() + days);
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+function daysBetween(from: string, to: string): number {
+  const [fy, fm, fd] = from.split('-').map(Number);
+  const [ty, tm, td] = to.split('-').map(Number);
+  return Math.round((new Date(ty, tm - 1, td).getTime() - new Date(fy, fm - 1, fd).getTime()) / 86400000);
+}
+
+function labelCompare(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 }
 
 type BandRow = {
@@ -103,9 +113,11 @@ function todayString(): string {
   return `${y}-${m}-${d}`;
 }
 
-function BandingHistogram({ bars, today }: {
+function BandingHistogram({ bars, today, selectedDate, onBarPress }: {
   bars: { date: string; count: number }[];
   today: string;
+  selectedDate: string | null;
+  onBarPress: (date: string) => void;
 }) {
   const ScrollRef = useRef<ScrollView>(null);
   const BAR_W    = 44;
@@ -121,41 +133,80 @@ function BandingHistogram({ bars, today }: {
 
   if (bars.length === 0) {
     return (
-      <Text style={{ color: '#888', fontSize: 12, marginBottom: 12, fontStyle: 'italic' }}>
+      <Text style={{ color: '#888', fontSize: 12, marginBottom: 4, fontStyle: 'italic' }}>
         No banding window available.
       </Text>
     );
   }
   const MaxCount = Math.max(...bars.map(b => b.count), 1);
-  const BAR_MAX = 100;
+  const BAR_MAX  = 100;
+  const activeDate = selectedDate ?? today;
   return (
-    <ScrollView ref={ScrollRef} horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+    <ScrollView ref={ScrollRef} horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
       <View>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: BAR_MAX + 28 }}>
           {bars.map(({ date, count }) => {
-            const h = Math.max(4, Math.round((count / MaxCount) * BAR_MAX));
-            const isToday = date === today;
+            const h        = Math.max(4, Math.round((count / MaxCount) * BAR_MAX));
+            const isToday  = date === today;
+            const isActive = date === activeDate;
+            const barColor = isToday ? '#e65100' : isActive ? '#4a148c' : '#7b1fa2';
             return (
-              <View key={date} style={{ width: BAR_W, alignItems: 'center', marginHorizontal: 2 }}>
-                <Text style={{ fontSize: 10, color: '#333', marginBottom: 2 }}>{count}</Text>
-                <View style={{
-                  width: BAR_W - 10, height: h,
-                  backgroundColor: isToday ? '#e65100' : '#7b1fa2',
-                  borderRadius: 3,
-                }} />
-              </View>
+              <Pressable key={date} onPress={() => onBarPress(date)}
+                style={{ width: BAR_W, alignItems: 'center', marginHorizontal: 2 }}>
+                <Text style={{ fontSize: 10, color: isActive ? '#000' : '#333', fontWeight: isActive ? '700' : '400', marginBottom: 2 }}>{count}</Text>
+                <View style={{ width: BAR_W - 10, height: h, backgroundColor: barColor, borderRadius: 3 }} />
+              </Pressable>
             );
           })}
         </View>
         <View style={{ flexDirection: 'row' }}>
-          {bars.map(({ date }) => (
-            <Text key={date} style={{ width: BAR_W, textAlign: 'center', fontSize: 9, color: '#666', marginHorizontal: 2 }}>
-              {shortDate(date)}
-            </Text>
-          ))}
+          {bars.map(({ date }) => {
+            const isActive = date === activeDate;
+            return (
+              <Text key={date} style={{ width: BAR_W, textAlign: 'center', fontSize: 9, color: isActive ? '#000' : '#666', fontWeight: isActive ? '700' : '400', marginHorizontal: 2 }}>
+                {shortDate(date)}
+              </Text>
+            );
+          })}
         </View>
       </View>
     </ScrollView>
+  );
+}
+
+function BandingCompartmentList({ progress, date, today, min, max }: {
+  progress: CompartmentProgress[];
+  date: string;
+  today: string;
+  min: number;
+  max: number;
+}) {
+  const isToday = date === today;
+  const items: { label: string; unit_name: string; age: number; unbanded: number }[] = [];
+  for (const P of progress) {
+    const hatch = P.actual_hatch ?? P.proj_hatch_min;
+    if (!hatch) continue;
+    const unbanded = Math.max(0, P.young_count - P.banded_count);
+    if (unbanded <= 0) continue;
+    const age = daysBetween(hatch, date);
+    if (age >= min && age <= max) items.push({ label: P.label, unit_name: P.unit_name, age, unbanded });
+  }
+  items.sort((a, b) => a.unit_name.localeCompare(b.unit_name) || labelCompare(a.label, b.label));
+  return (
+    <View style={{ marginBottom: 10 }}>
+      <Text style={{ fontSize: 12, color: '#555', fontWeight: '600', marginBottom: 4 }}>
+        {shortDate(date)}{isToday ? '  (today)' : ''}
+      </Text>
+      {items.length === 0
+        ? <Text style={{ fontSize: 12, color: '#888', fontStyle: 'italic' }}>No unbanded nestlings in window{isToday ? ' today' : ''}.</Text>
+        : items.map((item, i) => (
+            <Text key={i} style={{ fontSize: 12, color: '#444' }}>
+              {item.label}: {item.age} day{item.age !== 1 ? 's' : ''}
+              {item.unbanded > 1 ? `  ·  ${item.unbanded} unbanded` : ''}
+            </Text>
+          ))
+      }
+    </View>
   );
 }
 
@@ -285,11 +336,12 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   const [AdultAgesExpanded, setAdultAgesExpanded] = useState(false);
   const [AgeConfirmInfoVisible, setAgeConfirmInfoVisible] = useState(false);
 
-  const [BandingExpanded, setBandingExpanded]   = useState(false);
-  const [BandingMin, setBandingMin]             = useState(14);
-  const [BandingMax, setBandingMax]             = useState(19);
-  const [BandingMinText, setBandingMinText]     = useState('14');
-  const [BandingMaxText, setBandingMaxText]     = useState('19');
+  const [BandingExpanded, setBandingExpanded]         = useState(false);
+  const [BandingMin, setBandingMin]                   = useState(14);
+  const [BandingMax, setBandingMax]                   = useState(19);
+  const [BandingMinText, setBandingMinText]           = useState('14');
+  const [BandingMaxText, setBandingMaxText]           = useState('19');
+  const [SelectedBandingDate, setSelectedBandingDate] = useState<string | null>(null);
 
   const [AllBandsData, setAllBandsData]         = useState<BandRow[]>([]);
   const [BandsExpanded, setBandsExpanded]       = useState(false);
@@ -671,7 +723,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           if (a.year !== b.year) return a.year - b.year;
           const u = a.unit_name.localeCompare(b.unit_name);
           if (u !== 0) return u;
-          const l = a.compartment_label.localeCompare(b.compartment_label);
+          const l = labelCompare(a.compartment_label, b.compartment_label);
           if (l !== 0) return l;
           return a.check_date.localeCompare(b.check_date);
         });
@@ -704,6 +756,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
     if (isNaN(minVal) || isNaN(maxVal) || minVal < 1 || maxVal < minVal) return;
     setBandingMin(minVal);
     setBandingMax(maxVal);
+    setSelectedBandingDate(null);
     AsyncStorage.setItem(`banding_min_${SiteId}`, String(minVal));
     AsyncStorage.setItem(`banding_max_${SiteId}`, String(maxVal));
   }
@@ -1019,7 +1072,17 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                         Save
                       </Button>
                     </View>
-                    <BandingHistogram bars={BandingData} today={todayString()} />
+                    <BandingHistogram
+                      bars={BandingData} today={todayString()}
+                      selectedDate={SelectedBandingDate}
+                      onBarPress={setSelectedBandingDate}
+                    />
+                    <BandingCompartmentList
+                      progress={NestProgress}
+                      date={SelectedBandingDate ?? todayString()}
+                      today={todayString()}
+                      min={BandingMin} max={BandingMax}
+                    />
                   </>
                 )}
                 {/* ── Bands ── */}
@@ -1192,7 +1255,17 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                           Save
                         </Button>
                       </View>
-                      <BandingHistogram bars={BandingData} today={todayString()} />
+                      <BandingHistogram
+                        bars={BandingData} today={todayString()}
+                        selectedDate={SelectedBandingDate}
+                        onBarPress={setSelectedBandingDate}
+                      />
+                      <BandingCompartmentList
+                        progress={NestProgress}
+                        date={SelectedBandingDate ?? todayString()}
+                        today={todayString()}
+                        min={BandingMin} max={BandingMax}
+                      />
                     </>
                   )}
                   <Button
