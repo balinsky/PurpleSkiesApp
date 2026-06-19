@@ -10,13 +10,15 @@ export async function initDb(): Promise<void> {
     CREATE TABLE IF NOT EXISTS housing_units (
       id TEXT PRIMARY KEY,
       site_id TEXT NOT NULL,
-      name TEXT NOT NULL
+      name TEXT NOT NULL,
+      site_season_id TEXT
     );
     CREATE TABLE IF NOT EXISTS compartments (
       id TEXT PRIMARY KEY,
       housing_unit_id TEXT NOT NULL,
       cavity_label TEXT NOT NULL,
-      sort_order INTEGER
+      sort_order INTEGER,
+      site_season_id TEXT
     );
     CREATE TABLE IF NOT EXISTS nest_checks (
       id TEXT PRIMARY KEY,
@@ -91,6 +93,12 @@ export async function initDb(): Promise<void> {
   try {
     await _db.execAsync('ALTER TABLE nest_check_entries ADD COLUMN gourd_removed INTEGER NOT NULL DEFAULT 0');
   } catch {}
+  try {
+    await _db.execAsync('ALTER TABLE housing_units ADD COLUMN site_season_id TEXT');
+  } catch {}
+  try {
+    await _db.execAsync('ALTER TABLE compartments ADD COLUMN site_season_id TEXT');
+  } catch {}
 }
 
 async function db(): Promise<SQLite.SQLiteDatabase> {
@@ -111,31 +119,31 @@ export function makeId(): string {
 // ── Housing units & compartments ──────────────────────────────────────
 
 export async function cacheUnitsAndCompartments(
-  units: { id: string; name: string; site_id: string }[],
-  compartments: { id: string; housing_unit_id: string; cavity_label: string; sort_order: number | null }[],
+  units: { id: string; name: string; site_id: string; site_season_id?: string | null }[],
+  compartments: { id: string; housing_unit_id: string; cavity_label: string; sort_order: number | null; site_season_id?: string | null }[],
 ): Promise<void> {
   const D = await db();
   for (const U of units) {
     await D.runAsync(
-      'INSERT OR REPLACE INTO housing_units (id, site_id, name) VALUES (?,?,?)',
-      [U.id, U.site_id, U.name],
+      'INSERT OR REPLACE INTO housing_units (id, site_id, name, site_season_id) VALUES (?,?,?,?)',
+      [U.id, U.site_id, U.name, U.site_season_id ?? null],
     );
   }
   for (const C of compartments) {
     await D.runAsync(
-      'INSERT OR REPLACE INTO compartments (id, housing_unit_id, cavity_label, sort_order) VALUES (?,?,?,?)',
-      [C.id, C.housing_unit_id, C.cavity_label, C.sort_order ?? null],
+      'INSERT OR REPLACE INTO compartments (id, housing_unit_id, cavity_label, sort_order, site_season_id) VALUES (?,?,?,?,?)',
+      [C.id, C.housing_unit_id, C.cavity_label, C.sort_order ?? null, C.site_season_id ?? null],
     );
   }
 }
 
 export async function getLocalUnitsWithCompartments(
-  siteId: string,
+  seasonId: string,
 ): Promise<{ id: string; name: string; compartments: { id: string; cavity_label: string; sort_order: number | null }[] }[]> {
   const D = await db();
   const units = await D.getAllAsync<{ id: string; name: string }>(
-    'SELECT id, name FROM housing_units WHERE site_id = ? ORDER BY name',
-    [siteId],
+    'SELECT id, name FROM housing_units WHERE site_season_id = ? ORDER BY name',
+    [seasonId],
   );
   const result = [];
   for (const U of units) {

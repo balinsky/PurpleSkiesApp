@@ -42,9 +42,9 @@ export type AppStackParamList = {
   SiteMembers: { SiteId: string; SiteName: string };
   CreateSite: undefined;
   SiteDetail: { SiteId: string; SiteName: string };
-  CreateHousingUnit: { SiteId: string };
-  HousingUnitDetail: { UnitId: string; UnitName: string; UnitType: string; DefaultHoleType: string | null };
-  CreateCompartment: { UnitId: string; UnitType: string; DefaultHoleType: string | null };
+  CreateHousingUnit: { SiteId: string; SeasonId: string };
+  HousingUnitDetail: { UnitId: string; UnitName: string; UnitType: string; DefaultHoleType: string | null; SeasonId: string };
+  CreateCompartment: { UnitId: string; UnitType: string; DefaultHoleType: string | null; SeasonId: string };
   SeasonDetail: { SeasonId: string; SiteId: string; Year: number };
   NestCheckDetail: { CheckId: string; CheckDate: string; SiteId: string; SeasonId: string; Year: number };
   NestCheckEntry: { CheckId: string; CheckDate: string; SeasonId: string; SiteId: string; CompartmentId: string; CompartmentLabel: string; UnitName: string; HousingType?: string; ExistingEntryId: string | null; AllCompartments?: { id: string; cavity_label: string; unit_name: string; entry_id: string | null }[]; CompartmentIndex?: number };

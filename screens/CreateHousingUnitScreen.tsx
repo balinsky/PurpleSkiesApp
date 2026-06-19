@@ -56,7 +56,7 @@ function generateLabels(Style: string, Count: number, Prefix: string): string[] 
 }
 
 export default function CreateHousingUnitScreen({ navigation, route }: Props) {
-  const { SiteId } = route.params;
+  const { SiteId, SeasonId } = route.params;
   const [UnitName, setUnitName]     = useState('');
   const [UnitType, setUnitType]     = useState('metal_house');
   const [HoleType, setHoleType]     = useState('CR');
@@ -87,7 +87,7 @@ export default function CreateHousingUnitScreen({ navigation, route }: Props) {
 
     const { data: Unit, error: UnitError } = await supabase
       .from('housing_units')
-      .insert({ site_id: SiteId, name: UnitName.trim(), unit_type: UnitType, default_hole_type: HoleType })
+      .insert({ site_id: SiteId, site_season_id: SeasonId, name: UnitName.trim(), unit_type: UnitType, default_hole_type: HoleType })
       .select()
       .single();
 
@@ -96,6 +96,7 @@ export default function CreateHousingUnitScreen({ navigation, route }: Props) {
     const HousingType = housingTypeForUnit(UnitType, GourdType);
     const Compartments = Labels.map((Label, I) => ({
       housing_unit_id: Unit.id,
+      site_season_id: SeasonId,
       cavity_label: Label,
       housing_type: HousingType,
       hole_type: HoleType,
@@ -112,6 +113,7 @@ export default function CreateHousingUnitScreen({ navigation, route }: Props) {
       UnitName: Unit.name,
       UnitType: Unit.unit_type,
       DefaultHoleType: Unit.default_hole_type,
+      SeasonId,
     });
   }
 

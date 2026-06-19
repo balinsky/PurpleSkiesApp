@@ -7,13 +7,6 @@ import { supabase } from '../lib/supabase';
 import { friendlyError } from '../lib/errorUtils';
 import { AppStackParamList } from '../App';
 
-type HousingUnit = {
-  id: string;
-  name: string;
-  unit_type: string;
-  default_hole_type: string | null;
-};
-
 type SiteSeason = {
   id: string;
   year: number;
@@ -24,17 +17,9 @@ type Props = {
   route: RouteProp<AppStackParamList, 'SiteDetail'>;
 };
 
-const UnitTypeLabel: Record<string, string> = {
-  metal_house:   'Metal House',
-  plastic_house: 'Plastic House',
-  wooden_house:  'Wooden House',
-  gourd_rack:    'Gourd Rack',
-};
-
 export default function SiteDetailScreen({ navigation, route }: Props) {
   const { SiteId, SiteName } = route.params;
 
-  const [HousingUnits, setHousingUnits]               = useState<HousingUnit[]>([]);
   const [SiteSeasons, setSiteSeasons]                 = useState<SiteSeason[]>([]);
   const [StartingSeasonLoading, setStartingSeasonLoading] = useState(false);
   const [OtherSeasonVisible, setOtherSeasonVisible]       = useState(false);
@@ -78,13 +63,6 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
 
   useFocusEffect(
     useCallback(() => {
-      supabase
-        .from('housing_units')
-        .select('id, name, unit_type, default_hole_type')
-        .eq('site_id', SiteId)
-        .order('name')
-        .then(({ data }) => setHousingUnits(data ?? []));
-
       supabase
         .from('site_seasons')
         .select('id, year')
@@ -241,55 +219,12 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
         >
           Site Details
         </Button>
-        {SiteDetailsExpanded && (
-          <>
-            {(UserRole === 'owner' || UserRole === 'manager') && (
-              <View style={styles.SiteActions}>
-                <Button mode="outlined" compact onPress={openEditSite}>
-                  Edit site name &amp; location
-                </Button>
-              </View>
-            )}
-
-            <List.Section>
-              <List.Subheader>Housing Units</List.Subheader>
-              {HousingUnits.length === 0 ? (
-                <List.Item
-                  title="No housing units yet"
-                  description="Add a house or gourd rack to get started"
-                  left={(props) => <List.Icon {...props} icon="home-outline" />}
-                />
-              ) : (
-                HousingUnits.map((Unit) => (
-                  <Card
-                    key={Unit.id}
-                    style={styles.Card}
-                    mode="outlined"
-                    onPress={() => navigation.navigate('HousingUnitDetail', {
-                      UnitId:          Unit.id,
-                      UnitName:        Unit.name,
-                      UnitType:        Unit.unit_type,
-                      DefaultHoleType: Unit.default_hole_type,
-                    })}
-                  >
-                    <Card.Title
-                      title={Unit.name}
-                      subtitle={UnitTypeLabel[Unit.unit_type] ?? Unit.unit_type}
-                    />
-                  </Card>
-                ))
-              )}
-              {(UserRole === 'owner' || UserRole === 'manager') && (
-                <Button
-                  mode="outlined"
-                  style={styles.SectionButton}
-                  onPress={() => navigation.navigate('CreateHousingUnit', { SiteId })}
-                >
-                  Add Housing Unit
-                </Button>
-              )}
-            </List.Section>
-          </>
+        {SiteDetailsExpanded && (UserRole === 'owner' || UserRole === 'manager') && (
+          <View style={styles.SiteActions}>
+            <Button mode="outlined" compact onPress={openEditSite}>
+              Edit site name &amp; location
+            </Button>
+          </View>
         )}
 
         <Divider style={styles.Divider} />
@@ -336,34 +271,24 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
               </Card>
             ))
           )}
-          {HousingUnits.length === 0 ? (
-            !HasCurrentSeason && (
-              <HelperText type="info" visible style={styles.SectionButton}>
-                Add at least one housing unit before starting a season.
-              </HelperText>
-            )
-          ) : (
-            <>
-              {!HasCurrentSeason && (
-                <Button
-                  mode="outlined"
-                  style={styles.SectionButton}
-                  loading={StartingSeasonLoading}
-                  onPress={handleStartSeason}
-                >
-                  Start {CurrentYear} Season
-                </Button>
-              )}
-              <Button
-                mode="outlined"
-                style={styles.SectionButton}
-                icon="calendar-plus"
-                onPress={() => { setOtherSeasonYear(''); setOtherSeasonError(''); setOtherSeasonVisible(true); }}
-              >
-                Enter data for another year
-              </Button>
-            </>
+          {!HasCurrentSeason && (
+            <Button
+              mode="outlined"
+              style={styles.SectionButton}
+              loading={StartingSeasonLoading}
+              onPress={handleStartSeason}
+            >
+              Start {CurrentYear} Season
+            </Button>
           )}
+          <Button
+            mode="outlined"
+            style={styles.SectionButton}
+            icon="calendar-plus"
+            onPress={() => { setOtherSeasonYear(''); setOtherSeasonError(''); setOtherSeasonVisible(true); }}
+          >
+            Enter data for another year
+          </Button>
         </List.Section>
 
         <Divider style={styles.Divider} />

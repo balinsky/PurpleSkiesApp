@@ -153,12 +153,23 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     }
 
     try {
-      const { data: Units, error: UnitsError } = await supabase
+      let { data: Units, error: UnitsError } = await supabase
         .from('housing_units')
         .select('id, name, compartments(id, cavity_label, sort_order, housing_type)')
-        .eq('site_id', SiteId)
+        .eq('site_season_id', SeasonId)
         .order('name');
       if (UnitsError) throw UnitsError;
+      // Fall back to legacy site-scoped housing for sites not yet migrated
+      if (!Units || Units.length === 0) {
+        const { data: Legacy, error: LegacyErr } = await supabase
+          .from('housing_units')
+          .select('id, name, compartments(id, cavity_label, sort_order, housing_type)')
+          .eq('site_id', SiteId)
+          .is('site_season_id', null)
+          .order('name');
+        if (LegacyErr) throw LegacyErr;
+        Units = Legacy;
+      }
 
       const { data: RemoteEntries, error: EntriesError } = await supabase
         .from('nest_check_entries')
@@ -183,10 +194,10 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
 
       // Fire-and-forget cache to local DB (non-blocking on web)
       cacheUnitsAndCompartments(
-        (Units ?? []).map(U => ({ id: U.id, name: U.name, site_id: SiteId })),
+        (Units ?? []).map(U => ({ id: U.id, name: U.name, site_id: SiteId, site_season_id: SeasonId })),
         (Units ?? []).flatMap(U =>
           ((U.compartments as any[]) ?? []).map((C: any) => ({
-            id: C.id, housing_unit_id: U.id, cavity_label: C.cavity_label, sort_order: C.sort_order ?? null,
+            id: C.id, housing_unit_id: U.id, cavity_label: C.cavity_label, sort_order: C.sort_order ?? null, site_season_id: SeasonId,
           }))
         ),
       ).catch(() => {});
@@ -285,7 +296,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     } catch {
       // Offline or network error: fall back to local DB (no-op on web — SQLite not available)
       try {
-        const LocalUnits    = await getLocalUnitsWithCompartments(SiteId);
+        const LocalUnits    = await getLocalUnitsWithCompartments(SeasonId);
         const LocalEntries  = (await getLocalEntriesForCheck(CheckId)).map(localEntryToJs);
         const LocalBandSet  = await getLocalBandEntryIds(LocalEntries.map(E => E.id));
         const LocalSeasons  = await getLocalNestSeasons(SeasonId);
@@ -615,7 +626,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
             </Text>
             <Button
               mode="outlined"
-              onPress={() => navigation.navigate('CreateHousingUnit', { SiteId })}
+              onPress={() => navigation.navigate('CreateHousingUnit', { SiteId, SeasonId })}
             >
               Add Housing Unit
             </Button>

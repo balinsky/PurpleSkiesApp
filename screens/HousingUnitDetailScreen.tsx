@@ -43,7 +43,7 @@ const GourdTypes = [
 ];
 
 export default function HousingUnitDetailScreen({ navigation, route }: Props) {
-  const { UnitId, UnitName, UnitType, DefaultHoleType } = route.params;
+  const { UnitId, UnitName, UnitType, DefaultHoleType, SeasonId } = route.params;
   const IsGourdRack = UnitType === 'gourd_rack';
 
   const [Compartments, setCompartments] = useState<Compartment[]>([]);
@@ -222,7 +222,7 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
         <FAB
           icon="plus"
           style={styles.FAB}
-          onPress={() => navigation.navigate('CreateCompartment', { UnitId, UnitType, DefaultHoleType })}
+          onPress={() => navigation.navigate('CreateCompartment', { UnitId, UnitType, DefaultHoleType, SeasonId })}
         />
       </View>
 

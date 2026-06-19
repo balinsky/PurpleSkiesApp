@@ -34,7 +34,7 @@ function autoHousingType(UnitType: string): string {
 }
 
 export default function CreateCompartmentScreen({ navigation, route }: Props) {
-  const { UnitId, UnitType, DefaultHoleType } = route.params;
+  const { UnitId, UnitType, DefaultHoleType, SeasonId } = route.params;
   const IsGourdRack = UnitType === 'gourd_rack';
 
   const [CavityLabel, setCavityLabel] = useState('');
@@ -61,6 +61,7 @@ export default function CreateCompartmentScreen({ navigation, route }: Props) {
 
     const { error } = await supabase.from('compartments').insert({
       housing_unit_id: UnitId,
+      site_season_id: SeasonId,
       cavity_label: CavityLabel.trim(),
       housing_type: HousingType,
       hole_type: HoleType,
@@ -93,6 +94,7 @@ export default function CreateCompartmentScreen({ navigation, route }: Props) {
 
     const { error } = await supabase.from('compartments').insert({
       housing_unit_id: UnitId,
+      site_season_id: SeasonId,
       cavity_label: CavityLabel.trim(),
       housing_type: HousingType,
       hole_type: HoleType,

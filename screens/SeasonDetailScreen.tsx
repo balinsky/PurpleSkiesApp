@@ -56,6 +56,13 @@ function labelCompare(a: string, b: string): number {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 }
 
+const UnitTypeLabel: Record<string, string> = {
+  metal_house:   'Metal House',
+  plastic_house: 'Plastic House',
+  wooden_house:  'Wooden House',
+  gourd_rack:    'Gourd Rack',
+};
+
 type BandRow = {
   year: number;
   compartment_label: string;
@@ -345,6 +352,15 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
   const [AllBandsData, setAllBandsData]         = useState<BandRow[]>([]);
   const [BandsExpanded, setBandsExpanded]       = useState(false);
+
+  // ── Housing ────────────────────────────────────────────────────────
+  type HousingUnit = { id: string; name: string; unit_type: string; default_hole_type: string | null };
+  const [SeasonHousingUnits, setSeasonHousingUnits] = useState<HousingUnit[]>([]);
+  const [HousingExpanded, setHousingExpanded]       = useState(false);
+  const [CopyHousingSourceId, setCopyHousingSourceId] = useState<string | null>(null);
+  const [CopyHousingSourceYear, setCopyHousingSourceYear] = useState<number | null>(null);
+  const [CopyHousingIsLegacy, setCopyHousingIsLegacy] = useState(false);
+  const [CopyingHousing, setCopyingHousing]           = useState(false);
 
   // ── Add check dialog ───────────────────────────────────────────────
   const [AddCheckVisible, setAddCheckVisible]   = useState(false);
@@ -732,8 +748,114 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
       loadAll();
       loadBands();
+      loadHousing();
     }, [SeasonId, SiteId, Year])
   );
+
+  // ── Housing ────────────────────────────────────────────────────────
+  async function loadHousing() {
+    const { data: HUnits } = await supabase
+      .from('housing_units')
+      .select('id, name, unit_type, default_hole_type')
+      .eq('site_season_id', SeasonId)
+      .order('name');
+    setSeasonHousingUnits(HUnits ?? []);
+
+    if (!HUnits || HUnits.length === 0) {
+      setCopyHousingSourceId(null);
+      setCopyHousingSourceYear(null);
+      setCopyHousingIsLegacy(false);
+
+      // Find season-scoped housing from other seasons for this site
+      const { data: OtherSeasoned } = await supabase
+        .from('housing_units')
+        .select('site_season_id')
+        .eq('site_id', SiteId)
+        .not('site_season_id', 'is', null)
+        .neq('site_season_id', SeasonId);
+
+      if (OtherSeasoned && OtherSeasoned.length > 0) {
+        const OtherIds = [...new Set(OtherSeasoned.map((U: any) => U.site_season_id))];
+        const { data: OtherSeasons } = await supabase
+          .from('site_seasons')
+          .select('id, year')
+          .in('id', OtherIds)
+          .order('year', { ascending: false })
+          .limit(1);
+        if (OtherSeasons && OtherSeasons.length > 0) {
+          setCopyHousingSourceId(OtherSeasons[0].id);
+          setCopyHousingSourceYear(OtherSeasons[0].year);
+          return;
+        }
+      }
+
+      // Fall back to legacy (site-scoped, no season) housing
+      const { data: Legacy } = await supabase
+        .from('housing_units')
+        .select('id')
+        .eq('site_id', SiteId)
+        .is('site_season_id', null)
+        .limit(1);
+      if (Legacy && Legacy.length > 0) {
+        setCopyHousingIsLegacy(true);
+      }
+    }
+  }
+
+  async function cloneHousingFromSeason() {
+    setCopyingHousing(true);
+    try {
+      let query = supabase
+        .from('housing_units')
+        .select('id, name, unit_type, default_hole_type, compartments(cavity_label, housing_type, hole_type, sort_order)');
+      if (CopyHousingIsLegacy) {
+        query = (query as any).eq('site_id', SiteId).is('site_season_id', null);
+      } else {
+        query = (query as any).eq('site_season_id', CopyHousingSourceId);
+      }
+      const { data: Units } = await query;
+      if (!Units || Units.length === 0) return;
+
+      for (const Unit of Units as any[]) {
+        const { data: NewUnit } = await supabase
+          .from('housing_units')
+          .insert({ site_id: SiteId, site_season_id: SeasonId, name: Unit.name, unit_type: Unit.unit_type, default_hole_type: Unit.default_hole_type })
+          .select('id')
+          .single();
+        if (NewUnit && Unit.compartments && Unit.compartments.length > 0) {
+          await supabase.from('compartments').insert(
+            (Unit.compartments as any[]).map((C: any) => ({
+              housing_unit_id: NewUnit.id,
+              site_season_id: SeasonId,
+              cavity_label: C.cavity_label,
+              housing_type: C.housing_type,
+              hole_type: C.hole_type,
+              sort_order: C.sort_order,
+            }))
+          );
+        }
+      }
+      await loadHousing();
+    } catch {
+      Alert.alert('Copy failed', 'Could not copy housing. Please try again.');
+    } finally {
+      setCopyingHousing(false);
+    }
+  }
+
+  function handleCopyHousing() {
+    const sourceName = CopyHousingIsLegacy
+      ? 'your previous housing setup'
+      : `the ${CopyHousingSourceYear} season`;
+    Alert.alert(
+      'Copy Housing',
+      `Copy all housing units and compartments from ${sourceName} to this season?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Copy', onPress: cloneHousingFromSeason },
+      ]
+    );
+  }
 
   // ── Save arrival dates ─────────────────────────────────────────────
   async function handleSaveDates() {
@@ -940,6 +1062,43 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
               }}
             />
 
+            {/* ── Housing ── */}
+            <Button
+              mode="text"
+              compact
+              icon={HousingExpanded ? 'chevron-up' : 'chevron-down'}
+              contentStyle={styles.ExpandBtnContent}
+              onPress={() => setHousingExpanded(!HousingExpanded)}
+              style={styles.ExpandBtn}
+            >
+              Housing
+            </Button>
+            {HousingExpanded && (
+              <View style={styles.HousingSection}>
+                {SeasonHousingUnits.length === 0 ? (
+                  <Text variant="bodySmall" style={styles.Hint}>No housing set up for this season.</Text>
+                ) : (
+                  SeasonHousingUnits.map(U => (
+                    <Card key={U.id} style={styles.Card} mode="outlined"
+                      onPress={() => navigation.navigate('HousingUnitDetail', { UnitId: U.id, UnitName: U.name, UnitType: U.unit_type, DefaultHoleType: U.default_hole_type, SeasonId })}
+                    >
+                      <Card.Title title={U.name} subtitle={UnitTypeLabel[U.unit_type] ?? U.unit_type} />
+                    </Card>
+                  ))
+                )}
+                {(CopyHousingSourceId || CopyHousingIsLegacy) && SeasonHousingUnits.length === 0 && (
+                  <Button mode="outlined" compact loading={CopyingHousing} style={styles.HousingBtn} onPress={handleCopyHousing}>
+                    Copy from {CopyHousingIsLegacy ? 'previous setup' : `${CopyHousingSourceYear} season`}
+                  </Button>
+                )}
+                <Button mode="outlined" compact icon="plus" style={styles.HousingBtn}
+                  onPress={() => navigation.navigate('CreateHousingUnit', { SiteId, SeasonId })}
+                >
+                  Add Housing Unit
+                </Button>
+              </View>
+            )}
+
             {/* ── Arrival dates ── */}
             <Button
               mode="text"
@@ -1123,6 +1282,43 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                   </View>
                 </View>
               )}
+              {/* ── Housing ── */}
+              <Button
+                mode="text"
+                compact
+                icon={HousingExpanded ? 'chevron-up' : 'chevron-down'}
+                contentStyle={styles.ExpandBtnContent}
+                onPress={() => setHousingExpanded(!HousingExpanded)}
+                style={styles.ExpandBtn}
+              >
+                Housing
+              </Button>
+              {HousingExpanded && (
+                <View style={styles.HousingSection}>
+                  {SeasonHousingUnits.length === 0 ? (
+                    <Text variant="bodySmall" style={styles.Hint}>No housing set up for this season.</Text>
+                  ) : (
+                    SeasonHousingUnits.map(U => (
+                      <Card key={U.id} style={styles.Card} mode="outlined"
+                        onPress={() => navigation.navigate('HousingUnitDetail', { UnitId: U.id, UnitName: U.name, UnitType: U.unit_type, DefaultHoleType: U.default_hole_type, SeasonId })}
+                      >
+                        <Card.Title title={U.name} subtitle={UnitTypeLabel[U.unit_type] ?? U.unit_type} />
+                      </Card>
+                    ))
+                  )}
+                  {(CopyHousingSourceId || CopyHousingIsLegacy) && SeasonHousingUnits.length === 0 && (
+                    <Button mode="outlined" compact loading={CopyingHousing} style={styles.HousingBtn} onPress={handleCopyHousing}>
+                      Copy from {CopyHousingIsLegacy ? 'previous setup' : `${CopyHousingSourceYear} season`}
+                    </Button>
+                  )}
+                  <Button mode="outlined" compact icon="plus" style={styles.HousingBtn}
+                    onPress={() => navigation.navigate('CreateHousingUnit', { SiteId, SeasonId })}
+                  >
+                    Add Housing Unit
+                  </Button>
+                </View>
+              )}
+
               {/* ── Arrival dates ── */}
               <Button
                 mode="text"
@@ -1391,6 +1587,8 @@ const styles = StyleSheet.create({
   BandingWindowInput:   { width: 64, marginHorizontal: 4 },
   BandingWindowSep:     { fontSize: 16, color: '#444' },
   BandingWindowSaveBtn: { marginLeft: 8 },
+  HousingSection: { marginBottom: 8 },
+  HousingBtn:     { marginTop: 6, alignSelf: 'flex-start' },
   ColonyStatsRow:  { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 10, marginTop: 4 },
   ColonyStat:      { alignItems: 'center' },
   ColonyStatNum:   { fontSize: 20, fontWeight: '700', color: '#7b1fa2' },
