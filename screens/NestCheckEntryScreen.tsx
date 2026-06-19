@@ -1408,6 +1408,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
       >
       <ScrollView ref={ScrollViewRef} contentContainerStyle={styles.Container} keyboardShouldPersistTaps="handled">
 
@@ -1943,7 +1944,12 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             multiline
             maxLength={500}
             style={styles.NotesInput}
-            onFocus={() => setTimeout(() => ScrollViewRef.current?.scrollToEnd({ animated: true }), 100)}
+            onFocus={() => {
+              const sub = Keyboard.addListener('keyboardDidShow', () => {
+                ScrollViewRef.current?.scrollToEnd({ animated: true });
+                sub.remove();
+              });
+            }}
           />
         )}
 

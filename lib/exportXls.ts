@@ -78,22 +78,26 @@ function addDays(iso: string, days: number): string {
 
 function checkCode(entry: EntryData | null): string {
   if (!entry || !entry.species) return 'X';
-  if (entry.nest_discarded) return 'D';
+  const sp = entry.species;
+  const isPM = sp === 'PM';
+  if (entry.nest_discarded) return isPM ? 'D' : `${sp}ND`;
   let code = '';
-  if (entry.species !== 'PM') {
+  if (!isPM) {
     const parts = [
       entry.egg_count > 0 ? `${entry.egg_count}E` : '',
       entry.young_count > 0 ? `${entry.young_count}Y` : '',
     ].filter(Boolean).join(' ');
-    code = parts ? `${entry.species} ${parts}` : entry.species;
+    code = parts ? `${sp} ${parts}` : `${sp}N`;
   } else {
     if (entry.young_count > 0) {
-      const age = entry.nestling_age_days != null ? ` ${entry.nestling_age_days}do` : '';
+      const age = entry.nestling_age_days != null
+        ? ` ${entry.nestling_age_days === 0 ? 'HD' : `${entry.nestling_age_days}do`}`
+        : '';
       code = `${entry.young_count}Y${age}`;
     } else if (entry.egg_count > 0) {
       code = `${entry.egg_count}E`;
     } else {
-      code = 'N';
+      code = 'PMN';
     }
     if (entry.has_banding) code += ' B';
   }
@@ -518,8 +522,8 @@ export async function exportSeasonXls(
 
   // ── Write & share ──────────────────────────────────────────────────
   const SafeName = SiteName.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const FilePath = `${FileSystem.documentDirectory}PurpleSkies_${SafeName}_${Year}.xlsx`;
-  const Base64 = XLSX.write(wb, { type: 'base64', bookType: 'xlsx', cellStyles: true });
+  const FilePath = `${FileSystem.documentDirectory}PurpleSkies_${SafeName}_${Year}.xls`;
+  const Base64 = XLSX.write(wb, { type: 'base64', bookType: 'biff8', cellStyles: true });
 
   await FileSystem.writeAsStringAsync(FilePath, Base64, {
     encoding: FileSystem.EncodingType.Base64,

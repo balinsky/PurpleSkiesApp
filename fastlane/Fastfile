@@ -20,6 +20,24 @@ platform :ios do
     upload_to_testflight(skip_waiting_for_build_processing: true)
   end
 
+  desc "Build only (no upload)"
+  lane :build do
+    app_store_connect_api_key(
+      key_id:        ENV["ASC_KEY_ID"],
+      issuer_id:     ENV["ASC_ISSUER_ID"],
+      key_filepath:  ENV["ASC_KEY_FILEPATH"],
+    )
+    get_certificates
+    get_provisioning_profile
+    increment_build_number(xcodeproj: "ios/PurpleSkiesApp.xcodeproj")
+    build_app(
+      workspace: "ios/PurpleSkiesApp.xcworkspace",
+      scheme: "PurpleSkiesApp",
+      export_method: "app-store",
+      clean: true,
+    )
+  end
+
   desc "Upload the most recent .ipa to TestFlight without rebuilding"
   lane :upload do
     app_store_connect_api_key(
