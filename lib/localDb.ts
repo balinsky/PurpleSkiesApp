@@ -494,6 +494,23 @@ export async function getLocalPriorBandCounts(
   return new Map(rows.map(r => [r.nestling_id, r.cnt]));
 }
 
+export async function getLocalPriorBandDetails(
+  nestlingId: string, excludeEntryId: string | null,
+): Promise<{ band_type: string; band_color: string | null; band_code: string; check_date: string }[]> {
+  const D = await db();
+  const params: string[] = [nestlingId];
+  let sql = `
+    SELECT b.band_type, b.band_color, b.band_code, nc.check_date
+    FROM bands b
+    JOIN nest_check_entries nce ON nce.id = b.nest_check_entry_id
+    JOIN nest_checks nc ON nc.id = nce.nest_check_id
+    WHERE b.nestling_id = ?
+  `;
+  if (excludeEntryId) { sql += ' AND b.nest_check_entry_id != ?'; params.push(excludeEntryId); }
+  sql += ' ORDER BY nc.check_date';
+  return D.getAllAsync(sql, params);
+}
+
 export async function getPendingBandEntryIds(): Promise<string[]> {
   const D = await db();
   const rows = await D.getAllAsync<{ nest_check_entry_id: string }>(

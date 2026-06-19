@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput as RNTextInput, View, useWindowDimensions } from 'react-native';
 import {
@@ -19,7 +20,7 @@ import {
   getLocalBands, cacheBands, getLocalPriorBandCounts,
   upsertLocalEntry, upsertLocalNestling, replaceLocalBands,
   upsertLocalNestSeason, deleteLocalEntry, makeId, setLocalEntriesNestingAttempt,
-  resetLocalNestingAttemptsForCompartment, lookupLocalBandLocation,
+  resetLocalNestingAttemptsForCompartment, lookupLocalBandLocation, getLocalPriorBandDetails,
 } from '../lib/localDb';
 
 type Props = {
@@ -187,6 +188,12 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [LastColorCode, setLastColorCode]                   = useState<string | null>(null);
   const [LastColorBandColor, setLastColorBandColor]         = useState<string | null>(null);
   const [BandLookupPending, setBandLookupPending]           = useState(false);
+  const [BandWarning, setBandWarning]                       = useState<string | null>(null);
+  type PriorBandDetail = { band_type: string; band_color: string | null; band_code: string; check_date: string };
+  const [PriorBandsInfoVisible, setPriorBandsInfoVisible]   = useState(false);
+  const [PriorBandsInfoLabel, setPriorBandsInfoLabel]       = useState('');
+  const [PriorBandsInfoData, setPriorBandsInfoData]         = useState<PriorBandDetail[] | null>(null);
+  const [PriorBandsInfoLoading, setPriorBandsInfoLoading]   = useState(false);
 
   // ── Notes (expandable) ────────────────────────────────────────────────
   const [NotesExpanded, setNotesExpanded] = useState(false);
@@ -243,10 +250,26 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   }, []);
 
   useEffect(() => {
-    if (AddAdultBandVisible && NewBandError) {
+    AsyncStorage.multiGet(['band_last_federal_code', 'band_last_color_code', 'band_last_color_band_color'])
+      .then(([[, fed], [, col], [, colColor]]) => {
+        if (fed) setLastFederalCode(fed);
+        if (col) setLastColorCode(col);
+        setLastColorBandColor(colColor ?? null);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (AddAdultBandVisible && (NewBandError || BandWarning)) {
       setTimeout(() => AdultBandScrollRef.current?.scrollToEnd({ animated: true }), 50);
     }
-  }, [NewBandError, AddAdultBandVisible]);
+  }, [NewBandError, BandWarning, AddAdultBandVisible]);
+
+  useEffect(() => {
+    if (AddNestlingBandVisible && BandWarning) {
+      setTimeout(() => NestlingBandScrollRef.current?.scrollToEnd({ animated: true }), 50);
+    }
+  }, [BandWarning, AddNestlingBandVisible]);
 
   // Header right: Save button (when dirty) + compact toggle
   useEffect(() => {
@@ -684,6 +707,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     setNewBandColor('');
     setNewBandCode('');
     setNewBandError('');
+    setBandWarning(null);
     setAddNestlingBandVisible(true);
   }
 
@@ -695,6 +719,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     setNewBandColor(Band.band_color ?? '');
     setNewBandCode(Band.band_code);
     setNewBandError('');
+    setBandWarning(null);
     setAddNestlingBandVisible(true);
   }
 
@@ -731,11 +756,17 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       ));
       if (NewBandType === 'federal') {
         setLastFederalCode(Code);
+        AsyncStorage.setItem('band_last_federal_code', Code).catch(() => {});
       } else {
+        const ColorTrimmed = NewBandColor.trim();
         setLastColorCode(Code);
-        setLastColorBandColor(NewBandColor.trim() || null);
+        setLastColorBandColor(ColorTrimmed || null);
+        AsyncStorage.setItem('band_last_color_code', Code).catch(() => {});
+        if (ColorTrimmed) AsyncStorage.setItem('band_last_color_band_color', ColorTrimmed).catch(() => {});
+        else AsyncStorage.removeItem('band_last_color_band_color').catch(() => {});
       }
     }
+    setBandWarning(null);
     setEditNestlingBandIdx(null);
     setAddNestlingBandVisible(false);
   }
@@ -755,10 +786,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         const lines: string[] = [];
         if (existing) lines.push(`Band ${Code.toUpperCase()} was already assigned at ${locationString(existing)}.`);
         if (is8Digit) lines.push(`This band has ${Digits} digits — federal bands should have 8 or 9 digits. Are you sure no digits are missing?`);
-        Alert.alert('Check band number', lines.join('\n\n'), [
-          { text: 'Go back', style: 'cancel' },
-          { text: 'Add anyway', onPress: () => commitNestlingBand() },
-        ]);
+        setBandWarning(lines.join('\n\n'));
         return;
       }
     }
@@ -774,6 +802,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     setNewBandColor(Band.band_color ?? '');
     setNewBandCode(Band.band_code);
     setNewBandError('');
+    setBandWarning(null);
     setAddAdultBandVisible(true);
   }
 
@@ -797,11 +826,17 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       setAdultBands(Ab => [...Ab, Band]);
       if (NewBandType === 'federal') {
         setLastFederalCode(Code);
+        AsyncStorage.setItem('band_last_federal_code', Code).catch(() => {});
       } else {
+        const ColorTrimmed = NewBandColor.trim();
         setLastColorCode(Code);
-        setLastColorBandColor(NewBandColor.trim() || null);
+        setLastColorBandColor(ColorTrimmed || null);
+        AsyncStorage.setItem('band_last_color_code', Code).catch(() => {});
+        if (ColorTrimmed) AsyncStorage.setItem('band_last_color_band_color', ColorTrimmed).catch(() => {});
+        else AsyncStorage.removeItem('band_last_color_band_color').catch(() => {});
       }
     }
+    setBandWarning(null);
     setEditAdultBandIdx(null);
     setPendingAdultGroupId(null);
     setAddAdultBandVisible(false);
@@ -823,10 +858,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           const lines: string[] = [];
           if (existing) lines.push(`Band ${Code.toUpperCase()} was already assigned at ${locationString(existing)}.`);
           if (is8Digit) lines.push(`This band has ${Digits} digits — federal bands should have 8 or 9 digits. Are you sure no digits are missing?`);
-          Alert.alert('Check band number', lines.join('\n\n'), [
-            { text: 'Go back', style: 'cancel' },
-            { text: 'Add anyway', onPress: () => commitAdultBand() },
-          ]);
+          setBandWarning(lines.join('\n\n'));
           return;
         }
       } else if (!NewAdultIsNew) {
@@ -841,17 +873,43 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           const found = await lookupBandLocation(Code.toUpperCase());
           setBandLookupPending(false);
           if (found) {
-            Alert.alert(
-              'Band found in database',
-              `Band ${Code.toUpperCase()} was originally assigned at ${locationString(found)}.`,
-              [{ text: 'OK', onPress: () => commitAdultBand() }],
-            );
+            setBandWarning(`Band ${Code.toUpperCase()} was originally assigned at ${locationString(found)}.`);
             return;
           }
         }
       }
     }
     commitAdultBand();
+  }
+
+  async function openPriorBandsInfo(nestlingId: string, label: string) {
+    setPriorBandsInfoLabel(label);
+    setPriorBandsInfoData(null);
+    setPriorBandsInfoLoading(true);
+    setPriorBandsInfoVisible(true);
+    try {
+      if (isOnline) {
+        let q = supabase
+          .from('bands')
+          .select('band_type, band_color, band_code, nest_check_entries(nest_checks(check_date))')
+          .eq('nestling_id', nestlingId);
+        if (ExistingEntryId) q = q.neq('nest_check_entry_id', ExistingEntryId);
+        const { data } = await q;
+        setPriorBandsInfoData((data ?? []).map((B: any) => ({
+          band_type:  B.band_type,
+          band_color: B.band_color ?? null,
+          band_code:  B.band_code,
+          check_date: B.nest_check_entries?.nest_checks?.check_date ?? '',
+        })));
+      } else {
+        setPriorBandsInfoData(
+          await getLocalPriorBandDetails(nestlingId, ExistingEntryId ?? null)
+        );
+      }
+    } catch {
+      setPriorBandsInfoData([]);
+    }
+    setPriorBandsInfoLoading(false);
   }
 
   function handleSpeciesChange(Val: string) {
@@ -1659,10 +1717,19 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                     <View key={NIdx} style={styles.NestlingBlock}>
                       <View style={styles.NestlingHeader}>
                         <Text style={styles.NestlingLabel}>{N.label}</Text>
-                        {N.totalPriorBands > 0 && (
-                          <Text style={styles.NestlingPrior}>
-                            {N.totalPriorBands} prior band{N.totalPriorBands !== 1 ? 's' : ''}
-                          </Text>
+                        {N.totalPriorBands > 0 && N.id && (
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Text style={styles.NestlingPrior}>
+                              {N.totalPriorBands} prior band{N.totalPriorBands !== 1 ? 's' : ''}
+                            </Text>
+                            <IconButton
+                              icon="information-outline"
+                              size={15}
+                              iconColor="#1565c0"
+                              style={{ margin: 0, marginLeft: -2 }}
+                              onPress={() => openPriorBandsInfo(N.id!, N.label)}
+                            />
+                          </View>
                         )}
                       </View>
                       {N.bandsThisCheck.map((B, BIdx) => (
@@ -1788,6 +1855,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                       setNewBandColor('');
                       setNewBandCode('');
                       setNewBandError('');
+                      setBandWarning(null);
                       setEditAdultBandIdx(null);
                       setAddAdultBandVisible(true);
                     }}
@@ -1956,11 +2024,19 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 onFocus={() => setTimeout(() => NestlingBandScrollRef.current?.scrollToEnd({ animated: true }), 150)}
               />
               {NewBandError ? <HelperText type="error" visible>{NewBandError}</HelperText> : null}
+              {BandWarning && AddNestlingBandVisible
+                ? <Text style={styles.BandWarningText}>{BandWarning}</Text>
+                : null}
             </ScrollView>
           </Dialog.ScrollArea>
           <Dialog.Actions>
-            <Button onPress={handleCancelNestlingBand}>Cancel</Button>
-            <Button onPress={() => ConfirmNestlingBandRef.current()} loading={BandLookupPending} disabled={BandLookupPending}>{EditNestlingBandIdx !== null ? 'Save' : 'Add'}</Button>
+            <Button onPress={() => { setBandWarning(null); handleCancelNestlingBand(); }}>
+              {BandWarning && AddNestlingBandVisible ? 'Go back' : 'Cancel'}
+            </Button>
+            {BandWarning && AddNestlingBandVisible
+              ? <Button onPress={() => { setBandWarning(null); commitNestlingBand(); }}>Add anyway</Button>
+              : <Button onPress={() => ConfirmNestlingBandRef.current()} loading={BandLookupPending} disabled={BandLookupPending}>{EditNestlingBandIdx !== null ? 'Save' : 'Add'}</Button>
+            }
           </Dialog.Actions>
         </Dialog>
 
@@ -2033,11 +2109,19 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 </HelperText>
               )}
               {NewBandError ? <HelperText type="error" visible>{NewBandError}</HelperText> : null}
+              {BandWarning && AddAdultBandVisible
+                ? <Text style={styles.BandWarningText}>{BandWarning}</Text>
+                : null}
             </ScrollView>
           </Dialog.ScrollArea>
           <Dialog.Actions>
-            <Button onPress={() => { setEditAdultBandIdx(null); setPendingAdultGroupId(null); setAddAdultBandVisible(false); }}>Cancel</Button>
-            <Button onPress={() => ConfirmAdultBandRef.current()} loading={BandLookupPending} disabled={BandLookupPending}>{EditAdultBandIdx !== null ? 'Save' : 'Add'}</Button>
+            <Button onPress={() => { setBandWarning(null); setEditAdultBandIdx(null); setPendingAdultGroupId(null); setAddAdultBandVisible(false); }}>
+              {BandWarning && AddAdultBandVisible ? 'Go back' : 'Cancel'}
+            </Button>
+            {BandWarning && AddAdultBandVisible
+              ? <Button onPress={() => { setBandWarning(null); commitAdultBand(); }}>Add anyway</Button>
+              : <Button onPress={() => ConfirmAdultBandRef.current()} loading={BandLookupPending} disabled={BandLookupPending}>{EditAdultBandIdx !== null ? 'Save' : 'Add'}</Button>
+            }
           </Dialog.Actions>
         </Dialog>
 
@@ -2116,6 +2200,27 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           <Dialog.Actions>
             <Button onPress={handleRenestingCancel}>Cancel</Button>
             <Button onPress={handleRenestingConfirm}>Confirm</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        {/* ── Prior bands info ────────────────────────────────────── */}
+        <Dialog visible={PriorBandsInfoVisible} onDismiss={() => setPriorBandsInfoVisible(false)}>
+          <Dialog.Title>Prior bands: {PriorBandsInfoLabel}</Dialog.Title>
+          <Dialog.Content>
+            {PriorBandsInfoLoading
+              ? <Text>Loading…</Text>
+              : PriorBandsInfoData && PriorBandsInfoData.length > 0
+                ? PriorBandsInfoData.map((B, I) => (
+                    <Text key={I} style={{ marginBottom: 4 }}>
+                      {B.check_date ? `${formatDate(B.check_date)}: ` : ''}
+                      {B.band_type === 'federal' ? 'Federal' : (B.band_color ?? 'Color')} {B.band_code}
+                    </Text>
+                  ))
+                : <Text style={{ color: '#666' }}>No prior bands on record.</Text>
+            }
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setPriorBandsInfoVisible(false)}>Close</Button>
           </Dialog.Actions>
         </Dialog>
 
@@ -2251,5 +2356,6 @@ const styles = StyleSheet.create({
   BandFormLabel:        { fontWeight: '600', fontSize: 13, marginTop: 12, marginBottom: 2, paddingHorizontal: 4 },
   BandInput:            { marginTop: 8, marginBottom: 4 },
   IncrementBtn:         { alignSelf: 'flex-start', marginTop: 8 },
+  BandWarningText:      { color: '#b45309', marginTop: 6, marginBottom: 2, fontSize: 13, paddingHorizontal: 4 },
   RadioItem:            { paddingVertical: 0 },
 });
