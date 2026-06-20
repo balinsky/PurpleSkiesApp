@@ -2336,7 +2336,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         {/* ── Band permit acknowledgment ────────────────────────── */}
         <Dialog visible={BandPermitDialogVisible} dismissable={false}>
           <Dialog.Title>Bird Banding Notice</Dialog.Title>
-          <Dialog.ScrollArea style={{ maxHeight: 380 }}>
+          <Dialog.ScrollArea style={{ maxHeight: 480 }}>
             <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 8 }}>
               <Text variant="bodySmall" style={{ lineHeight: 20, marginBottom: 16 }}>
                 Bird banding must only be performed by properly licensed bird banders operating under a federal USGS permit.
@@ -2349,7 +2349,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 Permits are not required to report on observations of bands you encounter.
               </Text>
               <TouchableRipple onPress={() => setBandPermitChecked(v => !v)} style={{ paddingVertical: 4 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
                   <Checkbox status={BandPermitChecked ? 'checked' : 'unchecked'} />
                   <Text variant="bodySmall" style={{ flex: 1 }}>
                     I have a permit or am working with a licensed bird bander on an authorized banding research project.
