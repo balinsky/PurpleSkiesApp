@@ -113,12 +113,14 @@ type HistoryEntry = {
   nesting_attempt: number;
 };
 
-function historyCode(E: HistoryEntry): string {
+function historyCode(E: HistoryEntry, isNewAttempt: boolean): string {
   if (E.is_empty_cavity) return 'empty';
   const sp = E.species;
   if (!sp || E.adult_present) return '—';
   const isPM = sp === 'PM';
-  const ra = E.nesting_attempt === 1 ? '' : E.nesting_attempt === 2 ? ' RA' : ` RA${E.nesting_attempt}`;
+  const ra = (isNewAttempt && E.nesting_attempt > 1)
+    ? (E.nesting_attempt === 2 ? ' RA' : ` RA${E.nesting_attempt}`)
+    : '';
 
   if (E.nest_discarded) return (isPM ? 'D' : `${sp}ND`) + ra;
 
@@ -1704,12 +1706,16 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
               ) : CompartmentHistoryEntries.length === 0 ? (
                 <Text style={{ color: '#888', fontStyle: 'italic' }}>No entries recorded for this compartment.</Text>
               ) : (
-                CompartmentHistoryEntries.map((E, i) => (
-                  <View key={i} style={{ flexDirection: 'row', marginBottom: 4 }}>
-                    <Text style={{ fontSize: 13, color: '#666', width: 64 }}>{shortDate(E.check_date)}</Text>
-                    <Text style={{ fontSize: 13, color: '#222', flex: 1 }}>{historyCode(E)}</Text>
-                  </View>
-                ))
+                CompartmentHistoryEntries.map((E, i) => {
+                  const prev = i > 0 ? CompartmentHistoryEntries[i - 1] : null;
+                  const isNewAttempt = !prev || E.nesting_attempt !== prev.nesting_attempt;
+                  return (
+                    <View key={i} style={{ flexDirection: 'row', marginBottom: 4 }}>
+                      <Text style={{ fontSize: 13, color: '#666', width: 64 }}>{shortDate(E.check_date)}</Text>
+                      <Text style={{ fontSize: 13, color: '#222', flex: 1 }}>{historyCode(E, isNewAttempt)}</Text>
+                    </View>
+                  );
+                })
               )}
             </ScrollView>
           </Dialog.ScrollArea>
