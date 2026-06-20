@@ -732,8 +732,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         }
 
         setNestProgress(Progress.sort((a, b) => {
-          const u = a.unit_name.localeCompare(b.unit_name);
-          return u !== 0 ? u : a.label.localeCompare(b.label);
+          const u = labelCompare(a.unit_name, b.unit_name);
+          return u !== 0 ? u : labelCompare(a.label, b.label);
         }));
         setColonyStats(Progress.length > 0 ? { eggs: StatEggs, hatched: StatHatched, fledged: StatFledged } : null);
       }

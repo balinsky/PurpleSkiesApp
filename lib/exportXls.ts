@@ -381,10 +381,13 @@ export async function exportSeasonXls(
     if (Data.nesting_attempt > 1) MultiAttemptCompartments.add(Data.compartment_id);
   }
 
+  const numericLocale = (a: string, b: string) =>
+    a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+
   const SortedComps = [...CompMap.entries()].sort(([, a], [, b]) => {
-    const u = a.unit_name.localeCompare(b.unit_name);
+    const u = numericLocale(a.unit_name, b.unit_name);
     if (u !== 0) return u;
-    const l = a.label.localeCompare(b.label);
+    const l = numericLocale(a.label, b.label);
     if (l !== 0) return l;
     return a.nesting_attempt - b.nesting_attempt;
   });
