@@ -526,8 +526,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
         if (!Checks || Checks.length === 0) { setNestProgress([]); return; }
 
-        // Fetch PM entries (nest progress) and nest seasons (adult ages) in parallel
-        const [EntriesResult, NestSeasonsResult] = await Promise.all([
+        // Fetch PM entries (nest progress), nest seasons (adult ages), and non-PM entries in parallel
+        const [EntriesResult, NestSeasonsResult, NonPMResult] = await Promise.all([
           supabase
             .from('nest_check_entries')
             .select('id, nest_check_id, compartment_id, adult_present, is_empty_cavity, has_nest, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count, dead_young_count, nesting_attempt, observed_male_age, observed_female_age, compartments(cavity_label, housing_units(name))')
@@ -537,6 +537,12 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             .from('nest_seasons')
             .select('compartment_id, male_age, female_age, compartments(cavity_label, housing_units(name))')
             .eq('site_season_id', SeasonId),
+          supabase
+            .from('nest_check_entries')
+            .select('compartment_id, has_nest, egg_count, young_count, is_empty_cavity, adult_present, compartments(cavity_label, housing_units(name))')
+            .in('nest_check_id', Checks.map(c => c.id))
+            .neq('species', 'PM')
+            .not('species', 'is', null),
         ]);
         const Entries        = EntriesResult.data;
         const NestSeasonRows = NestSeasonsResult.data;
@@ -754,6 +760,34 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           const BandedCount = BandedByKey.get(`${Data.compartment_id}:${Data.nesting_attempt}`) ?? 0;
           const AttemptSuffix = Data.nesting_attempt > 1 ? ` (Attempt ${Data.nesting_attempt})` : '';
           Progress.push({ compartment_id: Data.compartment_id, nesting_attempt: Data.nesting_attempt, label: Data.label + AttemptSuffix, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount, banded_count: BandedCount });
+        }
+
+        // Add non-PM compartments that have nesting activity and aren't already in Progress
+        const PMCompartmentIds = new Set(Progress.map(p => p.compartment_id));
+        const NonPMCompartments = new Map<string, { compartment_id: string; label: string; unit_name: string }>();
+        for (const E of (NonPMResult.data ?? []) as any[]) {
+          if (PMCompartmentIds.has(E.compartment_id)) continue;
+          if (E.is_empty_cavity || E.adult_present) continue;
+          if (!E.has_nest && (E.egg_count ?? 0) === 0 && (E.young_count ?? 0) === 0) continue;
+          if (!E.compartments) continue;
+          if (!NonPMCompartments.has(E.compartment_id)) {
+            NonPMCompartments.set(E.compartment_id, {
+              compartment_id: E.compartment_id,
+              label:     (E.compartments as any).cavity_label ?? '?',
+              unit_name: (E.compartments as any).housing_units?.name ?? '',
+            });
+          }
+        }
+        for (const [, C] of NonPMCompartments) {
+          Progress.push({
+            compartment_id: C.compartment_id, nesting_attempt: 1,
+            label: C.label, unit_name: C.unit_name,
+            first_egg_min: null, first_egg_max: null,
+            proj_hatch_min: null, proj_hatch_max: null,
+            actual_hatch: null, proj_fledge: null,
+            male_age: null, female_age: null,
+            young_count: 0, banded_count: 0,
+          });
         }
 
         setNestProgress(Progress.sort((a, b) => {
