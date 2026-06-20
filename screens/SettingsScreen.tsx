@@ -3,6 +3,14 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { Divider, List, Switch, Text } from 'react-native-paper';
 import { useSettings } from '../contexts/SettingsContext';
 
+const BANDING_WARNING =
+  'Bird banding must only be performed by properly licensed bird banders operating under a federal USGS permit. ' +
+  'It is a violation of federal law to band birds without a permit. ' +
+  'Do not use your own bands that are sold for pigeons or caged non-native birds. ' +
+  'These can harm or kill birds for which they are not properly sized. ' +
+  'Contact the USGS Bird Banding Lab for more information. ' +
+  'Permits are not required to read and report on bird band observations.';
+
 export default function SettingsScreen() {
   const { BandingEnabled, toggleBandingEnabled } = useSettings();
 
@@ -19,13 +27,22 @@ export default function SettingsScreen() {
           </View>
         )}
       />
+      {BandingEnabled && (
+        <View style={styles.BandingWarning}>
+          <Text variant="labelSmall" style={styles.BandingWarningTitle}>⚠ Legal Notice</Text>
+          <Text variant="bodySmall" style={styles.BandingWarningText}>{BANDING_WARNING}</Text>
+        </View>
+      )}
       <Divider />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  Container:     { padding: 16 },
-  SectionHeader: { marginBottom: 8, color: '#555' },
-  SwitchWrap:    { justifyContent: 'center' },
+  Container:           { padding: 16 },
+  SectionHeader:       { marginBottom: 8, color: '#555' },
+  SwitchWrap:          { justifyContent: 'center' },
+  BandingWarning:      { backgroundColor: '#fff8e1', borderRadius: 8, padding: 12, marginTop: 8, marginBottom: 4 },
+  BandingWarningTitle: { fontWeight: '700', color: '#b45309', marginBottom: 4 },
+  BandingWarningText:  { color: '#78350f', lineHeight: 18 },
 });

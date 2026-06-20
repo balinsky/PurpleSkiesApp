@@ -190,6 +190,10 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [LastColorBandColor, setLastColorBandColor]         = useState<string | null>(null);
   const [BandLookupPending, setBandLookupPending]           = useState(false);
   const [BandWarning, setBandWarning]                       = useState<string | null>(null);
+  const [BandPermitAcknowledged, setBandPermitAcknowledged] = useState(false);
+  const [BandPermitDialogVisible, setBandPermitDialogVisible] = useState(false);
+  const [BandPermitChecked, setBandPermitChecked]           = useState(false);
+  const PendingBandAction = useRef<(() => void) | null>(null);
   type PriorBandDetail = { band_type: string; band_color: string | null; band_code: string; check_date: string };
   const [PriorBandsInfoVisible, setPriorBandsInfoVisible]   = useState(false);
   const [PriorBandsInfoLabel, setPriorBandsInfoLabel]       = useState('');
@@ -251,11 +255,12 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   }, []);
 
   useEffect(() => {
-    AsyncStorage.multiGet(['band_last_federal_code', 'band_last_color_code', 'band_last_color_band_color'])
-      .then(([[, fed], [, col], [, colColor]]) => {
+    AsyncStorage.multiGet(['band_last_federal_code', 'band_last_color_code', 'band_last_color_band_color', 'banding_permit_acknowledged'])
+      .then(([[, fed], [, col], [, colColor], [, ack]]) => {
         if (fed) setLastFederalCode(fed);
         if (col) setLastColorCode(col);
         setLastColorBandColor(colColor ?? null);
+        if (ack === 'true') setBandPermitAcknowledged(true);
       })
       .catch(() => {});
   }, []);
@@ -699,6 +704,22 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     parts.push(`${loc.unit}, compartment ${loc.cavity}`);
     parts.push(formatDate(loc.date));
     return parts.join(' · ');
+  }
+
+  function guardBandAction(action: () => void) {
+    if (BandPermitAcknowledged) { action(); return; }
+    PendingBandAction.current = action;
+    setBandPermitChecked(false);
+    setBandPermitDialogVisible(true);
+  }
+
+  function confirmBandPermit() {
+    if (!BandPermitChecked) return;
+    AsyncStorage.setItem('banding_permit_acknowledged', 'true').catch(() => {});
+    setBandPermitAcknowledged(true);
+    setBandPermitDialogVisible(false);
+    PendingBandAction.current?.();
+    PendingBandAction.current = null;
   }
 
   function openAddNestlingBand(Idx: number) {
@@ -1767,7 +1788,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                         mode="text" compact icon="plus"
                         style={styles.AddNestlingBandBtn}
                         labelStyle={styles.AddNestlingBandLabel}
-                        onPress={() => openAddNestlingBand(NIdx)}
+                        onPress={() => guardBandAction(() => openAddNestlingBand(NIdx))}
                       >
                         Add band to {N.label}
                       </Button>
@@ -1777,12 +1798,12 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                     mode="outlined" compact icon="plus"
                     style={styles.AddBandBtn}
                     disabled={Nestlings.length >= YoungCount}
-                    onPress={() => {
+                    onPress={() => guardBandAction(() => {
                       MarkDirty();
                       const NewLabel = `Nestling ${Nestlings.length + 1}`;
                       setNestlings(Ns => [...Ns, { id: null, label: NewLabel, bandsThisCheck: [], totalPriorBands: 0 }]);
                       openAddNestlingBand(Nestlings.length);
-                    }}
+                    })}
                   >
                     Band a nestling{YoungCount > 0 ? ` (${YoungCount - Nestlings.length} remaining)` : ''}
                   </Button>
@@ -1837,7 +1858,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                             mode="text" compact icon="plus"
                             style={styles.AddNestlingBandBtn}
                             labelStyle={styles.AddNestlingBandLabel}
-                            onPress={() => {
+                            onPress={() => guardBandAction(() => {
                               setPendingAdultGroupId(gid);
                               setNewAdultBirdType(first.bird_type);
                               setNewAdultIsNew(first.is_new_banding);
@@ -1847,7 +1868,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                               setNewBandError('');
                               setEditAdultBandIdx(null);
                               setAddAdultBandVisible(true);
-                            }}
+                            })}
                           >
                             Add another band to this bird
                           </Button>
@@ -1858,7 +1879,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                   <Button
                     mode="outlined" compact icon="plus"
                     style={styles.AddBandBtn}
-                    onPress={() => {
+                    onPress={() => guardBandAction(() => {
                       setPendingAdultGroupId(makeId());
                       setNewAdultBirdType('adult_male');
                       setNewAdultIsNew(true);
@@ -1869,7 +1890,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                       setBandWarning(null);
                       setEditAdultBandIdx(null);
                       setAddAdultBandVisible(true);
-                    }}
+                    })}
                   >
                     Add adult band
                   </Button>
@@ -2309,6 +2330,37 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           </Dialog.Content>
           <Dialog.Actions>
             <Button onPress={() => setAgeConfirmInfoVisible(false)}>Got it</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        {/* ── Band permit acknowledgment ────────────────────────── */}
+        <Dialog visible={BandPermitDialogVisible} dismissable={false}>
+          <Dialog.Title>Bird Banding Notice</Dialog.Title>
+          <Dialog.ScrollArea style={{ maxHeight: 380 }}>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 8 }}>
+              <Text variant="bodySmall" style={{ lineHeight: 20, marginBottom: 16 }}>
+                Bird banding must only be performed by properly licensed bird banders operating under a federal USGS permit.
+                It is a violation of federal law to band birds without a permit.
+                {'\n\n'}
+                Do not use your own bands that are sold for pigeons or caged non-native birds. These can harm or kill birds for which they are not properly sized.
+                {'\n\n'}
+                Contact the USGS Bird Banding Lab for more information.
+                {'\n\n'}
+                Permits are not required to read and report on bird band observations.
+              </Text>
+              <TouchableRipple onPress={() => setBandPermitChecked(v => !v)} style={{ paddingVertical: 4 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Checkbox status={BandPermitChecked ? 'checked' : 'unchecked'} />
+                  <Text variant="bodySmall" style={{ flex: 1 }}>
+                    I have a permit or am working with a licensed bird bander on an authorized banding research project.
+                  </Text>
+                </View>
+              </TouchableRipple>
+            </ScrollView>
+          </Dialog.ScrollArea>
+          <Dialog.Actions>
+            <Button onPress={() => { setBandPermitDialogVisible(false); PendingBandAction.current = null; }}>Cancel</Button>
+            <Button disabled={!BandPermitChecked} onPress={confirmBandPermit}>Continue</Button>
           </Dialog.Actions>
         </Dialog>
       </Portal>
