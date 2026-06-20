@@ -94,6 +94,47 @@ type CompartmentProgress = {
   banded_count: number;
 };
 
+type HistoryEntry = {
+  check_date: string;
+  species: string | null;
+  egg_count: number;
+  young_count: number;
+  nestling_age_days: number | null;
+  fledged_count: number;
+  dead_young_count: number;
+  has_nest: boolean;
+  is_empty_cavity: boolean;
+  adult_present: boolean;
+  nest_discarded: boolean;
+  has_banding: boolean;
+};
+
+function historyCode(E: HistoryEntry): string {
+  if (E.is_empty_cavity) return 'empty';
+  const sp = E.species;
+  if (!sp || E.adult_present) return '—';
+  const isPM = sp === 'PM';
+  if (E.nest_discarded) return isPM ? 'D' : `${sp}ND`;
+  if (!isPM) {
+    const parts = [
+      E.egg_count > 0 ? `${E.egg_count}E` : '',
+      E.young_count > 0 ? `${E.young_count}Y` : '',
+    ].filter(Boolean).join(' ');
+    return parts ? `${sp} ${parts}` : `${sp}N`;
+  }
+  if (E.young_count > 0) {
+    const age = E.nestling_age_days != null
+      ? ` ${E.nestling_age_days === 0 ? 'HD' : `${E.nestling_age_days}do`}`
+      : '';
+    const dead    = E.dead_young_count > 0 ? ` ${E.dead_young_count}ED` : '';
+    const fledged = E.fledged_count    > 0 ? ` ${E.fledged_count}F`    : '';
+    return `${E.young_count}Y${age}${dead}${fledged}`;
+  }
+  if (E.egg_count > 0) return `${E.egg_count}E`;
+  if (E.has_nest) return 'PMN';
+  return '—';
+}
+
 function progressLine(P: CompartmentProgress): string {
   const AgeParts = [P.male_age && `♂ ${P.male_age}`, P.female_age && `♀ ${P.female_age}`].filter(Boolean).join('  ');
   const Age = AgeParts ? `  ·  ${AgeParts}` : '';
@@ -329,6 +370,10 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   const [NestProgress, setNestProgress]         = useState<CompartmentProgress[]>([]);
   const [NestProgressExpanded, setNestProgressExpanded] = useState(false);
   const [ColonyStats, setColonyStats]           = useState<{ eggs: number; hatched: number; fledged: number } | null>(null);
+  const [CompartmentHistoryId, setCompartmentHistoryId]       = useState<string | null>(null);
+  const [CompartmentHistoryLabel, setCompartmentHistoryLabel] = useState('');
+  const [CompartmentHistoryEntries, setCompartmentHistoryEntries] = useState<HistoryEntry[]>([]);
+  const [CompartmentHistoryLoading, setCompartmentHistoryLoading] = useState(false);
 
   type AdultAge = {
     compartment_id: string;
@@ -857,6 +902,38 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
     );
   }
 
+  async function openCompartmentHistory(compartmentId: string, label: string) {
+    setCompartmentHistoryLabel(label);
+    setCompartmentHistoryId(compartmentId);
+    setCompartmentHistoryLoading(true);
+    setCompartmentHistoryEntries([]);
+    const checkIds = NestChecks.map(c => c.id);
+    if (checkIds.length > 0) {
+      const { data } = await supabase
+        .from('nest_check_entries')
+        .select('nest_check_id, species, egg_count, young_count, nestling_age_days, fledged_count, dead_young_count, has_nest, is_empty_cavity, adult_present, nest_discarded, has_banding')
+        .eq('compartment_id', compartmentId)
+        .in('nest_check_id', checkIds);
+      const CheckMap = new Map(NestChecks.map(c => [c.id, c.check_date]));
+      const entries: HistoryEntry[] = (data ?? []).map((E: any) => ({
+        check_date:        CheckMap.get(E.nest_check_id) ?? '',
+        species:           E.species,
+        egg_count:         E.egg_count ?? 0,
+        young_count:       E.young_count ?? 0,
+        nestling_age_days: E.nestling_age_days,
+        fledged_count:     E.fledged_count ?? 0,
+        dead_young_count:  E.dead_young_count ?? 0,
+        has_nest:          !!E.has_nest,
+        is_empty_cavity:   !!E.is_empty_cavity,
+        adult_present:     !!E.adult_present,
+        nest_discarded:    !!E.nest_discarded,
+        has_banding:       !!E.has_banding,
+      })).filter(e => e.check_date).sort((a, b) => a.check_date.localeCompare(b.check_date));
+      setCompartmentHistoryEntries(entries);
+    }
+    setCompartmentHistoryLoading(false);
+  }
+
   // ── Save arrival dates ─────────────────────────────────────────────
   async function handleSaveDates() {
     setDatesLoading(true);
@@ -1156,10 +1233,19 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                 {NestProgressExpanded && (
                   <>
                     {NestProgress.map((P) => (
-                      <View key={`${P.compartment_id}:${P.nesting_attempt}`} style={styles.ProgressRow}>
-                        <Text style={styles.ProgressTitle}>{P.unit_name} · {P.label}</Text>
-                        <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
-                      </View>
+                      <TouchableRipple
+                        key={`${P.compartment_id}:${P.nesting_attempt}`}
+                        onPress={() => openCompartmentHistory(P.compartment_id, `${P.unit_name} · ${P.label}`)}
+                        style={styles.ProgressRow}
+                      >
+                        <View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Text style={[styles.ProgressTitle, { flex: 1 }]}>{P.unit_name} · {P.label}</Text>
+                            <Icon source="history" size={15} color="#9c27b0" />
+                          </View>
+                          <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
+                        </View>
+                      </TouchableRipple>
                     ))}
                   </>
                 )}
@@ -1541,6 +1627,29 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           </Dialog.Content>
           <Dialog.Actions>
             <Button onPress={() => setAgeConfirmInfoVisible(false)}>Got it</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        <Dialog visible={CompartmentHistoryId !== null} onDismiss={() => setCompartmentHistoryId(null)}>
+          <Dialog.Title>{CompartmentHistoryLabel}</Dialog.Title>
+          <Dialog.ScrollArea style={{ maxHeight: 400 }}>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 8 }}>
+              {CompartmentHistoryLoading ? (
+                <Text style={{ color: '#888', fontStyle: 'italic' }}>Loading…</Text>
+              ) : CompartmentHistoryEntries.length === 0 ? (
+                <Text style={{ color: '#888', fontStyle: 'italic' }}>No entries recorded for this compartment.</Text>
+              ) : (
+                CompartmentHistoryEntries.map((E, i) => (
+                  <View key={i} style={{ flexDirection: 'row', marginBottom: 4 }}>
+                    <Text style={{ fontSize: 13, color: '#666', width: 64 }}>{shortDate(E.check_date)}</Text>
+                    <Text style={{ fontSize: 13, color: '#222', flex: 1 }}>{historyCode(E)}</Text>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </Dialog.ScrollArea>
+          <Dialog.Actions>
+            <Button onPress={() => setCompartmentHistoryId(null)}>Close</Button>
           </Dialog.Actions>
         </Dialog>
 
