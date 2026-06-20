@@ -106,7 +106,6 @@ type HistoryEntry = {
   is_empty_cavity: boolean;
   adult_present: boolean;
   nest_discarded: boolean;
-  has_banding: boolean;
 };
 
 function historyCode(E: HistoryEntry): string {
@@ -911,7 +910,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
     if (checkIds.length > 0) {
       const { data } = await supabase
         .from('nest_check_entries')
-        .select('nest_check_id, species, egg_count, young_count, nestling_age_days, fledged_count, dead_young_count, has_nest, is_empty_cavity, adult_present, nest_discarded, has_banding')
+        .select('nest_check_id, species, egg_count, young_count, nestling_age_days, fledged_count, dead_young_count, has_nest, is_empty_cavity, adult_present, nest_discarded')
         .eq('compartment_id', compartmentId)
         .in('nest_check_id', checkIds);
       const CheckMap = new Map(NestChecks.map(c => [c.id, c.check_date]));
@@ -927,7 +926,6 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         is_empty_cavity:   !!E.is_empty_cavity,
         adult_present:     !!E.adult_present,
         nest_discarded:    !!E.nest_discarded,
-        has_banding:       !!E.has_banding,
       })).filter(e => e.check_date).sort((a, b) => a.check_date.localeCompare(b.check_date));
       setCompartmentHistoryEntries(entries);
     }
