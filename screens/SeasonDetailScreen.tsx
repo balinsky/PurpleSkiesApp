@@ -428,6 +428,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   // ── Housing ────────────────────────────────────────────────────────
   type HousingUnit = { id: string; name: string; unit_type: string; default_hole_type: string | null };
   const [SeasonHousingUnits, setSeasonHousingUnits] = useState<HousingUnit[]>([]);
+  const [HousingIsLegacy, setHousingIsLegacy]       = useState(false);
   const [HousingExpanded, setHousingExpanded]       = useState(false);
   const [CopyHousingSourceId, setCopyHousingSourceId] = useState<string | null>(null);
   const [CopyHousingSourceYear, setCopyHousingSourceYear] = useState<number | null>(null);
@@ -860,50 +861,62 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
   // ── Housing ────────────────────────────────────────────────────────
   async function loadHousing() {
+    setCopyHousingSourceId(null);
+    setCopyHousingSourceYear(null);
+    setCopyHousingIsLegacy(false);
+
+    // Try season-specific housing first
     const { data: HUnits } = await supabase
       .from('housing_units')
       .select('id, name, unit_type, default_hole_type')
       .eq('site_season_id', SeasonId)
       .order('name');
-    setSeasonHousingUnits(HUnits ?? []);
 
-    if (!HUnits || HUnits.length === 0) {
-      setCopyHousingSourceId(null);
-      setCopyHousingSourceYear(null);
-      setCopyHousingIsLegacy(false);
+    if (HUnits && HUnits.length > 0) {
+      setSeasonHousingUnits(HUnits);
+      setHousingIsLegacy(false);
+      return;
+    }
 
-      // Find season-scoped housing from other seasons for this site
-      const { data: OtherSeasoned } = await supabase
-        .from('housing_units')
-        .select('site_season_id')
-        .eq('site_id', SiteId)
-        .not('site_season_id', 'is', null)
-        .neq('site_season_id', SeasonId);
+    // No season-specific housing — show legacy (site-scoped) housing directly.
+    // Legacy housing is what existing nest check entries reference, so it must
+    // be displayed as-is rather than offered as a copy source.
+    const { data: LegacyUnits } = await supabase
+      .from('housing_units')
+      .select('id, name, unit_type, default_hole_type')
+      .eq('site_id', SiteId)
+      .is('site_season_id', null)
+      .order('name');
 
-      if (OtherSeasoned && OtherSeasoned.length > 0) {
-        const OtherIds = [...new Set(OtherSeasoned.map((U: any) => U.site_season_id))];
-        const { data: OtherSeasons } = await supabase
-          .from('site_seasons')
-          .select('id, year')
-          .in('id', OtherIds)
-          .order('year', { ascending: false })
-          .limit(1);
-        if (OtherSeasons && OtherSeasons.length > 0) {
-          setCopyHousingSourceId(OtherSeasons[0].id);
-          setCopyHousingSourceYear(OtherSeasons[0].year);
-          return;
-        }
-      }
+    if (LegacyUnits && LegacyUnits.length > 0) {
+      setSeasonHousingUnits(LegacyUnits);
+      setHousingIsLegacy(true);
+      return;
+    }
 
-      // Fall back to legacy (site-scoped, no season) housing
-      const { data: Legacy } = await supabase
-        .from('housing_units')
-        .select('id')
-        .eq('site_id', SiteId)
-        .is('site_season_id', null)
+    // Nothing at all — find the best copy source from another season
+    setSeasonHousingUnits([]);
+    setHousingIsLegacy(false);
+
+    const { data: OtherSeasoned } = await supabase
+      .from('housing_units')
+      .select('site_season_id')
+      .eq('site_id', SiteId)
+      .not('site_season_id', 'is', null)
+      .neq('site_season_id', SeasonId);
+
+    if (OtherSeasoned && OtherSeasoned.length > 0) {
+      const OtherIds = [...new Set(OtherSeasoned.map((U: any) => U.site_season_id))];
+      const { data: OtherSeasons } = await supabase
+        .from('site_seasons')
+        .select('id, year')
+        .in('id', OtherIds)
+        .order('year', { ascending: false })
         .limit(1);
-      if (Legacy && Legacy.length > 0) {
-        setCopyHousingIsLegacy(true);
+      if (OtherSeasons && OtherSeasons.length > 0) {
+        setCopyHousingSourceId(OtherSeasons[0].id);
+        setCopyHousingSourceYear(OtherSeasons[0].year);
+        return;
       }
     }
   }
@@ -1222,13 +1235,18 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                 {SeasonHousingUnits.length === 0 ? (
                   <Text variant="bodySmall" style={styles.Hint}>No housing set up for this season.</Text>
                 ) : (
-                  SeasonHousingUnits.map(U => (
-                    <Card key={U.id} style={styles.Card} mode="outlined"
-                      onPress={() => navigation.navigate('HousingUnitDetail', { UnitId: U.id, UnitName: U.name, UnitType: U.unit_type, DefaultHoleType: U.default_hole_type, SeasonId })}
-                    >
-                      <Card.Title title={U.name} subtitle={UnitTypeLabel[U.unit_type] ?? U.unit_type} />
-                    </Card>
-                  ))
+                  <>
+                    {HousingIsLegacy && (
+                      <Text variant="bodySmall" style={styles.Hint}>Shared housing (not yet season-specific)</Text>
+                    )}
+                    {SeasonHousingUnits.map(U => (
+                      <Card key={U.id} style={styles.Card} mode="outlined"
+                        onPress={() => navigation.navigate('HousingUnitDetail', { UnitId: U.id, UnitName: U.name, UnitType: U.unit_type, DefaultHoleType: U.default_hole_type, SeasonId })}
+                      >
+                        <Card.Title title={U.name} subtitle={UnitTypeLabel[U.unit_type] ?? U.unit_type} />
+                      </Card>
+                    ))}
+                  </>
                 )}
                 {(CopyHousingSourceId || CopyHousingIsLegacy) && SeasonHousingUnits.length === 0 && (
                   <Button mode="outlined" compact loading={CopyingHousing} style={styles.HousingBtn} onPress={handleCopyHousing}>
