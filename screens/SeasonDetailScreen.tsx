@@ -98,14 +98,19 @@ type HistoryEntry = {
   check_date: string;
   species: string | null;
   egg_count: number;
+  discarded_eggs: number;
   young_count: number;
   nestling_age_days: number | null;
   fledged_count: number;
   dead_young_count: number;
+  dead_adult_male: boolean;
+  dead_adult_female: boolean;
   has_nest: boolean;
+  nest_replaced: boolean;
   is_empty_cavity: boolean;
   adult_present: boolean;
   nest_discarded: boolean;
+  nesting_attempt: number;
 };
 
 function historyCode(E: HistoryEntry): string {
@@ -113,7 +118,10 @@ function historyCode(E: HistoryEntry): string {
   const sp = E.species;
   if (!sp || E.adult_present) return '—';
   const isPM = sp === 'PM';
-  if (E.nest_discarded) return isPM ? 'D' : `${sp}ND`;
+  const ra = E.nesting_attempt === 1 ? '' : E.nesting_attempt === 2 ? ' RA' : ` RA${E.nesting_attempt}`;
+
+  if (E.nest_discarded) return (isPM ? 'D' : `${sp}ND`) + ra;
+
   if (!isPM) {
     const parts = [
       E.egg_count > 0 ? `${E.egg_count}E` : '',
@@ -121,17 +129,35 @@ function historyCode(E: HistoryEntry): string {
     ].filter(Boolean).join(' ');
     return parts ? `${sp} ${parts}` : `${sp}N`;
   }
+
+  // PM
+  const parts: string[] = [];
   if (E.young_count > 0) {
     const age = E.nestling_age_days != null
-      ? ` ${E.nestling_age_days === 0 ? 'HD' : `${E.nestling_age_days}do`}`
+      ? `${E.nestling_age_days === 0 ? 'HD' : `${E.nestling_age_days}do`}`
       : '';
-    const dead    = E.dead_young_count > 0 ? ` ${E.dead_young_count}ED` : '';
-    const fledged = E.fledged_count    > 0 ? ` ${E.fledged_count}F`    : '';
-    return `${E.young_count}Y${age}${dead}${fledged}`;
+    parts.push(`${E.young_count}Y${age ? ' ' + age : ''}`);
   }
-  if (E.egg_count > 0) return `${E.egg_count}E`;
-  if (E.has_nest) return 'PMN';
-  return '—';
+  if (E.fledged_count > 0)                       parts.push(`${E.fledged_count}F`);
+  if (E.dead_young_count > 0)                     parts.push(`${E.dead_young_count}DYD`);
+  if (E.dead_adult_male || E.dead_adult_female)   parts.push('DYA');
+  if (E.discarded_eggs > 0)                       parts.push(`${E.discarded_eggs}ED`);
+  if (E.nest_replaced)                            parts.push('NR');
+
+  if (parts.length > 0) return parts.join(' ') + ra;
+  if (E.egg_count > 0) {
+    const eParts = [`${E.egg_count}E`];
+    if (E.discarded_eggs > 0) eParts.push(`${E.discarded_eggs}ED`);
+    if (E.dead_adult_male || E.dead_adult_female) eParts.push('DYA');
+    return eParts.join(' ') + ra;
+  }
+  if (E.has_nest) {
+    const nParts = ['PMN'];
+    if (E.dead_adult_male || E.dead_adult_female) nParts.push('DYA');
+    if (E.nest_replaced) nParts.push('NR');
+    return nParts.join(' ') + ra;
+  }
+  return ra ? ra.trim() : '—';
 }
 
 function progressLine(P: CompartmentProgress): string {
@@ -910,7 +936,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
     if (checkIds.length > 0) {
       const { data } = await supabase
         .from('nest_check_entries')
-        .select('nest_check_id, species, egg_count, young_count, nestling_age_days, fledged_count, dead_young_count, has_nest, is_empty_cavity, adult_present, nest_discarded')
+        .select('nest_check_id, species, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count, dead_young_count, dead_adult_male, dead_adult_female, has_nest, nest_replaced, is_empty_cavity, adult_present, nest_discarded, nesting_attempt')
         .eq('compartment_id', compartmentId)
         .in('nest_check_id', checkIds);
       const CheckMap = new Map(NestChecks.map(c => [c.id, c.check_date]));
@@ -918,15 +944,22 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         check_date:        CheckMap.get(E.nest_check_id) ?? '',
         species:           E.species,
         egg_count:         E.egg_count ?? 0,
+        discarded_eggs:    E.discarded_eggs ?? 0,
         young_count:       E.young_count ?? 0,
         nestling_age_days: E.nestling_age_days,
         fledged_count:     E.fledged_count ?? 0,
         dead_young_count:  E.dead_young_count ?? 0,
+        dead_adult_male:   !!E.dead_adult_male,
+        dead_adult_female: !!E.dead_adult_female,
         has_nest:          !!E.has_nest,
+        nest_replaced:     !!E.nest_replaced,
         is_empty_cavity:   !!E.is_empty_cavity,
         adult_present:     !!E.adult_present,
         nest_discarded:    !!E.nest_discarded,
-      })).filter(e => e.check_date).sort((a, b) => a.check_date.localeCompare(b.check_date));
+        nesting_attempt:   E.nesting_attempt ?? 1,
+      })).filter(e => e.check_date).sort((a, b) =>
+        a.check_date.localeCompare(b.check_date) || a.nesting_attempt - b.nesting_attempt
+      );
       setCompartmentHistoryEntries(entries);
     }
     setCompartmentHistoryLoading(false);
