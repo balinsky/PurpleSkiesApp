@@ -6,10 +6,10 @@ import { useSettings } from '../contexts/SettingsContext';
 const BANDING_WARNING =
   'Bird banding must only be performed by properly licensed bird banders operating under a federal USGS permit. ' +
   'It is a violation of federal law to band birds without a permit. ' +
-  'Do not use your own bands that are sold for pigeons or caged non-native birds. ' +
+  'Do not use your own bands that are sold for pigeons or other non-native birds. ' +
   'These can harm or kill birds for which they are not properly sized. ' +
   'Contact the USGS Bird Banding Lab for more information. ' +
-  'Permits are not required to read and report on bird band observations.';
+  'Permits are not required to report on observations of bands you encounter.';
 
 export default function SettingsScreen() {
   const { BandingEnabled, toggleBandingEnabled } = useSettings();

@@ -2342,11 +2342,11 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                 Bird banding must only be performed by properly licensed bird banders operating under a federal USGS permit.
                 It is a violation of federal law to band birds without a permit.
                 {'\n\n'}
-                Do not use your own bands that are sold for pigeons or caged non-native birds. These can harm or kill birds for which they are not properly sized.
+                Do not use your own bands that are sold for pigeons or other non-native birds. These can harm or kill birds for which they are not properly sized.
                 {'\n\n'}
                 Contact the USGS Bird Banding Lab for more information.
                 {'\n\n'}
-                Permits are not required to read and report on bird band observations.
+                Permits are not required to report on observations of bands you encounter.
               </Text>
               <TouchableRipple onPress={() => setBandPermitChecked(v => !v)} style={{ paddingVertical: 4 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
