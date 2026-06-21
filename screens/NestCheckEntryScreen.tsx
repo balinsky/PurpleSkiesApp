@@ -646,16 +646,20 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         totalPriorBands: priorCounts.get(N.id) ?? 0,
       }));
 
+      const adultGroupIds = new Map<string, string>();
       const adultBands: AdultBand[] = BandRows
         .filter((B: any) => !B.nestling_id)
-        .map((B: any) => ({
-          is_new_banding: !!B.is_new_banding,
-          bird_type:      B.bird_type as AdultBand['bird_type'],
-          band_type:      B.band_type as AdultBand['band_type'],
-          band_color:     B.band_color ?? null,
-          band_code:      B.band_code,
-          group_id:       makeId(),
-        }));
+        .map((B: any) => {
+          if (!adultGroupIds.has(B.bird_type)) adultGroupIds.set(B.bird_type, makeId());
+          return {
+            is_new_banding: !!B.is_new_banding,
+            bird_type:      B.bird_type as AdultBand['bird_type'],
+            band_type:      B.band_type as AdultBand['band_type'],
+            band_color:     B.band_color ?? null,
+            band_code:      B.band_code,
+            group_id:       adultGroupIds.get(B.bird_type)!,
+          };
+        });
 
       setNestlings(records);
       setAdultBands(adultBands);
