@@ -624,22 +624,28 @@ export async function markNestSeasonSynced(id: string): Promise<void> {
 
 // ── Pending count (for the sync badge) ───────────────────────────────
 
-export async function lookupLocalBandLocation(bandCode: string): Promise<{
-  unit: string; cavity: string; date: string;
-} | null> {
+export async function lookupLocalBandLocation(
+  bandCode: string, excludeEntryId?: string | null,
+): Promise<{ unit: string; cavity: string; date: string; bird_type: string } | null> {
   const D = await db();
-  const row = await D.getFirstAsync<{ unit_name: string; cavity_label: string; check_date: string }>(`
-    SELECT hu.name AS unit_name, c.cavity_label, nc.check_date
+  const where = excludeEntryId
+    ? 'WHERE b.band_code = ? AND b.is_new_banding = 1 AND b.nest_check_entry_id != ?'
+    : 'WHERE b.band_code = ? AND b.is_new_banding = 1';
+  const params: (string | null)[] = excludeEntryId ? [bandCode, excludeEntryId] : [bandCode];
+  const row = await D.getFirstAsync<{
+    unit_name: string; cavity_label: string; check_date: string; bird_type: string;
+  }>(`
+    SELECT hu.name AS unit_name, c.cavity_label, nc.check_date, b.bird_type
     FROM bands b
     JOIN nest_check_entries nce ON nce.id = b.nest_check_entry_id
     JOIN nest_checks nc         ON nc.id  = nce.nest_check_id
     JOIN compartments c         ON c.id   = nce.compartment_id
     JOIN housing_units hu       ON hu.id  = c.housing_unit_id
-    WHERE b.band_code = ? AND b.is_new_banding = 1
+    ${where}
     LIMIT 1
-  `, [bandCode]);
+  `, params);
   if (!row) return null;
-  return { unit: row.unit_name, cavity: row.cavity_label, date: row.check_date };
+  return { unit: row.unit_name, cavity: row.cavity_label, date: row.check_date, bird_type: row.bird_type };
 }
 
 export async function getPendingCount(): Promise<number> {

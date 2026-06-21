@@ -680,40 +680,40 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   // ── Banding helpers ────────────────────────────────────────────────────
 
   async function lookupBandLocation(bandCode: string): Promise<{
-    site?: string; unit: string; cavity: string; date: string;
+    site?: string; unit: string; cavity: string; date: string; bird_type: string;
   } | null> {
     try {
       if (isOnline) {
-        // Step 1: band → entry → compartment → unit
-        const { data: bandRow } = await supabase
+        let q = supabase
           .from('bands')
           .select(`
+            bird_type,
             nest_check_entries!inner(
               nest_check_id,
               compartments!inner(cavity_label, housing_units!inner(name))
             )
           `)
           .eq('band_code', bandCode)
-          .eq('is_new_banding', true)
-          .limit(1)
-          .maybeSingle();
+          .eq('is_new_banding', true);
+        if (ExistingEntryId) q = (q as any).neq('nest_check_entry_id', ExistingEntryId);
+        const { data: bandRow } = await (q as any).limit(1).maybeSingle();
         if (!bandRow) return null;
         const entry = (bandRow as any).nest_check_entries;
         const comp  = entry?.compartments;
-        // Step 2: nest_check → site
         const { data: checkRow } = await supabase
           .from('nest_checks')
           .select('check_date, sites!inner(name)')
           .eq('id', entry?.nest_check_id)
           .maybeSingle();
         return {
+          bird_type: (bandRow as any).bird_type ?? 'nestling',
           site:   (checkRow as any)?.sites?.name,
           unit:   comp?.housing_units?.name ?? 'Unknown unit',
           cavity: comp?.cavity_label ?? '?',
           date:   checkRow?.check_date ?? '?',
         };
       } else {
-        return await lookupLocalBandLocation(bandCode);
+        return await lookupLocalBandLocation(bandCode, ExistingEntryId);
       }
     } catch {
       return null;
@@ -726,6 +726,35 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     parts.push(`${loc.unit}, compartment ${loc.cavity}`);
     parts.push(formatDate(loc.date));
     return parts.join(' · ');
+  }
+
+  function birdTypeLabel(t: string | null | undefined): string {
+    if (t === 'adult_male')   return 'adult male';
+    if (t === 'adult_female') return 'adult female';
+    return 'nestling';
+  }
+
+  function findInMemoryBandDuplicate(
+    code: string,
+    excludeNestlingIdx: number | null,
+    excludeGroupId: string | null,
+  ): string | null {
+    const upper = code.toUpperCase();
+    for (let i = 0; i < Nestlings.length; i++) {
+      if (i === excludeNestlingIdx) continue;
+      const N = Nestlings[i];
+      if (N.bandsThisCheck.some(B => B.band_code.toUpperCase() === upper)) {
+        return `nestling ${N.label ?? String(i + 1)} already entered on this check`;
+      }
+    }
+    for (const B of AdultBands) {
+      if (excludeGroupId && B.group_id === excludeGroupId) continue;
+      if (!B.is_new_banding) continue;
+      if (B.band_code.toUpperCase() === upper) {
+        return `${birdTypeLabel(B.bird_type)} already entered on this check`;
+      }
+    }
+    return null;
   }
 
   function guardBandAction(action: () => void) {
@@ -818,20 +847,25 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   async function handleConfirmNestlingBand() {
     const Code = NewBandCode.trim();
     if (!Code) { setNewBandError('Please enter a band number or code.'); return; }
-    if (NewBandType === 'federal' && EditNestlingBandIdx === null) {
-      const Err = validateFederalBandCode(Code);
-      if (Err) { setNewBandError(Err); return; }
-      const Digits = Code.replace(/-/g, '').length;
-      const is8Digit = Digits === 8;
+    if (EditNestlingBandIdx === null) {
+      // Hard block: duplicate band on another bird
+      const memDup = findInMemoryBandDuplicate(Code.toUpperCase(), AddNestlingBandIdx, null);
+      if (memDup) { setNewBandError(`Band ${Code.toUpperCase()} is already entered for ${memDup}.`); return; }
+      if (NewBandType === 'federal') {
+        const Err = validateFederalBandCode(Code);
+        if (Err) { setNewBandError(Err); return; }
+      }
       setBandLookupPending(true);
       const existing = await lookupBandLocation(Code.toUpperCase());
       setBandLookupPending(false);
-      if (existing || is8Digit) {
-        const lines: string[] = [];
-        if (existing) lines.push(`Band ${Code.toUpperCase()} was already assigned at ${locationString(existing)}.`);
-        if (is8Digit) lines.push(`This band has ${Digits} digits — federal bands should have 8 or 9 digits. Are you sure no digits are missing?`);
-        setBandWarning(lines.join('\n\n'));
+      if (existing) {
+        setNewBandError(`Band ${Code.toUpperCase()} is already assigned to ${birdTypeLabel(existing.bird_type)} at ${locationString(existing)}.`);
         return;
+      }
+      // Soft warning: possible missing digit (federal only)
+      if (NewBandType === 'federal') {
+        const Digits = Code.replace(/-/g, '').length;
+        if (Digits === 8) { setBandWarning(`This band has ${Digits} digits — federal bands should have 8 or 9 digits. Are you sure no digits are missing?`); return; }
       }
     }
     commitNestlingBand();
@@ -889,37 +923,39 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   async function handleConfirmAdultBand() {
     const Code = NewBandCode.trim();
     if (!Code) { setNewBandError('Please enter a band number or code.'); return; }
-    if (NewBandType === 'federal') {
-      if (NewAdultIsNew && EditAdultBandIdx === null) {
+    if (NewAdultIsNew && EditAdultBandIdx === null) {
+      // Hard block: duplicate band on another bird
+      const memDup = findInMemoryBandDuplicate(Code.toUpperCase(), null, PendingAdultGroupId);
+      if (memDup) { setNewBandError(`Band ${Code.toUpperCase()} is already entered for ${memDup}.`); return; }
+      if (NewBandType === 'federal') {
         const Err = validateFederalBandCode(Code);
         if (Err) { setNewBandError(Err); return; }
+      }
+      setBandLookupPending(true);
+      const existing = await lookupBandLocation(Code.toUpperCase());
+      setBandLookupPending(false);
+      if (existing) {
+        setNewBandError(`Band ${Code.toUpperCase()} is already assigned to ${birdTypeLabel(existing.bird_type)} at ${locationString(existing)}.`);
+        return;
+      }
+      // Soft warning: possible missing digit (federal only)
+      if (NewBandType === 'federal') {
         const Digits = Code.replace(/-/g, '').length;
-        const is8Digit = Digits === 8;
+        if (Digits === 8) { setBandWarning(`This band has ${Digits} digits — federal bands should have 8 or 9 digits. Are you sure no digits are missing?`); return; }
+      }
+    } else if (!NewAdultIsNew && NewBandType === 'federal') {
+      // Observed federal band: validate format and look up origin
+      if (!/^[\d\-?]+$/.test(Code)) {
+        setNewBandError('Use digits, a dash, or ? for any digit you can\'t read.');
+        return;
+      }
+      if (!Code.includes('?')) {
         setBandLookupPending(true);
-        const existing = await lookupBandLocation(Code.toUpperCase());
+        const found = await lookupBandLocation(Code.toUpperCase());
         setBandLookupPending(false);
-        if (existing || is8Digit) {
-          const lines: string[] = [];
-          if (existing) lines.push(`Band ${Code.toUpperCase()} was already assigned at ${locationString(existing)}.`);
-          if (is8Digit) lines.push(`This band has ${Digits} digits — federal bands should have 8 or 9 digits. Are you sure no digits are missing?`);
-          setBandWarning(lines.join('\n\n'));
+        if (found) {
+          setBandWarning(`Band ${Code.toUpperCase()} was originally assigned to ${birdTypeLabel(found.bird_type)} at ${locationString(found)}.`);
           return;
-        }
-      } else if (!NewAdultIsNew) {
-        // Observed band: allow digits, dashes, and ? for unknown digits
-        if (!/^[\d\-?]+$/.test(Code)) {
-          setNewBandError('Use digits, a dash, or ? for any digit you can\'t read.');
-          return;
-        }
-        // If no ? present, look up the band and show its origin
-        if (!Code.includes('?')) {
-          setBandLookupPending(true);
-          const found = await lookupBandLocation(Code.toUpperCase());
-          setBandLookupPending(false);
-          if (found) {
-            setBandWarning(`Band ${Code.toUpperCase()} was originally assigned at ${locationString(found)}.`);
-            return;
-          }
         }
       }
     }
