@@ -99,6 +99,18 @@ export async function initDb(): Promise<void> {
   try {
     await _db.execAsync('ALTER TABLE compartments ADD COLUMN site_season_id TEXT');
   } catch {}
+  // One-time cleanup: remove duplicate band rows caused by cacheBands running without
+  // an id in the select, then mark all remaining bands pending so the next sync
+  // overwrites the duplicates in Supabase with clean data.
+  try {
+    await _db.execAsync(`
+      DELETE FROM bands WHERE rowid NOT IN (
+        SELECT MIN(rowid) FROM bands
+        GROUP BY nest_check_entry_id, nestling_id, bird_type, band_type, band_code, band_color
+      )
+    `);
+    await _db.execAsync("UPDATE bands SET sync_status = 'pending'");
+  } catch {}
 }
 
 async function db(): Promise<SQLite.SQLiteDatabase> {

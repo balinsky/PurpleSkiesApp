@@ -637,6 +637,15 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         } catch {}
       }
 
+      // Deduplicate bands — each unique (nestling_id, bird_type, band_type, band_code) kept once
+      const _bandSeen = new Set<string>();
+      BandRows = BandRows.filter((B: any) => {
+        const k = `${B.nestling_id}|${B.bird_type}|${B.band_type}|${B.band_code}`;
+        if (_bandSeen.has(k)) return false;
+        _bandSeen.add(k);
+        return true;
+      });
+
       const records: NestlingRecord[] = NestlingRows.map(N => ({
         id:             N.id,
         label:          N.label,
