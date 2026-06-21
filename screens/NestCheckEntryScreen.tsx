@@ -592,7 +592,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             .order('created_at'),
           ExistingEntryId
             ? supabase.from('bands')
-                .select('nestling_id, is_new_banding, bird_type, band_type, band_color, band_code')
+                .select('id, nestling_id, is_new_banding, bird_type, band_type, band_color, band_code')
                 .eq('nest_check_entry_id', ExistingEntryId)
             : Promise.resolve({ data: [] as any[], error: null }),
         ]);
@@ -607,6 +607,15 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         }))).catch(() => {});
         if (ExistingEntryId && BandRows.length > 0) {
           cacheBands(BandRows.map((B: any) => ({ ...B, nest_check_entry_id: ExistingEntryId }))).catch(() => {});
+        }
+        // Bands aren't written-through to Supabase on save (unlike entries), so Supabase
+        // can return stale data immediately after a save. Always prefer local SQLite when
+        // it has bands for this entry.
+        if (ExistingEntryId) {
+          try {
+            const localBands = await getLocalBands(ExistingEntryId);
+            if (localBands.length > 0) BandRows = localBands;
+          } catch {}
         }
 
         const nestlingIds = NestlingRows.map(n => n.id);
