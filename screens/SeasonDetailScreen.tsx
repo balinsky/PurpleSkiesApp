@@ -1176,7 +1176,11 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   const MarkedDates = Object.fromEntries(
     NestChecks.map(c => [c.check_date, { selected: true, selectedColor: '#7b1fa2' }])
   );
-  const InitialDate = NestChecks.length > 0 ? NestChecks[0].check_date : `${Year}-04-01`;
+  const _today = new Date();
+  const _isCurrent = Year === _today.getFullYear() && _today <= new Date(Year, 7, 31);
+  const InitialDate = _isCurrent
+    ? todayString()
+    : NestChecks.length > 0 ? NestChecks[0].check_date : `${Year}-04-01`;
 
   return (
     <>
