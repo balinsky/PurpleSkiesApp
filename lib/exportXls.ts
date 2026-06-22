@@ -46,6 +46,7 @@ function applyStyle(ws: any, c: number, r: number, s: object) {
 type EntryData = {
   species: string | null;
   egg_count: number;
+  discarded_eggs: number;
   young_count: number;
   nestling_age_days: number | null;
   nest_discarded: boolean;
@@ -80,12 +81,13 @@ function checkCode(entry: EntryData | null): string {
   if (!entry || !entry.species) return 'X';
   const sp = entry.species;
   const isPM = sp === 'PM';
-  if (entry.nest_discarded) return isPM ? 'D' : `${sp}ND`;
+  if (entry.nest_discarded) return isPM ? 'ND' : `${sp}ND`;
   let code = '';
   if (!isPM) {
     const parts = [
-      entry.egg_count > 0 ? `${entry.egg_count}E` : '',
-      entry.young_count > 0 ? `${entry.young_count}Y` : '',
+      entry.egg_count > 0    ? `${entry.egg_count}E`    : '',
+      entry.young_count > 0  ? `${entry.young_count}Y`  : '',
+      entry.discarded_eggs > 0 ? `${entry.discarded_eggs}ED` : '',
     ].filter(Boolean).join(' ');
     code = parts ? `${sp} ${parts}` : `${sp}N`;
   } else {
@@ -94,8 +96,12 @@ function checkCode(entry: EntryData | null): string {
         ? ` ${entry.nestling_age_days === 0 ? 'HD' : `${entry.nestling_age_days}do`}`
         : '';
       code = `${entry.young_count}Y${age}`;
-    } else if (entry.egg_count > 0) {
-      code = `${entry.egg_count}E`;
+    } else if (entry.egg_count > 0 || entry.discarded_eggs > 0) {
+      const parts = [
+        entry.egg_count > 0      ? `${entry.egg_count}E`      : '',
+        entry.discarded_eggs > 0 ? `${entry.discarded_eggs}ED` : '',
+      ].filter(Boolean).join(' ');
+      code = parts;
     } else {
       code = 'PMN';
     }
@@ -188,9 +194,9 @@ function addInfoBlock(ws: any, colA: number, year: number, siteName: string, con
   setCell(ws, colA, 36, 'Martin Codes', S.yellowBold);
   setCell(ws, colB, 36, '',             S.yellowBold);
   const martinCodes = [
-    'X=Empty Cavity', 'N=Nest', 'E=Egg(s)', 'Y=Young (living)',
+    'X=Empty Cavity', 'N=Nest', 'E=Egg(s)', 'ED=Eggs Discarded', 'Y=Young (living)',
     '3do=Young 3 days old', 'HD=Hatching Day', 'DY=Dead Young',
-    'NR=Nest Replaced', 'D=Discarded', 'B=Banded', 'RA=Renesting Attempt',
+    'NR=Nest Replaced', 'ND=Nest Discarded', 'B=Banded', 'RA=Renesting Attempt',
     'GR=Gourd Removed',
     'PM=Purple Martin', 'HS=House Sparrow', 'ST=Starling',
     'TS=Tree Swallow', 'BB=Bluebird', 'HW=House Wren',
@@ -338,6 +344,7 @@ export async function exportSeasonXls(
       CompMap.get(Key)!.byCheck.set(E.nest_check_id, {
         species:           E.species ?? null,
         egg_count:         E.egg_count ?? 0,
+        discarded_eggs:    (E as any).discarded_eggs ?? 0,
         young_count:       E.young_count ?? 0,
         nestling_age_days: E.nestling_age_days ?? null,
         nest_discarded:    E.nest_discarded ?? false,
