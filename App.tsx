@@ -27,6 +27,7 @@ import NestCheckEntryScreen from './screens/NestCheckEntryScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import SiteMembersScreen from './screens/SiteMembersScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import ImportSeasonScreen from './screens/ImportSeasonScreen';
 
 enableScreens();
 
@@ -48,6 +49,7 @@ export type AppStackParamList = {
   SeasonDetail: { SeasonId: string; SiteId: string; Year: number };
   NestCheckDetail: { CheckId: string; CheckDate: string; SiteId: string; SeasonId: string; Year: number };
   NestCheckEntry: { CheckId: string; CheckDate: string; SeasonId: string; SiteId: string; CompartmentId: string; CompartmentLabel: string; UnitName: string; HousingType?: string; ExistingEntryId: string | null; AllCompartments?: { id: string; cavity_label: string; unit_name: string; entry_id: string | null }[]; CompartmentIndex?: number };
+  ImportSeason: { SiteId: string; SiteName: string };
 };
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -77,6 +79,7 @@ function AppNavigator() {
       <AppStack.Screen name="SeasonDetail" component={SeasonDetailScreen} options={({ route }) => ({ title: `${route.params.Year} Season` })} />
       <AppStack.Screen name="NestCheckDetail" component={NestCheckDetailScreen} options={({ route }) => ({ title: new Date(route.params.CheckDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) })} />
       <AppStack.Screen name="NestCheckEntry" component={NestCheckEntryScreen} options={({ route }) => ({ title: `${route.params.UnitName} · ${route.params.CompartmentLabel}` })} />
+      <AppStack.Screen name="ImportSeason" component={ImportSeasonScreen} options={{ title: 'Import Season' }} />
     </AppStack.Navigator>
   );
 }

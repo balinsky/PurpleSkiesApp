@@ -289,6 +289,14 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
           >
             Enter data for another year
           </Button>
+          <Button
+            mode="outlined"
+            style={styles.SectionButton}
+            icon="file-import-outline"
+            onPress={() => navigation.navigate('ImportSeason', { SiteId, SiteName })}
+          >
+            Import season from file
+          </Button>
         </List.Section>
 
         <Divider style={styles.Divider} />
