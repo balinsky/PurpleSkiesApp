@@ -357,27 +357,28 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       fledged_count: 0, renesting_attempt: false, notes: null,
       observed_male_age: null, observed_female_age: null, gourd_removed: false,
     };
-    let savedLocally = false;
+    // Generate stable IDs upfront so local and Supabase writes use the same ones
+    const NewItems = Unrecorded.map(item => ({ id: makeId(), compartment_id: item.id }));
     try {
-      await Promise.all(Unrecorded.map(item =>
-        upsertLocalEntry({ id: makeId(), nest_check_id: CheckId, compartment_id: item.id, ...Payload })
+      await Promise.all(NewItems.map(({ id, compartment_id }) =>
+        upsertLocalEntry({ id, nest_check_id: CheckId, compartment_id, ...Payload })
       ));
-      savedLocally = true;
-      syncNow();
     } catch {}
-    if (!savedLocally) {
-      await supabase.from('nest_check_entries').insert(
-        Unrecorded.map(item => ({ id: makeId(), nest_check_id: CheckId, compartment_id: item.id, ...Payload }))
+    // Write-through to Supabase so navigating away immediately shows correct data
+    try {
+      await supabase.from('nest_check_entries').upsert(
+        NewItems.map(({ id, compartment_id }) => ({ id, nest_check_id: CheckId, compartment_id, ...Payload }))
       );
-    }
+    } catch {}
+    syncNow();
     setMarkingAllEmpty(false);
     // Optimistic update for all newly-emptied compartments
-    const EmptiedIds = new Set(Unrecorded.map(c => c.id));
+    const EmptiedMap = new Map(NewItems.map(i => [i.compartment_id, i.id]));
     setSections(prev => prev.map(sec => ({
       ...sec,
-      data: sec.data.map(row => !EmptiedIds.has(row.id) ? row : {
+      data: sec.data.map(row => !EmptiedMap.has(row.id) ? row : {
         ...row,
-        entry_id: row.entry_id ?? makeId(),
+        entry_id: EmptiedMap.get(row.id)!,
         entry_summary: 'Empty cavity',
       }),
     })));
