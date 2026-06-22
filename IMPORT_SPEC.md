@@ -80,9 +80,9 @@ Columns 10 through N−3 (the columns between the static block and the final Egg
 |------|---------|---------------|
 | `X` | Empty cavity | `species=null` |
 | `N` or `PMN` | PM nest, no eggs | `species=PM`, `has_nest=true`, `egg_count=0` |
-| `{n}E` | n live eggs | `species=PM`, `egg_count=n` |
-| `{n}ED` | n eggs discarded | `species=PM`, `discarded_eggs=n` |
-| `{n}E {m}ED` | n live eggs, m discarded | `species=PM`, `egg_count=n`, `discarded_eggs=m` |
+| `{n}E` | n eggs found (none discarded) | `species=PM`, `egg_count=n` |
+| `{n}ED` | n eggs found, all discarded | `species=PM`, `egg_count=n`, `discarded_eggs=n` |
+| `{n}E {m}ED` | n total eggs found, m of which were discarded | `species=PM`, `egg_count=n`, `discarded_eggs=m` |
 | `{n}Y` | n live young (age unknown) | `species=PM`, `young_count=n` |
 | `{n}Y HD` | n young, hatch day | `species=PM`, `young_count=n`, `nestling_age_days=0` |
 | `{n}Y {d}do` | n young, d days old | `species=PM`, `young_count=n`, `nestling_age_days=d` |
@@ -99,7 +99,7 @@ Columns 10 through N−3 (the columns between the static block and the final Egg
 | `{SP} {n}Y` | Species present, n young |
 | `{SP} {n}E {m}Y` | Species present, n eggs and m young |
 | `{SP}ND` or `{SP} ND` | Nest discarded |
-| `{SP} {n}ED` | n eggs discarded |
+| `{SP} {n}E {m}ED` | n total eggs found, m discarded |
 
 Hatch/fledge prediction is not performed for non-PM species.
 
