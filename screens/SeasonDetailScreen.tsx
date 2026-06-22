@@ -1344,7 +1344,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                     {NestProgress.map((P) => (
                       <TouchableRipple
                         key={`${P.compartment_id}:${P.nesting_attempt}`}
-                        onPress={() => openCompartmentHistory(P.compartment_id, `${P.unit_name} · ${P.label}`)}
+                        onPress={() => openCompartmentHistory(P.compartment_id, `${P.unit_name} · ${P.label.replace(/ \(Attempt \d+\)$/, '')}`)}
                         style={styles.ProgressRow}
                       >
                         <View>
