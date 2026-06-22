@@ -353,7 +353,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       nest_discarded: false, nest_replaced: false,
       egg_count: 0, discarded_eggs: 0, young_count: 0,
       nestling_age_days: null, nestling_age_notes: null as null,
-      dead_young_count: 0, dead_adult_male: false, dead_adult_female: false,
+      dead_young_count: 0, dead_adult_sex: null,
       fledged_count: 0, renesting_attempt: false, notes: null,
       observed_male_age: null, observed_female_age: null, gourd_removed: false,
     };
@@ -393,7 +393,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       nest_discarded: false, nest_replaced: false,
       egg_count: 0, discarded_eggs: 0, young_count: 0,
       nestling_age_days: null, nestling_age_notes: null as null,
-      dead_young_count: 0, dead_adult_male: false, dead_adult_female: false,
+      dead_young_count: 0, dead_adult_sex: null,
       fledged_count: fledgedCount, renesting_attempt: false, notes: null,
       observed_male_age: null, observed_female_age: null, gourd_removed: false,
     };
@@ -449,8 +449,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       nestling_age_days: null,
       nestling_age_notes: null as null,
       dead_young_count: 0,
-      dead_adult_male: false,
-      dead_adult_female: false,
+      dead_adult_sex: null,
       fledged_count: 0,
       nesting_attempt: Prev.nesting_attempt,
       renesting_attempt: false,

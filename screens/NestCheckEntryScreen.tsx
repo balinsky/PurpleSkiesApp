@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput as RNTextInput, View, useWindowDimensions } from 'react-native';
 import {
   Button, Checkbox, Dialog, Divider, HelperText,
-  Icon, IconButton, Portal, RadioButton, Text, TextInput, TouchableRipple,
+  Icon, IconButton, Portal, RadioButton, SegmentedButtons, Text, TextInput, TouchableRipple,
 } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -165,9 +165,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
   const [AdultAgesExpanded, setAdultAgesExpanded] = useState(false);
 
   // ── Dead adult (expandable) ───────────────────────────────────────────
-  const [DeadAdultExpanded, setDeadAdultExpanded] = useState(false);
-  const [DeadAdultMale, setDeadAdultMale]         = useState(false);
-  const [DeadAdultFemale, setDeadAdultFemale]     = useState(false);
+  const [DeadAdultSex, setDeadAdultSex] = useState<'M' | 'F' | 'U' | null>(null);
 
   // ── Banding ───────────────────────────────────────────────────────────
   const [Nestlings, setNestlings]                           = useState<NestlingRecord[]>([]);
@@ -571,9 +569,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       setNestingAttempt(E.nesting_attempt ?? 1);
       setNestDiscarded(!!E.nest_discarded);
       setNestReplaced(!!E.nest_replaced);
-      setDeadAdultMale(!!E.dead_adult_male);
-      setDeadAdultFemale(!!E.dead_adult_female);
-      if (E.dead_adult_male || E.dead_adult_female) setDeadAdultExpanded(true);
+      setDeadAdultSex((E as any).dead_adult_sex ?? null);
       setNotes(E.notes ?? '');
       if (E.notes) setNotesExpanded(true);
       const OM = (E.observed_male_age as 'SY' | 'ASY' | 'UNK' | null) ?? null;
@@ -1054,8 +1050,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         : null,
       nestling_age_notes: null as null,
       dead_young_count:   IsPM && YoungCount > 0 && HasDeadYoung ? DeadYoungCount : 0,
-      dead_adult_male:    DeadAdultMale,
-      dead_adult_female:  DeadAdultFemale,
+      dead_adult_sex:     DeadAdultSex,
       fledged_count:      IsPM ? (fledgeCountOverride ?? FledgedCount) : 0,
       renesting_attempt:  IsPM && HasNest ? Renesting : false,
       nesting_attempt:      NestingAttempt,
@@ -1487,7 +1482,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         : `${SpeciesLabel[PrevEntry.species] ?? PrevEntry.species} nest`
     : null;
 
-  const DeadAdultLabel = [DeadAdultMale && 'M', DeadAdultFemale && 'F'].filter(Boolean).join(' + ');
+  const DeadAdultLabel = DeadAdultSex === 'M' ? 'Male' : DeadAdultSex === 'F' ? 'Female' : DeadAdultSex === 'U' ? 'Unknown' : '';
 
   // Keep refs pointing at the latest handlers so Portal dialogs never call stale closures.
   ConfirmNestlingBandRef.current = handleConfirmNestlingBand;
@@ -1970,34 +1965,24 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           );
         })()}
 
-        {/* ── Dead adult (expandable) ──────────────────────────────── */}
-        <View style={styles.ExpandRow}>
-          <View style={styles.ExpandIconSpacer} />
-          <Button
-            mode="text" compact
-            icon={DeadAdultExpanded ? 'chevron-up' : 'chevron-down'}
-            contentStyle={styles.ExpandBtnContent}
-            onPress={() => setDeadAdultExpanded(!DeadAdultExpanded)}
-            style={styles.ExpandBtnInRow}
-          >
-            {L('Dead adult bird', 'DA')}{DeadAdultLabel ? ` · ${DeadAdultLabel}` : ''}
-          </Button>
-        </View>
-        {DeadAdultExpanded && (
-          <View style={styles.ExpandedSection}>
-            <Checkbox.Item
-              label="Dead male"
-              status={DeadAdultMale ? 'checked' : 'unchecked'}
-              onPress={() => { MarkDirty(); setDeadAdultMale(!DeadAdultMale); }}
-              mode="android"
-              style={styles.CheckboxItem}
-            />
-            <Checkbox.Item
-              label="Dead female"
-              status={DeadAdultFemale ? 'checked' : 'unchecked'}
-              onPress={() => { MarkDirty(); setDeadAdultFemale(!DeadAdultFemale); }}
-              mode="android"
-              style={styles.CheckboxItem}
+        {/* ── Dead adult ──────────────────────────────────────────── */}
+        <Checkbox.Item
+          label={`${L('Dead adult bird', 'DA')}${DeadAdultLabel ? ` · ${DeadAdultLabel}` : ''}`}
+          status={DeadAdultSex !== null ? 'checked' : 'unchecked'}
+          onPress={() => { MarkDirty(); setDeadAdultSex(DeadAdultSex !== null ? null : 'U'); }}
+          mode="android"
+          style={styles.CheckboxItem}
+        />
+        {DeadAdultSex !== null && (
+          <View style={[styles.ExpandedSection, { paddingHorizontal: 16, paddingBottom: 8 }]}>
+            <SegmentedButtons
+              value={DeadAdultSex}
+              onValueChange={(v) => { MarkDirty(); setDeadAdultSex(v as 'M' | 'F' | 'U'); }}
+              buttons={[
+                { value: 'M', label: 'Male' },
+                { value: 'F', label: 'Female' },
+                { value: 'U', label: 'Unknown' },
+              ]}
             />
           </View>
         )}

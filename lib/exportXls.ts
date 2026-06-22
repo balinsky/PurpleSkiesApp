@@ -53,6 +53,8 @@ type EntryData = {
   has_banding: boolean;
   fledged_count: number;
   gourd_removed: boolean;
+  dead_young_count: number;
+  dead_adult_sex: string | null;
 };
 
 function ordinal(n: number): string {
@@ -107,6 +109,8 @@ function checkCode(entry: EntryData | null): string {
     }
     if (entry.has_banding) code += ' B';
   }
+  if (entry.dead_young_count > 0) code += ` ${entry.dead_young_count}DY`;
+  if (entry.dead_adult_sex)       code += entry.dead_adult_sex === 'M' ? ' DADM' : entry.dead_adult_sex === 'F' ? ' DADF' : ' DAD';
   if (entry.gourd_removed) code += ' GR';
   return code;
 }
@@ -253,7 +257,7 @@ export async function exportSeasonXls(
 
   const { data: Entries } = await supabase
     .from('nest_check_entries')
-    .select('id, nest_check_id, compartment_id, species, adult_present, egg_count, discarded_eggs, young_count, nestling_age_days, nest_discarded, fledged_count, nesting_attempt, gourd_removed, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
+    .select('id, nest_check_id, compartment_id, species, adult_present, egg_count, discarded_eggs, young_count, nestling_age_days, nest_discarded, fledged_count, nesting_attempt, gourd_removed, dead_young_count, dead_adult_sex, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
     .in('nest_check_id', Checks.map(c => c.id));
 
   const BandingSet = new Set<string>();
@@ -351,6 +355,8 @@ export async function exportSeasonXls(
         has_banding:       BandingSet.has(E.id),
         fledged_count:     (E as any).fledged_count ?? 0,
         gourd_removed:     !!(E as any).gourd_removed,
+        dead_young_count:  (E as any).dead_young_count ?? 0,
+        dead_adult_sex:    (E as any).dead_adult_sex ?? null,
       });
     }
 

@@ -25,8 +25,36 @@ For CSV exports, the info/legend block to the right of the data (site contact in
 | A | Housing Type | One of: `WH` `MH` `PH` `NG` `AG`. Case-insensitive. |
 | B | Hole Type | One of: `RH` `CH` `EH` `OH`. Case-insensitive. Optional; blank is accepted. |
 | C | Cavity label | Plain label (e.g. `A1`, `P`). Append ` (RA)` for renesting attempts (see below). |
-| D | Male/Female Age | Optional age pair (e.g. `ASY/SY`). Stored in `nest_seasons`. |
-| E–I | Computed fields | Ignored on import (first egg date, total eggs, projected hatch, actual hatch, fledge date). |
+| D | Male/Female Age | Optional age pair (e.g. `ASY/SY/UNK`). Stored in `nest_seasons`. |
+| E–I | Computed fields | Ignored on import (first egg date, total eggs, projected hatch date, actual hatch date, fledge date). |
+
+### Housing Type Codes
+| Code | Type |
+|------|---------|
+| `WH` | Wooden House |
+| `MH` | Metal House |
+| `PH` | Plastic House |
+| `NG` | Natural Gourd  |
+| `AG` | Artificial Gourd |
+
+### Hole Type Codes
+| Code | Type |
+|------|---------|
+| `RH` | Round Hole |
+| `CH` | Crescent Hole |
+| `EH` | Excluder Hole |
+| `OH` | Obround Hole |
+
+### Adult Age Codes
+| Code | Type |
+|------|---------|
+| `ASY` | After Second Year (e.g. hatched earlier than last year) |
+| `SY` | Second Year (e.g. hatched last year) |
+| `UNK` | Unknown |
+
+### Date Formats
+Dates should be MM/DD/YYYY with leading zeroes optional. (e.g. 5/1/1998, 5/17/2020)
+
 
 ### Renesting attempts
 
@@ -87,8 +115,13 @@ Columns 10 through N−3 (the columns between the static block and the final Egg
 | `{n}Y HD` | n young, hatch day | `species=PM`, `young_count=n`, `nestling_age_days=0` |
 | `{n}Y {d}do` | n young, d days old | `species=PM`, `young_count=n`, `nestling_age_days=d` |
 | `ND` | Nest discarded | `species=PM`, `nest_discarded=true` |
+| `{n}DY` | n dead young (always removed) | `dead_young_count=n` |
+| `DADM` | Dead adult male discarded | `dead_adult_sex='M'` |
+| `DADF` | Dead adult female discarded | `dead_adult_sex='F'` |
+| `DAD` | Dead adult discarded, sex unknown | `dead_adult_sex='U'`; flagged as a warning on import |
 
 > **Legacy note:** The bare code `D` (used in older Purple Skies exports for PM nest discarded) is accepted on import and treated identically to `ND`. New exports must use `ND`.
+> **DY note:** `DYD` is accepted as an alias for `DY` on import. Dead young are always removed; the D suffix is redundant. New exports always use `DY`.
 
 #### Non-PM species
 
@@ -100,6 +133,8 @@ Columns 10 through N−3 (the columns between the static block and the final Egg
 | `{SP} {n}E {m}Y` | Species present, n eggs and m young |
 | `{SP}ND` or `{SP} ND` | Nest discarded |
 | `{SP} {n}E {m}ED` | n total eggs found, m discarded |
+| `{n}DY` | n dead young (any species) |
+| `DADM` / `DADF` / `DAD` | Dead adult (any species); same rules as PM |
 
 Hatch/fledge prediction is not performed for non-PM species.
 

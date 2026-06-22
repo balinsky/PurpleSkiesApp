@@ -43,8 +43,7 @@ export async function initDb(): Promise<void> {
       nestling_age_days INTEGER,
       nestling_age_notes TEXT,
       dead_young_count INTEGER NOT NULL DEFAULT 0,
-      dead_adult_male INTEGER NOT NULL DEFAULT 0,
-      dead_adult_female INTEGER NOT NULL DEFAULT 0,
+      dead_adult_sex TEXT,
       fledged_count INTEGER NOT NULL DEFAULT 0,
       renesting_attempt INTEGER NOT NULL DEFAULT 0,
       nesting_attempt INTEGER NOT NULL DEFAULT 1,
@@ -92,6 +91,13 @@ export async function initDb(): Promise<void> {
   } catch {}
   try {
     await _db.execAsync('ALTER TABLE nest_check_entries ADD COLUMN gourd_removed INTEGER NOT NULL DEFAULT 0');
+  } catch {}
+  try {
+    await _db.execAsync('ALTER TABLE nest_check_entries ADD COLUMN dead_adult_sex TEXT');
+    // Migrate existing boolean columns to the new text field
+    await _db.execAsync(`UPDATE nest_check_entries SET dead_adult_sex = 'M' WHERE dead_adult_male = 1 AND dead_adult_female = 0`);
+    await _db.execAsync(`UPDATE nest_check_entries SET dead_adult_sex = 'F' WHERE dead_adult_male = 0 AND dead_adult_female = 1`);
+    await _db.execAsync(`UPDATE nest_check_entries SET dead_adult_sex = 'U' WHERE dead_adult_male = 1 AND dead_adult_female = 1`);
   } catch {}
   try {
     await _db.execAsync('ALTER TABLE housing_units ADD COLUMN site_season_id TEXT');
@@ -225,7 +231,7 @@ export type LocalEntry = {
   nest_discarded: number; nest_replaced: number; adult_present: number;
   egg_count: number; discarded_eggs: number; young_count: number;
   nestling_age_days: number | null; nestling_age_notes: string | null;
-  dead_young_count: number; dead_adult_male: number; dead_adult_female: number;
+  dead_young_count: number; dead_adult_sex: string | null;
   fledged_count: number; renesting_attempt: number; nesting_attempt: number;
   notes: string | null; observed_male_age: string | null; observed_female_age: string | null;
   gourd_removed: number;
@@ -241,8 +247,6 @@ export function localEntryToJs(E: LocalEntry) {
     nest_discarded:    !!E.nest_discarded,
     nest_replaced:     !!E.nest_replaced,
     adult_present:     !!E.adult_present,
-    dead_adult_male:   !!E.dead_adult_male,
-    dead_adult_female: !!E.dead_adult_female,
     renesting_attempt: !!E.renesting_attempt,
     gourd_removed:     !!E.gourd_removed,
   };
@@ -257,16 +261,16 @@ export async function cacheEntries(entries: any[]): Promise<void> {
       `INSERT OR IGNORE INTO nest_check_entries
        (id,nest_check_id,compartment_id,species,is_empty_cavity,has_nest,nest_discarded,nest_replaced,adult_present,
         egg_count,discarded_eggs,young_count,nestling_age_days,nestling_age_notes,
-        dead_young_count,dead_adult_male,dead_adult_female,fledged_count,renesting_attempt,nesting_attempt,
+        dead_young_count,dead_adult_sex,fledged_count,renesting_attempt,nesting_attempt,
         notes,observed_male_age,observed_female_age,gourd_removed,sync_status,updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'synced',?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'synced',?)`,
       [
         E.id, E.nest_check_id, E.compartment_id, E.species ?? 'PM',
         E.is_empty_cavity ? 1 : 0, E.has_nest ? 1 : 0,
         E.nest_discarded ? 1 : 0, E.nest_replaced ? 1 : 0, E.adult_present ? 1 : 0,
         E.egg_count ?? 0, E.discarded_eggs ?? 0, E.young_count ?? 0,
         E.nestling_age_days ?? null, E.nestling_age_notes ?? null,
-        E.dead_young_count ?? 0, E.dead_adult_male ? 1 : 0, E.dead_adult_female ? 1 : 0,
+        E.dead_young_count ?? 0, E.dead_adult_sex ?? null,
         E.fledged_count ?? 0, E.renesting_attempt ? 1 : 0, E.nesting_attempt ?? 1,
         E.notes ?? null, E.observed_male_age ?? null, E.observed_female_age ?? null,
         E.gourd_removed ? 1 : 0,
@@ -282,7 +286,7 @@ export async function upsertLocalEntry(E: {
   nest_discarded: boolean; nest_replaced: boolean; adult_present: boolean;
   egg_count: number; discarded_eggs: number; young_count: number;
   nestling_age_days: number | null; nestling_age_notes: null;
-  dead_young_count: number; dead_adult_male: boolean; dead_adult_female: boolean;
+  dead_young_count: number; dead_adult_sex: 'M' | 'F' | 'U' | null;
   fledged_count: number; renesting_attempt: boolean; nesting_attempt?: number;
   notes: string | null; observed_male_age: string | null; observed_female_age: string | null;
   gourd_removed: boolean;
@@ -292,16 +296,16 @@ export async function upsertLocalEntry(E: {
     `INSERT OR REPLACE INTO nest_check_entries
      (id,nest_check_id,compartment_id,species,is_empty_cavity,has_nest,nest_discarded,nest_replaced,adult_present,
       egg_count,discarded_eggs,young_count,nestling_age_days,nestling_age_notes,
-      dead_young_count,dead_adult_male,dead_adult_female,fledged_count,renesting_attempt,nesting_attempt,
+      dead_young_count,dead_adult_sex,fledged_count,renesting_attempt,nesting_attempt,
       notes,observed_male_age,observed_female_age,gourd_removed,sync_status,updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?)`,
     [
       E.id, E.nest_check_id, E.compartment_id, E.species,
       E.is_empty_cavity ? 1 : 0, E.has_nest ? 1 : 0,
       E.nest_discarded ? 1 : 0, E.nest_replaced ? 1 : 0, E.adult_present ? 1 : 0,
       E.egg_count, E.discarded_eggs, E.young_count,
       E.nestling_age_days, E.nestling_age_notes,
-      E.dead_young_count, E.dead_adult_male ? 1 : 0, E.dead_adult_female ? 1 : 0,
+      E.dead_young_count, E.dead_adult_sex ?? null,
       E.fledged_count, E.renesting_attempt ? 1 : 0, E.nesting_attempt ?? 1,
       E.notes, E.observed_male_age, E.observed_female_age,
       E.gourd_removed ? 1 : 0,
