@@ -396,19 +396,14 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       fledged_count: fledgedCount, renesting_attempt: false, notes: null,
       observed_male_age: null, observed_female_age: null, gourd_removed: false,
     };
-    let savedLocally = false;
     try {
       await upsertLocalEntry({ id: EntryId, nest_check_id: CheckId, compartment_id: item.id, ...QuickPayload });
-      savedLocally = true;
-      syncNow();
     } catch {}
-    if (!savedLocally) {
-      if (item.entry_id) {
-        await supabase.from('nest_check_entries').update(QuickPayload).eq('id', item.entry_id);
-      } else {
-        await supabase.from('nest_check_entries').insert({ id: EntryId, nest_check_id: CheckId, compartment_id: item.id, ...QuickPayload });
-      }
-    }
+    // Write-through to Supabase so the next screen sees current data without waiting for sync
+    try {
+      await supabase.from('nest_check_entries').upsert({ id: EntryId, nest_check_id: CheckId, compartment_id: item.id, ...QuickPayload });
+    } catch {}
+    syncNow();
     setQuickSaving(null);
     setSections(prev => prev.map(sec => ({
       ...sec,
