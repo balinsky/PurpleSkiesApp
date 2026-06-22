@@ -94,10 +94,16 @@ export async function initDb(): Promise<void> {
   } catch {}
   try {
     await _db.execAsync('ALTER TABLE nest_check_entries ADD COLUMN dead_adult_sex TEXT');
-    // Migrate existing boolean columns to the new text field
+    // Migrate existing boolean columns to the new text field before dropping them
     await _db.execAsync(`UPDATE nest_check_entries SET dead_adult_sex = 'M' WHERE dead_adult_male = 1 AND dead_adult_female = 0`);
     await _db.execAsync(`UPDATE nest_check_entries SET dead_adult_sex = 'F' WHERE dead_adult_male = 0 AND dead_adult_female = 1`);
     await _db.execAsync(`UPDATE nest_check_entries SET dead_adult_sex = 'U' WHERE dead_adult_male = 1 AND dead_adult_female = 1`);
+  } catch {}
+  try {
+    await _db.execAsync('ALTER TABLE nest_check_entries DROP COLUMN dead_adult_male');
+  } catch {}
+  try {
+    await _db.execAsync('ALTER TABLE nest_check_entries DROP COLUMN dead_adult_female');
   } catch {}
   try {
     await _db.execAsync('ALTER TABLE housing_units ADD COLUMN site_season_id TEXT');
