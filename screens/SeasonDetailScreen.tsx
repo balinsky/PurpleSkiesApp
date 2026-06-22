@@ -93,6 +93,7 @@ type CompartmentProgress = {
   female_age: string | null;
   young_count: number;
   banded_count: number;
+  superseded: boolean;
 };
 
 type HistoryEntry = {
@@ -170,8 +171,10 @@ function progressLine(P: CompartmentProgress): string {
     let fledge: string;
     if (P.fledge_dates.length > 0) {
       fledge = `  ·  Fledged ${P.fledge_dates.map(shortDate).join(', ')}`;
+    } else if (!P.superseded && P.proj_fledge) {
+      fledge = `  ·  Earliest Fledge ${shortDate(P.proj_fledge)}`;
     } else {
-      fledge = P.proj_fledge ? `  ·  Earliest Fledge ${shortDate(P.proj_fledge)}` : '';
+      fledge = '';
     }
     return `Hatched ${shortDate(P.actual_hatch)}${fledge}${Age}`;
   }
@@ -179,7 +182,7 @@ function progressLine(P: CompartmentProgress): string {
   const eggStr = P.first_egg_min === P.first_egg_max
     ? shortDate(P.first_egg_min)
     : `${shortDate(P.first_egg_min)}–${shortDate(P.first_egg_max!)}`;
-  if (!P.proj_hatch_min) return `1st egg: ${eggStr}${Age}`;
+  if (!P.proj_hatch_min || P.superseded) return `1st egg: ${eggStr}${Age}`;
   const hatchStr = P.proj_hatch_min === P.proj_hatch_max
     ? shortDate(P.proj_hatch_min)
     : `${shortDate(P.proj_hatch_min)}–${shortDate(P.proj_hatch_max!)}`;
@@ -769,7 +772,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           const BandedCount = BandedByKey.get(`${Data.compartment_id}:${Data.nesting_attempt}`) ?? 0;
           const AttemptSuffix = Data.nesting_attempt > 1 ? ` (Attempt ${Data.nesting_attempt})` : '';
           const FleddgeDates = EWD.filter(e => e.fledged_count > 0).map(e => e.check_date).sort();
-          Progress.push({ compartment_id: Data.compartment_id, nesting_attempt: Data.nesting_attempt, label: Data.label + AttemptSuffix, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, fledge_dates: FleddgeDates, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount, banded_count: BandedCount });
+          Progress.push({ compartment_id: Data.compartment_id, nesting_attempt: Data.nesting_attempt, label: Data.label + AttemptSuffix, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, fledge_dates: FleddgeDates, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount, banded_count: BandedCount, superseded: false });
         }
 
         // Add non-PM compartments that have nesting activity and aren't already in Progress
@@ -796,8 +799,18 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             proj_hatch_min: null, proj_hatch_max: null,
             actual_hatch: null, proj_fledge: null, fledge_dates: [],
             male_age: null, female_age: null,
-            young_count: 0, banded_count: 0,
+            young_count: 0, banded_count: 0, superseded: false,
           });
+        }
+
+        // Mark earlier attempts as superseded when a higher attempt exists for the same compartment
+        const MaxAttempt = new Map<string, number>();
+        for (const P of Progress) {
+          const cur = MaxAttempt.get(P.compartment_id) ?? 0;
+          if (P.nesting_attempt > cur) MaxAttempt.set(P.compartment_id, P.nesting_attempt);
+        }
+        for (const P of Progress) {
+          if (P.nesting_attempt < (MaxAttempt.get(P.compartment_id) ?? P.nesting_attempt)) P.superseded = true;
         }
 
         setNestProgress(Progress.sort((a, b) => {
