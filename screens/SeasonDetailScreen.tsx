@@ -88,6 +88,7 @@ type CompartmentProgress = {
   proj_hatch_max: string | null;
   actual_hatch: string | null;
   proj_fledge: string | null;
+  fledge_dates: string[];
   male_age: string | null;
   female_age: string | null;
   young_count: number;
@@ -166,7 +167,12 @@ function progressLine(P: CompartmentProgress): string {
   const AgeParts = [P.male_age && `♂ ${P.male_age}`, P.female_age && `♀ ${P.female_age}`].filter(Boolean).join('  ');
   const Age = AgeParts ? `  ·  ${AgeParts}` : '';
   if (P.actual_hatch) {
-    const fledge = P.proj_fledge ? `  ·  Earliest Fledge ${shortDate(P.proj_fledge)}` : '';
+    let fledge: string;
+    if (P.fledge_dates.length > 0) {
+      fledge = `  ·  Fledged ${P.fledge_dates.map(shortDate).join(', ')}`;
+    } else {
+      fledge = P.proj_fledge ? `  ·  Earliest Fledge ${shortDate(P.proj_fledge)}` : '';
+    }
     return `Hatched ${shortDate(P.actual_hatch)}${fledge}${Age}`;
   }
   if (!P.first_egg_min) return AgeParts;
@@ -762,7 +768,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           const YoungCount = EWD[EWD.length - 1]?.young_count ?? 0;
           const BandedCount = BandedByKey.get(`${Data.compartment_id}:${Data.nesting_attempt}`) ?? 0;
           const AttemptSuffix = Data.nesting_attempt > 1 ? ` (Attempt ${Data.nesting_attempt})` : '';
-          Progress.push({ compartment_id: Data.compartment_id, nesting_attempt: Data.nesting_attempt, label: Data.label + AttemptSuffix, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount, banded_count: BandedCount });
+          const FleddgeDates = EWD.filter(e => e.fledged_count > 0).map(e => e.check_date).sort();
+          Progress.push({ compartment_id: Data.compartment_id, nesting_attempt: Data.nesting_attempt, label: Data.label + AttemptSuffix, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, fledge_dates: FleddgeDates, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount, banded_count: BandedCount });
         }
 
         // Add non-PM compartments that have nesting activity and aren't already in Progress
@@ -787,7 +794,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             label: C.label, unit_name: C.unit_name,
             first_egg_min: null, first_egg_max: null,
             proj_hatch_min: null, proj_hatch_max: null,
-            actual_hatch: null, proj_fledge: null,
+            actual_hatch: null, proj_fledge: null, fledge_dates: [],
             male_age: null, female_age: null,
             young_count: 0, banded_count: 0,
           });

@@ -1026,13 +1026,18 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       }
     }
 
+    // If only age observations were recorded (no nest, no eggs, no young), treat as
+    // adult-present-only regardless of whether the user toggled the checkbox — prevents PMN in export.
+    const FinalAdultPresent = AdultPresent ||
+      (!HasNest && EggCount === 0 && YoungCount === 0 && (!!ObservedMaleAge || !!ObservedFemaleAge));
+
     const EntryPayload = {
       nest_check_id:      CheckId,
       compartment_id:     CompartmentId,
       species:            SpeciesVal,
       is_empty_cavity:    IsEmpty,
       has_nest:           HasNest,
-      adult_present:      IsPM && !IsEmpty ? AdultPresent : false,
+      adult_present:      IsPM && !IsEmpty ? FinalAdultPresent : false,
       nest_discarded:     HasNest && (SpeciesVal === 'HS' || SpeciesVal === 'ST') ? NestDiscarded : false,
       nest_replaced:      HasNest && IsPM ? NestReplaced : false,
       egg_count:          IsPM && !IsEmpty && !AdultPresent ? EggCount : 0,
@@ -1436,8 +1441,8 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     // If this entry carried the renesting flag, unwind all other entries in the
     // season for this compartment back to attempt 1 (same as unchecking the checkbox)
     if (Renesting) {
-      const RevertFrom = NestingAttempt;
-      const RevertTo   = NestingAttempt - 1;
+      const RevertFrom = Math.max(NestingAttempt, 2);
+      const RevertTo   = RevertFrom - 1;
       const YearStr = CheckDate.substring(0, 4);
       try {
         const { data: SeasonChecks } = await supabase
