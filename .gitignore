@@ -17,6 +17,11 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+*.cer
+*.certSigningRequest
+*.ipa
+*.dSYM.zip
+build-*.ipa
 
 # Metro
 .metro-health-check*
