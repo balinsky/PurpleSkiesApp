@@ -65,12 +65,14 @@ export function parseCheckCode(raw: string): ParseCodeResult {
     };
   }
 
-  // Detect and strip species prefix
+  // Detect and strip species prefix.
+  // Accept the prefix when followed by: end-of-string, space, digit, or a content-starting letter.
   let rest = s;
   let species = 'PM';
   for (const sp of KNOWN_SPECIES) {
-    if (rest === sp || rest.startsWith(sp + ' ') || rest.startsWith(sp + 'N') || rest.startsWith(sp + 'D') || rest.startsWith(sp + 'E') || rest.startsWith(sp + 'Y')) {
-      if (rest === sp || rest[sp.length] === ' ' || !rest[sp.length].match(/[A-Z]/)) {
+    if (rest.startsWith(sp)) {
+      const after = rest[sp.length];
+      if (after === undefined || after === ' ' || /[\dNDEYXGBH]/.test(after)) {
         species = sp;
         rest = rest.slice(sp.length).trimStart();
         break;
