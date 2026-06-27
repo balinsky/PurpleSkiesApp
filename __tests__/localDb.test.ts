@@ -34,8 +34,7 @@ function rawEntry(overrides: Partial<LocalEntry> = {}): LocalEntry {
     nestling_age_days: null,
     nestling_age_notes: null,
     dead_young_count: 0,
-    dead_adult_male: 0,
-    dead_adult_female: 0,
+    dead_adult_sex: null,
     fledged_count: 0,
     renesting_attempt: 0,
     nesting_attempt: 1,
@@ -53,16 +52,13 @@ describe('localEntryToJs', () => {
   it('converts integer 1 to true for boolean fields', () => {
     const result = localEntryToJs(rawEntry({
       is_empty_cavity: 1, has_nest: 1, nest_discarded: 1, nest_replaced: 1,
-      adult_present: 1, dead_adult_male: 1, dead_adult_female: 1,
-      renesting_attempt: 1, gourd_removed: 1,
+      adult_present: 1, renesting_attempt: 1, gourd_removed: 1,
     }));
     expect(result.is_empty_cavity).toBe(true);
     expect(result.has_nest).toBe(true);
     expect(result.nest_discarded).toBe(true);
     expect(result.nest_replaced).toBe(true);
     expect(result.adult_present).toBe(true);
-    expect(result.dead_adult_male).toBe(true);
-    expect(result.dead_adult_female).toBe(true);
     expect(result.renesting_attempt).toBe(true);
     expect(result.gourd_removed).toBe(true);
   });
