@@ -466,7 +466,7 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
 
       syncNow();
       setState('done');
-      navigation.replace('SeasonDetail', { SeasonId, SiteId, Year: Summary.year });
+      navigation.replace('SiteDetail', { SiteId, SiteName });
     } catch (e: any) {
       setImportError2(e?.message ?? 'Import failed.');
       setState('reviewing');
