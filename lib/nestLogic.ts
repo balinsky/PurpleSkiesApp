@@ -130,6 +130,25 @@ export type FledgeParams = {
   deadYoungCount: number;
 };
 
+// Running-floor egg sum: counts every new egg laid above the current net-egg floor,
+// so discards + re-lays within one nesting attempt are captured correctly.
+export function calcTotalEggsLaid(checks: Array<{
+  egg_count: number;
+  discarded_eggs: number;
+  is_empty_cavity: boolean;
+  nest_discarded: boolean;
+}>): number {
+  let floor = 0;
+  let total = 0;
+  for (const c of checks) {
+    if (c.is_empty_cavity || c.nest_discarded) { floor = 0; continue; }
+    const net = Math.max(0, c.egg_count - c.discarded_eggs);
+    if (net > floor) total += net - floor;
+    floor = net;
+  }
+  return total;
+}
+
 // Returns the full reduction count to prompt fledging, or 0 if no prompt is needed.
 export function fledgeUnaccounted(p: FledgeParams): number {
   if (!p.isPM) return 0;

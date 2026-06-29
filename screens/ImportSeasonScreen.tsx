@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Alert, ScrollView, Share, StyleSheet, View } from 'react-native';
-import { Button, Card, Chip, Divider, HelperText, List, Text } from 'react-native-paper';
+import { Alert, ScrollView, Share, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { Button, Card, Chip, DataTable, Dialog, Divider, HelperText, List, Portal, Text } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
@@ -11,25 +11,100 @@ import { useSync } from '../contexts/SyncContext';
 import { AppStackParamList } from '../App';
 import {
   parseImportFile, exportErrorSheet,
-  ImportSummary, ImportRow, ImportError,
+  ImportSummary, ImportRow, ImportError, ImportEntryData, ParseCodeOk,
 } from '../lib/importXls';
+import { calcTotalEggsLaid } from '../lib/nestLogic';
 
 type Props = {
   navigation: NativeStackNavigationProp<AppStackParamList, 'ImportSeason'>;
   route: RouteProp<AppStackParamList, 'ImportSeason'>;
 };
 
-type ImportState = 'idle' | 'parsing' | 'ready' | 'importing' | 'done';
+type ImportState = 'idle' | 'parsing' | 'ready' | 'reviewing' | 'importing' | 'done';
+
+type RowStats = {
+  rowIndex: number;
+  label: string;
+  calcEggs: number;
+  statedEggs: number | null;
+  calcHatch: number;
+  statedHatch: number | null;
+  calcFledge: number;
+  statedFledge: number | null;
+};
+
+type OverrideField = 'eggs' | 'hatch' | 'fledge';
+type RowOverrides = { eggs?: number; hatch?: number; fledge?: number };
+
+// ── Pure helpers (outside component) ─────────────────────────────────────────
+
+function calcFledgeFromChecks(okData: ImportEntryData[]): number {
+  let total = 0;
+  for (let i = 1; i < okData.length; i++) {
+    const prev = okData[i - 1];
+    const curr = okData[i];
+    if (prev.is_empty_cavity || curr.is_empty_cavity) continue;
+    const drop = prev.young_count - curr.young_count;
+    if (drop > 0 && curr.nestling_age_days != null && curr.nestling_age_days >= 26) {
+      total += Math.max(0, drop - curr.dead_young_count);
+    }
+  }
+  const last = okData[okData.length - 1];
+  if (last && !last.is_empty_cavity && last.young_count > 0 &&
+      last.nestling_age_days != null && last.nestling_age_days >= 26) {
+    total += last.young_count;
+  }
+  return total;
+}
+
+function computeRowStats(summary: ImportSummary): RowStats[] {
+  return summary.rows.map(Row => {
+    const okData = Row.checks
+      .filter(c => c.result.ok)
+      .map(c => (c.result as ParseCodeOk).data);
+    const calcEggs  = calcTotalEggsLaid(okData);
+    const calcHatch = Math.max(0, ...okData.map(c => c.young_count), 0);
+    const calcFledge = calcFledgeFromChecks(okData);
+    const label = Row.cavity_label + (Row.nesting_attempt > 1 ? ' (RA)' : '');
+    return {
+      rowIndex: Row.rowIndex, label,
+      calcEggs,   statedEggs:   Row.stated_eggs,
+      calcHatch,  statedHatch:  Row.stated_hatch,
+      calcFledge, statedFledge: Row.stated_fledge,
+    };
+  });
+}
+
+function statCellInfo(
+  calc: number,
+  stated: number | null,
+  override?: number,
+): { display: string; discrepant: boolean; resolved: boolean } {
+  if (override != null) {
+    return { display: String(override), discrepant: override !== calc, resolved: true };
+  }
+  if (stated == null) return { display: String(calc), discrepant: false, resolved: false };
+  if (stated === calc)  return { display: String(stated), discrepant: false, resolved: false };
+  return { display: `${stated} / ${calc}`, discrepant: true, resolved: false };
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ImportSeasonScreen({ navigation, route }: Props) {
   const { SiteId, SiteName } = route.params;
   const { syncNow } = useSync();
 
-  const [State, setState] = useState<ImportState>('idle');
+  const [State, setState]           = useState<ImportState>('idle');
   const [ParseError, setParseError] = useState('');
-  const [FileUri, setFileUri] = useState<string | null>(null);
-  const [Summary, setSummary] = useState<ImportSummary | null>(null);
+  const [FileUri, setFileUri]       = useState<string | null>(null);
+  const [Summary, setSummary]       = useState<ImportSummary | null>(null);
   const [ImportError2, setImportError2] = useState('');
+
+  // Review state
+  const [ReviewStats, setReviewStats] = useState<RowStats[]>([]);
+  const [Overrides, setOverrides]     = useState<Map<number, RowOverrides>>(new Map());
+  const [EditTarget, setEditTarget]   = useState<{ rowIndex: number; field: OverrideField; label: string } | null>(null);
+  const [EditValue, setEditValue]     = useState('');
 
   async function handlePickFile() {
     setParseError('');
@@ -70,7 +145,36 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
     }
   }
 
-  async function runImport(skipErrors: boolean) {
+  function handleStartReview() {
+    if (!Summary) return;
+    setReviewStats(computeRowStats(Summary));
+    setOverrides(new Map());
+    setState('reviewing');
+  }
+
+  function openEdit(rowIndex: number, field: OverrideField, label: string) {
+    const ovr = Overrides.get(rowIndex) ?? {};
+    const stats = ReviewStats.find(r => r.rowIndex === rowIndex)!;
+    let current: number;
+    if (field === 'eggs')       current = ovr.eggs   ?? stats.statedEggs   ?? stats.calcEggs;
+    else if (field === 'hatch') current = ovr.hatch  ?? stats.statedHatch  ?? stats.calcHatch;
+    else                        current = ovr.fledge ?? stats.statedFledge ?? stats.calcFledge;
+    setEditValue(String(current));
+    setEditTarget({ rowIndex, field, label });
+  }
+
+  function saveOverride() {
+    if (!EditTarget) return;
+    const n = parseInt(EditValue, 10);
+    if (!isNaN(n) && n >= 0) {
+      const m = new Map(Overrides);
+      m.set(EditTarget.rowIndex, { ...(m.get(EditTarget.rowIndex) ?? {}), [EditTarget.field]: n });
+      setOverrides(m);
+    }
+    setEditTarget(null);
+  }
+
+  async function runImport() {
     if (!Summary) return;
     setState('importing');
     setImportError2('');
@@ -87,7 +191,6 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
       let SeasonId: string;
 
       if (existing) {
-        // Ask user to merge or cancel
         const choice = await new Promise<'merge' | 'cancel'>((resolve) => {
           Alert.alert(
             `${Summary.year} Season Exists`,
@@ -98,10 +201,9 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
             ],
           );
         });
-        if (choice === 'cancel') { setState('ready'); return; }
+        if (choice === 'cancel') { setState('reviewing'); return; }
         SeasonId = existing.id;
       } else {
-        // Create new season
         const { data: newSeason, error } = await supabase
           .from('site_seasons')
           .insert({ site_id: SiteId, year: Summary.year })
@@ -109,14 +211,14 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
           .single();
         if (error || !newSeason) {
           setImportError2('Failed to create season: ' + (error?.message ?? 'unknown error'));
-          setState('ready');
+          setState('reviewing');
           return;
         }
         SeasonId = newSeason.id;
       }
 
-      // ── Build housing units and compartments ──────────────────────
-      const UnitMap = new Map<string, { id: string; unit_type: string }>(); // unit_name → {id, unit_type}
+      // ── Housing units ──────────────────────────────────────────────
+      const UnitMap = new Map<string, { id: string; unit_type: string }>();
       for (const Row of Summary.rows) {
         const unitName = Row.unit_name;
         if (!UnitMap.has(unitName)) {
@@ -132,17 +234,14 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
           if (existingUnit) {
             UnitMap.set(unitName, { id: existingUnit.id, unit_type: (existingUnit as any).unit_type ?? unit_type });
           } else {
-            // Derive default hole type from the most common hole_type in this unit's rows
             const holeCounts = new Map<string, number>();
             for (const R of Summary.rows) {
-              if (R.unit_name === unitName && R.hole_type) {
+              if (R.unit_name === unitName && R.hole_type)
                 holeCounts.set(R.hole_type, (holeCounts.get(R.hole_type) ?? 0) + 1);
-              }
             }
             const default_hole_type = holeCounts.size > 0
               ? [...holeCounts.entries()].sort((a, b) => b[1] - a[1])[0][0]
               : null;
-
             const newId = makeId();
             const { error } = await supabase.from('housing_units').insert({
               id: newId, site_id: SiteId, site_season_id: SeasonId,
@@ -153,29 +252,28 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
         }
       }
 
-      // Cache housing units locally
       await cacheUnitsAndCompartments(
         [...UnitMap.entries()].map(([name, { id }]) => ({ id, name, site_id: SiteId, site_season_id: SeasonId })),
         [],
       );
 
-      // Compartments — keyed by unitName + bare cavity label
-      const CompMap = new Map<string, string>(); // `${unitName}:${bare}` → compartment_id
+      // ── Compartments ───────────────────────────────────────────────
+      const CompMap = new Map<string, string>();
       for (const Row of Summary.rows) {
         const unitName = Row.unit_name;
         const unit = UnitMap.get(unitName);
         if (!unit) continue;
         const compKey = `${unitName}:${Row.cavity_label}`;
         if (!CompMap.has(compKey)) {
-          const { data: existing } = await supabase
+          const { data: existingComp } = await supabase
             .from('compartments')
             .select('id')
             .eq('housing_unit_id', unit.id)
             .eq('cavity_label', Row.cavity_label)
             .maybeSingle();
 
-          if (existing) {
-            CompMap.set(compKey, existing.id);
+          if (existingComp) {
+            CompMap.set(compKey, existingComp.id);
           } else {
             const newId = makeId();
             const { error } = await supabase.from('compartments').insert({
@@ -188,7 +286,6 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
         }
       }
 
-      // Cache compartments locally
       await cacheUnitsAndCompartments([], [...CompMap.entries()].map(([key, id]) => {
         const colonIdx = key.indexOf(':');
         const unitName = key.slice(0, colonIdx);
@@ -197,20 +294,20 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
         return { id, housing_unit_id: unit.id, cavity_label: label, sort_order: null, site_season_id: SeasonId };
       }));
 
-      // ── Build nest checks (one per date) ──────────────────────────
+      // ── Nest checks ────────────────────────────────────────────────
       const { data: { user } } = await supabase.auth.getUser();
-      const CheckMap = new Map<string, string>(); // ISO date → check_id
+      const CheckMap = new Map<string, string>();
 
       for (const date of Summary.check_dates) {
-        const { data: existing } = await supabase
+        const { data: existingCheck } = await supabase
           .from('nest_checks')
           .select('id')
           .eq('site_id', SiteId)
           .eq('check_date', date)
           .maybeSingle();
 
-        if (existing) {
-          CheckMap.set(date, existing.id);
+        if (existingCheck) {
+          CheckMap.set(date, existingCheck.id);
         } else {
           const newId = makeId();
           const { error } = await supabase.from('nest_checks').insert({
@@ -224,22 +321,36 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
         [...CheckMap.entries()].map(([check_date, id]) => ({ id, site_id: SiteId, check_date }))
       );
 
-      // ── Write nest check entries ───────────────────────────────────
+      // ── Nest check entries ─────────────────────────────────────────
       for (const Row of Summary.rows) {
-        const compKey  = `${Row.unit_name}:${Row.cavity_label}`;
-        const CompId   = CompMap.get(compKey);
+        const compKey = `${Row.unit_name}:${Row.cavity_label}`;
+        const CompId  = CompMap.get(compKey);
         if (!CompId) continue;
 
+        // Determine effective fledge count for this row
+        const ovr = Overrides.get(Row.rowIndex);
+        let effectiveFledge: number;
+        if (ovr?.fledge != null) {
+          effectiveFledge = ovr.fledge;
+        } else if (Row.stated_fledge != null) {
+          effectiveFledge = Row.stated_fledge;
+        } else {
+          const okData = Row.checks.filter(c => c.result.ok).map(c => (c.result as ParseCodeOk).data);
+          effectiveFledge = calcFledgeFromChecks(okData);
+        }
+
+        // Write fledge to the last valid check entry
+        const validDates = Row.checks.filter(c => c.result.ok).map(c => c.date);
+        const lastValidDate = validDates[validDates.length - 1] ?? null;
+
         for (const { date, result } of Row.checks) {
-          if (!result.ok && skipErrors) continue;
-          if (!result.ok) continue; // always skip errors in DB write — they can't be stored
+          if (!result.ok) continue;
 
           const CheckId = CheckMap.get(date);
           if (!CheckId) continue;
 
           const D = result.data;
 
-          // Check if entry already exists (merge mode)
           const { data: existingEntry } = await supabase
             .from('nest_check_entries')
             .select('id')
@@ -248,38 +359,38 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
             .eq('nesting_attempt', Row.nesting_attempt)
             .maybeSingle();
 
-          if (existingEntry) continue; // don't overwrite
+          if (existingEntry) continue;
 
           const EntryId = makeId();
           const Payload = {
             id: EntryId, nest_check_id: CheckId, compartment_id: CompId,
             species: D.is_empty_cavity ? 'PM' : D.species,
-            is_empty_cavity: D.is_empty_cavity,
-            has_nest: D.has_nest,
-            nest_discarded: D.nest_discarded,
-            nest_replaced: false,
-            adult_present: false,
-            egg_count: D.egg_count,
-            discarded_eggs: D.discarded_eggs,
-            young_count: D.young_count,
-            nestling_age_days: D.nestling_age_days,
-            nestling_age_notes: null as null,
-            dead_young_count: D.dead_young_count,
-            dead_adult_sex: D.dead_adult_sex,
-            fledged_count: 0,
-            renesting_attempt: Row.nesting_attempt > 1,
-            nesting_attempt: Row.nesting_attempt,
-            notes: D.notes ?? null,
-            observed_male_age: null as null,
+            is_empty_cavity:     D.is_empty_cavity,
+            has_nest:            D.has_nest,
+            nest_discarded:      D.nest_discarded,
+            nest_replaced:       false,
+            adult_present:       false,
+            egg_count:           D.egg_count,
+            discarded_eggs:      D.discarded_eggs,
+            young_count:         D.young_count,
+            nestling_age_days:   D.nestling_age_days,
+            nestling_age_notes:  null as null,
+            dead_young_count:    D.dead_young_count,
+            dead_adult_sex:      D.dead_adult_sex,
+            fledged_count:       date === lastValidDate ? effectiveFledge : 0,
+            renesting_attempt:   Row.nesting_attempt > 1,
+            nesting_attempt:     Row.nesting_attempt,
+            notes:               D.notes ?? null,
+            observed_male_age:   null as null,
             observed_female_age: null as null,
-            gourd_removed: D.gourd_removed,
+            gourd_removed:       D.gourd_removed,
           };
 
           await upsertLocalEntry(Payload);
           await supabase.from('nest_check_entries').upsert(Payload);
         }
 
-        // ── nest_seasons (male/female age) ────────────────────────
+        // ── nest_seasons (male/female age) ─────────────────────────
         if (Row.male_age || Row.female_age) {
           await upsertLocalNestSeason({
             compartment_id: CompId, site_season_id: SeasonId, year: Summary.year,
@@ -294,20 +405,22 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
 
       syncNow();
       setState('done');
-
       navigation.replace('SeasonDetail', { SeasonId, SiteId, Year: Summary.year });
     } catch (e: any) {
       setImportError2(e?.message ?? 'Import failed.');
-      setState('ready');
+      setState('reviewing');
     }
   }
 
   const errorCount  = Summary?.errors.length ?? 0;
-  const totalChecks = Summary ? Summary.rows.reduce((n, r) => n + r.checks.length, 0) : 0;
   const okChecks    = Summary ? Summary.rows.reduce((n, r) => n + r.checks.filter(c => c.result.ok).length, 0) : 0;
+  const hasStatedCols = Summary?.rows.some(r => r.stated_eggs != null || r.stated_hatch != null || r.stated_fledge != null) ?? false;
+  // Extract before JSX to avoid TypeScript narrowing inside conditional blocks
+  const IsImporting = State === 'importing';
+  const IsParsing   = State === 'parsing';
 
   return (
-    <ScrollView contentContainerStyle={styles.Container}>
+    <ScrollView contentContainerStyle={styles.Container} keyboardShouldPersistTaps="handled">
 
       {/* ── Step 1: pick file ──────────────────────────────────────── */}
       <Card style={styles.Card}>
@@ -319,8 +432,8 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
           <Button
             mode="contained"
             icon="file-import-outline"
-            loading={State === 'parsing'}
-            disabled={State === 'parsing' || State === 'importing'}
+            loading={IsParsing}
+            disabled={IsParsing || IsImporting}
             onPress={handlePickFile}
             style={styles.Button}
           >
@@ -331,13 +444,13 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
       </Card>
 
       {/* ── Step 2: summary + errors ───────────────────────────────── */}
-      {Summary && (
+      {Summary && State !== 'importing' && (
         <Card style={styles.Card}>
           <Card.Title title={`${Summary.year} Season Preview`} />
           <Card.Content>
             <View style={styles.ChipRow}>
               <Chip icon="calendar-check" style={styles.Chip}>{Summary.check_dates.length} check dates</Chip>
-              <Chip icon="home-outline" style={styles.Chip}>{Summary.rows.length} compartment rows</Chip>
+              <Chip icon="home-outline"   style={styles.Chip}>{Summary.rows.length} compartment rows</Chip>
               <Chip icon="check-circle-outline" style={styles.Chip}>{okChecks} valid entries</Chip>
               {errorCount > 0 && (
                 <Chip icon="alert-circle-outline" style={[styles.Chip, styles.ChipError]}>{errorCount} errors</Chip>
@@ -367,7 +480,7 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
                   Download correction sheet
                 </Button>
                 <HelperText type="info" visible>
-                  Fix the highlighted cells and re-import, or tap "Import (skip errors)" to import valid entries only.
+                  Fix the highlighted cells and re-import, or proceed to review to import valid entries only.
                 </HelperText>
               </>
             )}
@@ -375,48 +488,123 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
         </Card>
       )}
 
-      {/* ── Step 3: import actions ─────────────────────────────────── */}
-      {Summary && State !== 'done' && (
+      {/* ── Step 3: proceed to review ─────────────────────────────── */}
+      {Summary && State === 'ready' && (
         <Card style={styles.Card}>
           <Card.Content>
             {!!ImportError2 && <HelperText type="error" visible>{ImportError2}</HelperText>}
-            {errorCount === 0 ? (
-              <Button
-                mode="contained"
-                icon="database-import"
-                loading={State === 'importing'}
-                disabled={State === 'importing'}
-                onPress={() => runImport(false)}
-                style={styles.Button}
-              >
-                Import {okChecks} entries
-              </Button>
-            ) : (
-              <>
-                <Button
-                  mode="contained"
-                  icon="database-import"
-                  loading={State === 'importing'}
-                  disabled={State === 'importing' || okChecks === 0}
-                  onPress={() => runImport(true)}
-                  style={styles.Button}
-                >
-                  Import {okChecks} valid entries (skip {errorCount} errors)
-                </Button>
-                <Button
-                  mode="outlined"
-                  icon="close"
-                  disabled={State === 'importing'}
-                  onPress={() => navigation.goBack()}
-                  style={styles.Button}
-                >
-                  Cancel
-                </Button>
-              </>
-            )}
+            <Button
+              mode="contained"
+              icon="table-check"
+              onPress={handleStartReview}
+              style={styles.Button}
+            >
+              Review & Import{errorCount > 0 ? ` (skip ${errorCount} errors)` : ''}
+            </Button>
           </Card.Content>
         </Card>
       )}
+
+      {/* ── Step 4: discrepancy review ─────────────────────────────── */}
+      {Summary && State === 'reviewing' && (
+        <Card style={styles.Card}>
+          <Card.Title title="Review" />
+          <Card.Content>
+            <Text variant="bodySmall" style={styles.HelpText}>
+              {hasStatedCols
+                ? 'Discrepant cells show stated / calc. Tap to override.'
+                : 'Calculated totals per nest. Tap to override before importing.'}
+              {errorCount > 0 ? `  (${errorCount} errors will be skipped)` : ''}
+            </Text>
+
+            {!!ImportError2 && <HelperText type="error" visible>{ImportError2}</HelperText>}
+
+            <DataTable>
+              <DataTable.Header>
+                <DataTable.Title style={styles.CavityCol}>Cavity</DataTable.Title>
+                <DataTable.Title numeric style={styles.StatCol}>Eggs</DataTable.Title>
+                <DataTable.Title numeric style={styles.StatCol}>Hatch</DataTable.Title>
+                <DataTable.Title numeric style={styles.StatCol}>Fledge</DataTable.Title>
+              </DataTable.Header>
+
+              {ReviewStats.map(row => {
+                const ovr = Overrides.get(row.rowIndex) ?? {};
+                const eggs   = statCellInfo(row.calcEggs,   row.statedEggs,   ovr.eggs);
+                const hatch  = statCellInfo(row.calcHatch,  row.statedHatch,  ovr.hatch);
+                const fledge = statCellInfo(row.calcFledge, row.statedFledge, ovr.fledge);
+                const eggBg   = eggs.resolved   ? styles.ResolvedCell   : eggs.discrepant   ? styles.DiscrepantCell   : undefined;
+                const hatchBg = hatch.resolved  ? styles.ResolvedCell   : hatch.discrepant  ? styles.DiscrepantCell   : undefined;
+                const fledgeBg = fledge.resolved ? styles.ResolvedCell  : fledge.discrepant ? styles.DiscrepantCell   : undefined;
+                return (
+                  <DataTable.Row key={row.rowIndex}>
+                    <DataTable.Cell style={styles.CavityCol}>
+                      <Text variant="bodySmall" numberOfLines={1}>{row.label}</Text>
+                    </DataTable.Cell>
+                    <DataTable.Cell numeric style={[styles.StatCol, eggBg]}>
+                      <TouchableOpacity onPress={() => openEdit(row.rowIndex, 'eggs', row.label)}>
+                        <Text variant="bodySmall">{eggs.display}</Text>
+                      </TouchableOpacity>
+                    </DataTable.Cell>
+                    <DataTable.Cell numeric style={[styles.StatCol, hatchBg]}>
+                      <TouchableOpacity onPress={() => openEdit(row.rowIndex, 'hatch', row.label)}>
+                        <Text variant="bodySmall">{hatch.display}</Text>
+                      </TouchableOpacity>
+                    </DataTable.Cell>
+                    <DataTable.Cell numeric style={[styles.StatCol, fledgeBg]}>
+                      <TouchableOpacity onPress={() => openEdit(row.rowIndex, 'fledge', row.label)}>
+                        <Text variant="bodySmall">{fledge.display}</Text>
+                      </TouchableOpacity>
+                    </DataTable.Cell>
+                  </DataTable.Row>
+                );
+              })}
+            </DataTable>
+
+            <View style={styles.ButtonRow}>
+              <Button
+                mode="outlined"
+                icon="arrow-left"
+                onPress={() => setState('ready')}
+                style={styles.FlexButton}
+              >
+                Back
+              </Button>
+              <Button
+                mode="contained"
+                icon="database-import"
+                loading={IsImporting}
+                disabled={IsImporting}
+                onPress={runImport}
+                style={styles.FlexButton}
+              >
+                Import
+              </Button>
+            </View>
+          </Card.Content>
+        </Card>
+      )}
+
+      {/* ── Override dialog ────────────────────────────────────────── */}
+      <Portal>
+        <Dialog visible={EditTarget != null} onDismiss={() => setEditTarget(null)}>
+          <Dialog.Title>
+            {EditTarget ? `Override ${EditTarget.field} — ${EditTarget.label}` : 'Override'}
+          </Dialog.Title>
+          <Dialog.Content>
+            <TextInput
+              value={EditValue}
+              onChangeText={setEditValue}
+              keyboardType="number-pad"
+              style={styles.EditInput}
+              autoFocus
+            />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setEditTarget(null)}>Cancel</Button>
+            <Button onPress={saveOverride}>OK</Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
 
     </ScrollView>
   );
@@ -433,15 +621,22 @@ function unitTypeFromHousingCode(code: string): string {
 }
 
 const styles = StyleSheet.create({
-  Container:    { padding: 16 },
-  Card:         { marginBottom: 16 },
-  Button:       { marginTop: 8 },
-  HelpText:     { marginBottom: 8, color: '#555' },
-  ChipRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  Chip:         { marginBottom: 4 },
-  ChipError:    { backgroundColor: '#FFDDDD' },
-  Divider:      { marginVertical: 12 },
-  ErrorHeading: { marginBottom: 4 },
-  ErrorTitle:   { color: 'red', fontWeight: 'bold' },
-  ErrorItem:    { paddingLeft: 0 },
+  Container:      { padding: 16 },
+  Card:           { marginBottom: 16 },
+  Button:         { marginTop: 8 },
+  HelpText:       { marginBottom: 8, color: '#555' },
+  ChipRow:        { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  Chip:           { marginBottom: 4 },
+  ChipError:      { backgroundColor: '#FFDDDD' },
+  Divider:        { marginVertical: 12 },
+  ErrorHeading:   { marginBottom: 4 },
+  ErrorTitle:     { color: 'red', fontWeight: 'bold' },
+  ErrorItem:      { paddingLeft: 0 },
+  CavityCol:      { flex: 2 },
+  StatCol:        { flex: 1 },
+  DiscrepantCell: { backgroundColor: '#FFD0D0' },
+  ResolvedCell:   { backgroundColor: '#D0FFD0' },
+  ButtonRow:      { flexDirection: 'row', gap: 8, marginTop: 12 },
+  FlexButton:     { flex: 1 },
+  EditInput:      { borderWidth: 1, borderColor: '#aaa', borderRadius: 4, padding: 8, fontSize: 18, marginTop: 4 },
 });

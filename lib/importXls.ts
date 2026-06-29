@@ -33,6 +33,9 @@ export type ImportRow = {
   male_age: string | null;
   female_age: string | null;
   checks: { date: string; result: ParseCodeResult }[];
+  stated_eggs: number | null;   // from "Egg #" summary column
+  stated_hatch: number | null;  // from "Hatch #" summary column
+  stated_fledge: number | null; // from "Fledge #" summary column
 };
 
 export type ImportError = {
@@ -185,6 +188,14 @@ function defaultUnitName(housingTypeCode: string): string {
   return names[housingTypeCode.toUpperCase()] ?? housingTypeCode;
 }
 
+// ── Numeric cell helper ────────────────────────────────────────────────────────
+
+function parseIntCell(val: unknown): number | null {
+  if (val == null || String(val).trim() === '') return null;
+  const n = Number(val);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
 // ── Date helpers ───────────────────────────────────────────────────────────────
 
 function excelSerialToISO(serial: number): string {
@@ -236,6 +247,15 @@ export async function parseImportFile(uri: string): Promise<ImportSummary | stri
 
   if (checkColIndices.length === 0) {
     return 'No check date columns found. Make sure the file uses the Purple Skies export format.';
+  }
+
+  // Detect optional stated-summary columns (Egg #, Hatch #, Fledge # from the export)
+  let statedEggsCol = -1, statedHatchCol = -1, statedFledgeCol = -1;
+  for (let c = 0; c < header1.length; c++) {
+    const h = String(header1[c]).trim();
+    if (h === 'Egg #') statedEggsCol = c;
+    else if (h === 'Hatch #') statedHatchCol = c;
+    else if (h === 'Fledge #') statedFledgeCol = c;
   }
 
   // Parse check dates from header row 2
@@ -355,7 +375,11 @@ export async function parseImportFile(uri: string): Promise<ImportSummary | stri
       }
     }
 
-    rows.push({ rowIndex: ri + 1, unit_name, housing_type, hole_type, cavity_label: bare, nesting_attempt, male_age, female_age, checks });
+    const stated_eggs   = statedEggsCol   >= 0 ? parseIntCell(row[statedEggsCol])   : null;
+    const stated_hatch  = statedHatchCol  >= 0 ? parseIntCell(row[statedHatchCol])  : null;
+    const stated_fledge = statedFledgeCol >= 0 ? parseIntCell(row[statedFledgeCol]) : null;
+
+    rows.push({ rowIndex: ri + 1, unit_name, housing_type, hole_type, cavity_label: bare, nesting_attempt, male_age, female_age, checks, stated_eggs, stated_hatch, stated_fledge });
   }
 
   return { year, check_dates: checkDates, rows, errors };
