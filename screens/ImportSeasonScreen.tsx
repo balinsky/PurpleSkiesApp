@@ -46,22 +46,33 @@ function calcFledgeFromChecks(
   checks: Array<{ date: string; data: ImportEntryData }>,
   allCheckDates: string[],
 ): number {
+  // Build a hatch date anchor from the first check that has an explicit nestling_age_days.
+  // If no check ever records an age, hatchDate stays null and age-based detection is skipped
+  // entirely — in that case the user's stated fledge count is used instead.
+  let hatchDate: string | null = null;
+  for (const { date, data } of checks) {
+    if (data.is_empty_cavity || data.young_count <= 0 || data.nestling_age_days == null) continue;
+    const ms = new Date(date).getTime() - data.nestling_age_days * 86400000;
+    const hd = new Date(ms);
+    hatchDate = `${hd.getFullYear()}-${String(hd.getMonth() + 1).padStart(2, '0')}-${String(hd.getDate()).padStart(2, '0')}`;
+    break;
+  }
+
+  function ageAt(date: string): number | null {
+    if (hatchDate === null) return null;
+    return elapsedDays(hatchDate, date);
+  }
+
+  const fledgeThreshold = 26;
+
   let total = 0;
   for (let i = 1; i < checks.length; i++) {
     const { date: prevDate, data: prev } = checks[i - 1];
     const { date: currDate, data: curr } = checks[i];
     if (prev.is_empty_cavity || prev.young_count <= 0) continue;
 
-    // Determine nestling age at the current check date.
-    // If current check still has young with a recorded age, use it directly.
-    // Otherwise project forward from the previous check's recorded age.
-    let ageAtCurr: number | null = null;
-    if (!curr.is_empty_cavity && curr.nestling_age_days != null && curr.young_count > 0) {
-      ageAtCurr = curr.nestling_age_days;
-    } else if (prev.nestling_age_days != null) {
-      ageAtCurr = prev.nestling_age_days + elapsedDays(prevDate, currDate);
-    }
-    if (ageAtCurr == null || ageAtCurr < 26) continue;
+    const ageAtCurr = curr.nestling_age_days ?? ageAt(currDate);
+    if (ageAtCurr == null || ageAtCurr < fledgeThreshold) continue;
 
     const currYoung = curr.is_empty_cavity ? 0 : curr.young_count;
     const drop      = prev.young_count - currYoung;
@@ -71,18 +82,17 @@ function calcFledgeFromChecks(
     total += Math.max(0, drop - deadYoung);
   }
 
-  // Final check with young: if age is already >= 26, count them.
-  // If age < 26, project forward to the next scheduled check date (which may be a blank
-  // cell for this compartment) — if they would reach viability by then, count them.
+  // Final check with young still present: project age forward to the next scheduled
+  // check date (covers blank cells — the most common post-fledge pattern).
   if (checks.length > 0) {
     const { date: lastDate, data: last } = checks[checks.length - 1];
-    if (!last.is_empty_cavity && last.young_count > 0 && last.nestling_age_days != null) {
-      let projectedAge = last.nestling_age_days;
-      if (projectedAge < 26) {
+    if (!last.is_empty_cavity && last.young_count > 0) {
+      let projectedAge = last.nestling_age_days ?? ageAt(lastDate) ?? null;
+      if (projectedAge != null && projectedAge < fledgeThreshold) {
         const nextScheduled = allCheckDates.find(d => d > lastDate);
-        if (nextScheduled) projectedAge = last.nestling_age_days + elapsedDays(lastDate, nextScheduled);
+        if (nextScheduled) projectedAge = projectedAge + elapsedDays(lastDate, nextScheduled);
       }
-      if (projectedAge >= 26) total += last.young_count;
+      if (projectedAge != null && projectedAge >= fledgeThreshold) total += last.young_count;
     }
   }
   return total;
