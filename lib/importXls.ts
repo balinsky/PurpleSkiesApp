@@ -115,7 +115,7 @@ export function parseCheckCode(raw: string): ParseCodeResult {
 
   // Tokenize on whitespace AND split fused patterns like 3Y2E or 4YHD.
   // Priority order ensures longest/most-specific match wins (e.g. DYD before DY, ED before E).
-  const TOKEN_RE = /\d+DYD|\d+DY|\d+DO|\d+ED|\d+E|\d+Y|[A-Z]+|\d+/g;
+  const TOKEN_RE = /\d+DYD|\d+DY|\d+DO|\d+ED|\d+E|\d+Y|\d+B|[A-Z]+|\d+/g;
   const toks: Array<{ t: string; start: number }> = [];
   let m2: RegExpExecArray | null;
   while ((m2 = TOKEN_RE.exec(rest)) !== null) toks.push({ t: m2[0], start: m2.index });
@@ -155,6 +155,10 @@ export function parseCheckCode(raw: string): ParseCodeResult {
       }
       i++; continue;
     }
+
+    // {n}B — young count with banding (PMCA standard: "4B" = 4 young banded)
+    m = t.match(/^(\d+)B$/);
+    if (m) { young_count = parseInt(m[1], 10); has_banding = true; has_nest = true; i++; continue; }
 
     // {n}DY or {n}DYD — dead young
     m = t.match(/^(\d+)DYD?$/);
