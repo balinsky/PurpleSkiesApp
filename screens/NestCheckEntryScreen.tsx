@@ -1028,6 +1028,30 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       }
     }
 
+    // Detect hidden egg: young + discarded eggs exceed the highest prior net-egg count,
+    // meaning at least one egg was present but not counted in earlier checks.
+    if (IsPM && YoungCount > 0 && EggCount > 0 && DiscardedEggs > 0 && !AdultPresent && !IsEmpty) {
+      const PriorForAttempt = AllPriorEntriesRef.current.filter(
+        e => e.nesting_attempt === NestingAttempt &&
+             e.id !== ExistingEntryId &&
+             !e.is_empty_cavity && !e.nest_discarded,
+      );
+      const MaxPriorNet = PriorForAttempt.reduce(
+        (m, e) => Math.max(m, (e.egg_count ?? 0) - (e.discarded_eggs ?? 0)), 0,
+      );
+      const EffectiveTotal = YoungCount + DiscardedEggs;
+      if (EffectiveTotal > MaxPriorNet) {
+        const Hidden = EffectiveTotal - MaxPriorNet;
+        await new Promise<void>(resolve => {
+          Alert.alert(
+            'Hidden egg detected',
+            `This entry has ${YoungCount} young + ${DiscardedEggs} discarded egg${DiscardedEggs !== 1 ? 's' : ''} (${EffectiveTotal} total), but earlier checks showed at most ${MaxPriorNet} egg${MaxPriorNet !== 1 ? 's' : ''}. This suggests ${Hidden === 1 ? 'an egg was' : `${Hidden} eggs were`} hidden until hatching.`,
+            [{ text: 'OK', onPress: resolve }],
+          );
+        });
+      }
+    }
+
     // If only age observations were recorded (no nest, no eggs, no young), treat as
     // adult-present-only regardless of whether the user toggled the checkbox — prevents PMN in export.
     const FinalAdultPresent = AdultPresent ||

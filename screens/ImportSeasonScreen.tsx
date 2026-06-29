@@ -127,6 +127,25 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
         setState('idle');
         return;
       }
+      // Warn if "Total # Eggs Laid" (app-calculated at export time) disagrees with "Egg #" (user-stated)
+      const eggMismatches = parsed.rows.filter(
+        r => r.total_eggs_laid != null && r.stated_eggs != null && r.total_eggs_laid !== r.stated_eggs,
+      );
+      if (eggMismatches.length > 0) {
+        const labels = eggMismatches.map(r => r.cavity_label + (r.nesting_attempt > 1 ? ' (RA)' : '')).join(', ');
+        const choice = await new Promise<'fix' | 'continue'>(resolve => {
+          Alert.alert(
+            'Egg count mismatch',
+            `In ${eggMismatches.length === 1 ? '1 row' : `${eggMismatches.length} rows`} the "Total # Eggs Laid" column disagrees with the "Egg #" column (${labels}).\n\nFix your spreadsheet and re-import, or continue using the "Egg #" values.`,
+            [
+              { text: 'Fix spreadsheet', style: 'cancel', onPress: () => resolve('fix') },
+              { text: 'Continue', style: 'default', onPress: () => resolve('continue') },
+            ],
+          );
+        });
+        if (choice === 'fix') { setState('idle'); return; }
+      }
+
       setSummary(parsed);
       setState('ready');
     } catch (e: any) {
@@ -380,7 +399,7 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
             fledged_count:       date === lastValidDate ? effectiveFledge : 0,
             renesting_attempt:   Row.nesting_attempt > 1,
             nesting_attempt:     Row.nesting_attempt,
-            notes:               D.notes ?? null,
+            notes:               D.has_banding ? (D.notes ? `${D.notes} banded` : 'banded') : (D.notes ?? null),
             observed_male_age:   null as null,
             observed_female_age: null as null,
             gourd_removed:       D.gourd_removed,

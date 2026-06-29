@@ -334,3 +334,4 @@ describe('validateFederalBandCode', () => {
     expect(validateFederalBandCode('1234.5678')).toMatch(/only contain digits/);
   });
 });
+

@@ -202,9 +202,22 @@ Suffixes follow the content code, separated by a space.
 
 | Suffix | Meaning | Import behavior |
 |--------|---------|-----------------|
-| `B` | Banding recorded | Noted but banding detail not imported (enter manually) |
+| `B` | Banding (PMCA standard code) | `has_banding` flag noted; "banded" appended to the entry's notes field since band numbers are not stored on import |
 | `GR` | Gourd removed | `gourd_removed=true` |
 | `RA` | *(cavity label column only)* | See Renesting section above |
+
+### Fused tokens
+
+Codes may be written with or without spaces between tokens. The parser splits on whitespace **and** on token boundaries within a run of characters:
+
+| Fused | Space-separated | Meaning |
+|-------|-----------------|---------|
+| `3Y2E` | `3Y 2E` | 3 young, 2 eggs |
+| `4Y2EHD` | `4Y 2E HD` | 4 young, 2 eggs, hatch day |
+| `3Y14DO` | `3Y 14DO` | 3 young, 14 days old |
+| `2ED3Y` | `2ED 3Y` | 2 discarded eggs, 3 young |
+
+> **`4B` is not a valid code.** Write `4Y B` — a bare number without a recognized suffix (E, Y, ED, DY, DO) is unrecognized and stored as a note. The `B` suffix always stands alone.
 
 ---
 
@@ -250,6 +263,7 @@ The import is staged (parsed and validated) before any data is written to the da
 | Unknown species | `ZZ 2E` | Cell highlighted |
 | Unparseable date | `13/45/2024` | Entire column rejected; user must correct |
 | Multi-year dates | Dates in 2023 and 2024 | Import rejected; user must split the file |
+| Egg column mismatch | `Total # Eggs Laid` ≠ `Egg #` | User is prompted: fix the spreadsheet, or continue using the `Egg #` values |
 
 ### Correction workflow
 
@@ -270,4 +284,4 @@ If a `site_season` for the detected year already exists at the selected site, th
 
 ## Summary Columns (last 3)
 
-The final three columns (Egg #, Hatch #, Fledge #) are computed summaries and are **ignored on import**.
+The final three columns (**Egg #**, **Hatch #**, **Fledge #**) contain per-nest season totals. On import these are read as *stated* values and compared against totals calculated from the check codes during the review step. Cells where stated ≠ calculated are flagged in red; the user may tap any cell to override the final stored value before confirming the import.

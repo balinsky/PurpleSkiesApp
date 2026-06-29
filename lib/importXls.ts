@@ -33,9 +33,10 @@ export type ImportRow = {
   male_age: string | null;
   female_age: string | null;
   checks: { date: string; result: ParseCodeResult }[];
-  stated_eggs: number | null;   // from "Egg #" summary column
-  stated_hatch: number | null;  // from "Hatch #" summary column
-  stated_fledge: number | null; // from "Fledge #" summary column
+  stated_eggs: number | null;      // from "Egg #" summary column
+  stated_hatch: number | null;     // from "Hatch #" summary column
+  stated_fledge: number | null;    // from "Fledge #" summary column
+  total_eggs_laid: number | null;  // from "Total # Eggs Laid" computed column
 };
 
 export type ImportError = {
@@ -112,14 +113,17 @@ export function parseCheckCode(raw: string): ParseCodeResult {
     return { ok: true, data: { species, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days, dead_young_count, dead_adult_sex, gourd_removed, has_banding, notes: null } };
   }
 
-  // Tokenize remaining string; keep parallel original-case tokens for note collection
-  const tokens     = rest.split(/\s+/).filter(Boolean);
-  const origTokens = restOrig.split(/\s+/).filter(Boolean);
+  // Tokenize on whitespace AND split fused patterns like 3Y2E or 4YHD.
+  // Priority order ensures longest/most-specific match wins (e.g. DYD before DY, ED before E).
+  const TOKEN_RE = /\d+DYD|\d+DY|\d+DO|\d+ED|\d+E|\d+Y|[A-Z]+|\d+/g;
+  const toks: Array<{ t: string; start: number }> = [];
+  let m2: RegExpExecArray | null;
+  while ((m2 = TOKEN_RE.exec(rest)) !== null) toks.push({ t: m2[0], start: m2.index });
   const noteWords: string[] = [];
   let i = 0;
 
-  while (i < tokens.length) {
-    const t = tokens[i];
+  while (i < toks.length) {
+    const t = toks[i].t;
 
     if (t === 'X')                { is_empty_cavity = true;       i++; continue; }
     if (t === 'N' || t === 'PMN') { has_nest = true;              i++; continue; }
@@ -144,9 +148,9 @@ export function parseCheckCode(raw: string): ParseCodeResult {
     if (m) {
       young_count = parseInt(m[1], 10);
       has_nest = true;
-      if (i + 1 < tokens.length) {
-        if (tokens[i + 1] === 'HD') { nestling_age_days = 0; i += 2; continue; }
-        const am = tokens[i + 1].match(/^(\d+)DO$/);
+      if (i + 1 < toks.length) {
+        if (toks[i + 1].t === 'HD') { nestling_age_days = 0; i += 2; continue; }
+        const am = toks[i + 1].t.match(/^(\d+)DO$/);
         if (am) { nestling_age_days = parseInt(am[1], 10); i += 2; continue; }
       }
       i++; continue;
@@ -161,7 +165,7 @@ export function parseCheckCode(raw: string): ParseCodeResult {
     if (m) { nestling_age_days = parseInt(m[1], 10); i++; continue; }
 
     // Unrecognized token → treat as free-text note (preserve original case)
-    noteWords.push(origTokens[i] ?? t);
+    noteWords.push(restOrig.slice(toks[i].start, toks[i].start + toks[i].t.length));
     i++;
   }
 
@@ -249,13 +253,14 @@ export async function parseImportFile(uri: string): Promise<ImportSummary | stri
     return 'No check date columns found. Make sure the file uses the Purple Skies export format.';
   }
 
-  // Detect optional stated-summary columns (Egg #, Hatch #, Fledge # from the export)
-  let statedEggsCol = -1, statedHatchCol = -1, statedFledgeCol = -1;
+  // Detect optional stated-summary columns and the computed total-eggs column
+  let statedEggsCol = -1, statedHatchCol = -1, statedFledgeCol = -1, totalEggsLaidCol = -1;
   for (let c = 0; c < header1.length; c++) {
     const h = String(header1[c]).trim();
     if (h === 'Egg #') statedEggsCol = c;
     else if (h === 'Hatch #') statedHatchCol = c;
     else if (h === 'Fledge #') statedFledgeCol = c;
+    else if (h === 'Total # Eggs Laid') totalEggsLaidCol = c;
   }
 
   // Parse check dates from header row 2
@@ -375,11 +380,12 @@ export async function parseImportFile(uri: string): Promise<ImportSummary | stri
       }
     }
 
-    const stated_eggs   = statedEggsCol   >= 0 ? parseIntCell(row[statedEggsCol])   : null;
-    const stated_hatch  = statedHatchCol  >= 0 ? parseIntCell(row[statedHatchCol])  : null;
-    const stated_fledge = statedFledgeCol >= 0 ? parseIntCell(row[statedFledgeCol]) : null;
+    const stated_eggs    = statedEggsCol    >= 0 ? parseIntCell(row[statedEggsCol])    : null;
+    const stated_hatch   = statedHatchCol   >= 0 ? parseIntCell(row[statedHatchCol])   : null;
+    const stated_fledge  = statedFledgeCol  >= 0 ? parseIntCell(row[statedFledgeCol])  : null;
+    const total_eggs_laid = totalEggsLaidCol >= 0 ? parseIntCell(row[totalEggsLaidCol]) : null;
 
-    rows.push({ rowIndex: ri + 1, unit_name, housing_type, hole_type, cavity_label: bare, nesting_attempt, male_age, female_age, checks, stated_eggs, stated_hatch, stated_fledge });
+    rows.push({ rowIndex: ri + 1, unit_name, housing_type, hole_type, cavity_label: bare, nesting_attempt, male_age, female_age, checks, stated_eggs, stated_hatch, stated_fledge, total_eggs_laid });
   }
 
   return { year, check_dates: checkDates, rows, errors };
