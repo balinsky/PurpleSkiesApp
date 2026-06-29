@@ -187,8 +187,16 @@ function defaultUnitName(housingTypeCode: string): string {
 
 // ── Date helpers ───────────────────────────────────────────────────────────────
 
-function parseMDY(s: string): string | null {
-  const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+function excelSerialToISO(serial: number): string {
+  // Excel epoch is 1900-01-00; 25569 = days between Excel epoch and Unix epoch
+  const d = new Date(Math.round((serial - 25569) * 86400 * 1000));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+function parseDate(val: unknown): string | null {
+  // xlsx-js-style returns date cells as raw serial numbers when no cellDates option is set
+  if (typeof val === 'number' && val > 1000) return excelSerialToISO(val);
+  const m = String(val).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!m) return null;
   const [, mo, dy, yr] = m.map(Number);
   if (mo < 1 || mo > 12 || dy < 1 || dy > 31) return null;
@@ -234,7 +242,7 @@ export async function parseImportFile(uri: string): Promise<ImportSummary | stri
   const checkDates: string[] = [];
   const dateErrors: string[] = [];
   for (const ci of checkColIndices) {
-    const iso = parseMDY(String(header2[ci] ?? ''));
+    const iso = parseDate(header2[ci] ?? '');
     if (!iso) {
       dateErrors.push(`Column ${ci + 1}: unparseable date "${header2[ci]}"`);
     } else {
@@ -380,7 +388,7 @@ export async function exportErrorSheet(
   const header2: string[] = (XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as string[][])[1] ?? [];
   const dateToCol = new Map<string, number>();
   for (const ci of checkColIndices) {
-    const iso = parseMDY(String(header2[ci] ?? ''));
+    const iso = parseDate(header2[ci] ?? '');
     if (iso) dateToCol.set(iso, ci);
   }
 
