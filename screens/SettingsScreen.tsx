@@ -1,6 +1,7 @@
 import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Divider, List, Switch, Text } from 'react-native-paper';
+import Constants from 'expo-constants';
 import { useSettings } from '../contexts/SettingsContext';
 
 const BANDING_WARNING =
@@ -34,6 +35,9 @@ export default function SettingsScreen() {
         </View>
       )}
       <Divider />
+      <Text variant="bodySmall" style={styles.BuildInfo}>
+        Version {Constants.nativeAppVersion ?? Constants.expoConfig?.version ?? '—'} · Build {Constants.nativeBuildVersion ?? 'dev'}
+      </Text>
     </ScrollView>
   );
 }
@@ -45,4 +49,5 @@ const styles = StyleSheet.create({
   BandingWarning:      { backgroundColor: '#fff8e1', borderRadius: 8, padding: 12, marginTop: 8, marginBottom: 4 },
   BandingWarningTitle: { fontWeight: '700', color: '#b45309', marginBottom: 4 },
   BandingWarningText:  { color: '#78350f', lineHeight: 18 },
+  BuildInfo:           { marginTop: 16, color: '#aaa', textAlign: 'center' },
 });

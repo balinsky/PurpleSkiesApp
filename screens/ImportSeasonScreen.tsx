@@ -38,33 +38,57 @@ type RowOverrides = { eggs?: number; hatch?: number; fledge?: number };
 
 // ── Pure helpers (outside component) ─────────────────────────────────────────
 
-function calcFledgeFromChecks(okData: ImportEntryData[]): number {
+function calcFledgeFromChecks(
+  checks: Array<{ date: string; data: ImportEntryData }>,
+): number {
   let total = 0;
-  for (let i = 1; i < okData.length; i++) {
-    const prev = okData[i - 1];
-    const curr = okData[i];
-    if (prev.is_empty_cavity || curr.is_empty_cavity) continue;
-    const drop = prev.young_count - curr.young_count;
-    if (drop > 0 && curr.nestling_age_days != null && curr.nestling_age_days >= 26) {
-      total += Math.max(0, drop - curr.dead_young_count);
+  for (let i = 1; i < checks.length; i++) {
+    const { date: prevDate, data: prev } = checks[i - 1];
+    const { date: currDate, data: curr } = checks[i];
+    if (prev.is_empty_cavity || prev.young_count <= 0) continue;
+
+    // Determine nestling age at the current check date.
+    // If current check still has young with a recorded age, use it directly.
+    // Otherwise project forward from the previous check's recorded age.
+    let ageAtCurr: number | null = null;
+    if (!curr.is_empty_cavity && curr.nestling_age_days != null && curr.young_count > 0) {
+      ageAtCurr = curr.nestling_age_days;
+    } else if (prev.nestling_age_days != null) {
+      const elapsed = Math.round(
+        (new Date(currDate).getTime() - new Date(prevDate).getTime()) / 86400000,
+      );
+      ageAtCurr = prev.nestling_age_days + elapsed;
     }
+    if (ageAtCurr == null || ageAtCurr < 26) continue;
+
+    const currYoung  = curr.is_empty_cavity ? 0 : curr.young_count;
+    const drop       = prev.young_count - currYoung;
+    if (drop <= 0) continue;
+
+    const deadYoung = curr.is_empty_cavity ? 0 : curr.dead_young_count;
+    total += Math.max(0, drop - deadYoung);
   }
-  const last = okData[okData.length - 1];
-  if (last && !last.is_empty_cavity && last.young_count > 0 &&
-      last.nestling_age_days != null && last.nestling_age_days >= 26) {
-    total += last.young_count;
+
+  // If the final check still has young old enough to have fledged, count them.
+  if (checks.length > 0) {
+    const { data: last } = checks[checks.length - 1];
+    if (!last.is_empty_cavity && last.young_count > 0 &&
+        last.nestling_age_days != null && last.nestling_age_days >= 26) {
+      total += last.young_count;
+    }
   }
   return total;
 }
 
 function computeRowStats(summary: ImportSummary): RowStats[] {
   return summary.rows.map(Row => {
-    const okData = Row.checks
+    const okChecks = Row.checks
       .filter(c => c.result.ok)
-      .map(c => (c.result as ParseCodeOk).data);
+      .map(c => ({ date: c.date, data: (c.result as ParseCodeOk).data }));
+    const okData = okChecks.map(c => c.data);
     const calcEggs  = calcTotalEggsLaid(okData);
     const calcHatch = Math.max(0, ...okData.map(c => c.young_count), 0);
-    const calcFledge = calcFledgeFromChecks(okData);
+    const calcFledge = calcFledgeFromChecks(okChecks);
     const label = Row.cavity_label + (Row.nesting_attempt > 1 ? ' (RA)' : '');
     return {
       rowIndex: Row.rowIndex, label,
@@ -354,8 +378,8 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
         } else if (Row.stated_fledge != null) {
           effectiveFledge = Row.stated_fledge;
         } else {
-          const okData = Row.checks.filter(c => c.result.ok).map(c => (c.result as ParseCodeOk).data);
-          effectiveFledge = calcFledgeFromChecks(okData);
+          const okChecks = Row.checks.filter(c => c.result.ok).map(c => ({ date: c.date, data: (c.result as ParseCodeOk).data }));
+          effectiveFledge = calcFledgeFromChecks(okChecks);
         }
 
         // Write fledge to the last valid check entry

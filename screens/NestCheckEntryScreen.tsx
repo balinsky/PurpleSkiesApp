@@ -1046,7 +1046,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           Alert.alert(
             'Hidden egg detected',
             `This entry has ${YoungCount} young + ${DiscardedEggs} discarded egg${DiscardedEggs !== 1 ? 's' : ''} (${EffectiveTotal} total), but earlier checks showed at most ${MaxPriorNet} egg${MaxPriorNet !== 1 ? 's' : ''}. This suggests ${Hidden === 1 ? 'an egg was' : `${Hidden} eggs were`} hidden until hatching.`,
-            [{ text: 'OK', onPress: resolve }],
+            [{ text: 'OK', onPress: () => resolve() }],
           );
         });
       }
