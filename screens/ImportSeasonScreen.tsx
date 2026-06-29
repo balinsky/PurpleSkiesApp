@@ -116,29 +116,39 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
       }
 
       // ── Build housing units and compartments ──────────────────────
-      // Collect unique unit names from rows (housing_type defines the unit type)
-      const UnitMap = new Map<string, { id: string; housing_type: string }>(); // name → {id, housing_type}
+      const UnitMap = new Map<string, { id: string; unit_type: string }>(); // unit_name → {id, unit_type}
       for (const Row of Summary.rows) {
-        const unitName = housingTypeName(Row.housing_type);
+        const unitName = Row.unit_name;
         if (!UnitMap.has(unitName)) {
-          // Check if it exists in Supabase already
-          const { data: existing } = await supabase
+          const unit_type = unitTypeFromHousingCode(Row.housing_type);
+          const { data: existingUnit } = await supabase
             .from('housing_units')
-            .select('id')
+            .select('id, unit_type')
             .eq('site_id', SiteId)
             .eq('site_season_id', SeasonId)
             .eq('name', unitName)
             .maybeSingle();
 
-          if (existing) {
-            UnitMap.set(unitName, { id: existing.id, housing_type: Row.housing_type });
+          if (existingUnit) {
+            UnitMap.set(unitName, { id: existingUnit.id, unit_type: (existingUnit as any).unit_type ?? unit_type });
           } else {
+            // Derive default hole type from the most common hole_type in this unit's rows
+            const holeCounts = new Map<string, number>();
+            for (const R of Summary.rows) {
+              if (R.unit_name === unitName && R.hole_type) {
+                holeCounts.set(R.hole_type, (holeCounts.get(R.hole_type) ?? 0) + 1);
+              }
+            }
+            const default_hole_type = holeCounts.size > 0
+              ? [...holeCounts.entries()].sort((a, b) => b[1] - a[1])[0][0]
+              : null;
+
             const newId = makeId();
             const { error } = await supabase.from('housing_units').insert({
               id: newId, site_id: SiteId, site_season_id: SeasonId,
-              name: unitName, housing_type: Row.housing_type,
+              name: unitName, unit_type, default_hole_type,
             });
-            if (!error) UnitMap.set(unitName, { id: newId, housing_type: Row.housing_type });
+            if (!error) UnitMap.set(unitName, { id: newId, unit_type });
           }
         }
       }
@@ -149,10 +159,10 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
         [],
       );
 
-      // Compartments — keyed by unitName + bare cavity label (attempt 1 only for dedup)
+      // Compartments — keyed by unitName + bare cavity label
       const CompMap = new Map<string, string>(); // `${unitName}:${bare}` → compartment_id
       for (const Row of Summary.rows) {
-        const unitName = housingTypeName(Row.housing_type);
+        const unitName = Row.unit_name;
         const unit = UnitMap.get(unitName);
         if (!unit) continue;
         const compKey = `${unitName}:${Row.cavity_label}`;
@@ -180,7 +190,9 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
 
       // Cache compartments locally
       await cacheUnitsAndCompartments([], [...CompMap.entries()].map(([key, id]) => {
-        const [unitName, label] = key.split(':');
+        const colonIdx = key.indexOf(':');
+        const unitName = key.slice(0, colonIdx);
+        const label    = key.slice(colonIdx + 1);
         const unit = UnitMap.get(unitName)!;
         return { id, housing_unit_id: unit.id, cavity_label: label, sort_order: null, site_season_id: SeasonId };
       }));
@@ -214,8 +226,7 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
 
       // ── Write nest check entries ───────────────────────────────────
       for (const Row of Summary.rows) {
-        const unitName = housingTypeName(Row.housing_type);
-        const compKey  = `${unitName}:${Row.cavity_label}`;
+        const compKey  = `${Row.unit_name}:${Row.cavity_label}`;
         const CompId   = CompMap.get(compKey);
         if (!CompId) continue;
 
@@ -258,7 +269,7 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
             fledged_count: 0,
             renesting_attempt: Row.nesting_attempt > 1,
             nesting_attempt: Row.nesting_attempt,
-            notes: null as null,
+            notes: D.notes ?? null,
             observed_male_age: null as null,
             observed_female_age: null as null,
             gourd_removed: D.gourd_removed,
@@ -411,12 +422,14 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
   );
 }
 
-function housingTypeName(code: string): string {
-  const names: Record<string, string> = {
-    WH: 'Wooden House', MH: 'Metal House', PH: 'Plastic House',
-    NG: 'Natural Gourd Rack', AG: 'Artificial Gourd Rack',
-  };
-  return names[code.toUpperCase()] ?? code;
+function unitTypeFromHousingCode(code: string): string {
+  switch (code.toUpperCase()) {
+    case 'WH': return 'wooden_house';
+    case 'MH': return 'metal_house';
+    case 'PH': return 'plastic_house';
+    case 'AG': case 'NG': return 'gourd_rack';
+    default:   return 'wooden_house';
+  }
 }
 
 const styles = StyleSheet.create({

@@ -16,6 +16,7 @@ export type ImportEntryData = {
   dead_adult_sex: 'M' | 'F' | 'U' | null;
   gourd_removed: boolean;
   has_banding: boolean;
+  notes: string | null;
 };
 
 export type ParseCodeError = { ok: false; raw: string; reason: string };
@@ -24,6 +25,7 @@ export type ParseCodeResult = ParseCodeOk | ParseCodeError;
 
 export type ImportRow = {
   rowIndex: number;
+  unit_name: string;          // resolved housing unit name
   housing_type: string;
   hole_type: string;
   cavity_label: string;       // bare label, no " (RA)"
@@ -52,7 +54,11 @@ export type ImportSummary = {
 const KNOWN_SPECIES = ['PM', 'HS', 'ST', 'TS', 'BB', 'HW'];
 
 export function parseCheckCode(raw: string): ParseCodeResult {
-  const s = raw.trim().toUpperCase();
+  const sOrig = raw.trim();
+  const s     = sOrig.toUpperCase();
+
+  // Codes are matched case-insensitively (toUpperCase handles 5e, 3y, hd, 3do, etc.).
+  // Unrecognized tokens are collected as notes with their original case.
 
   if (!s || s === 'X') {
     return {
@@ -61,6 +67,7 @@ export function parseCheckCode(raw: string): ParseCodeResult {
         species: 'PM', is_empty_cavity: true, has_nest: false, nest_discarded: false,
         egg_count: 0, discarded_eggs: 0, young_count: 0, nestling_age_days: null,
         dead_young_count: 0, dead_adult_sex: null, gourd_removed: false, has_banding: false,
+        notes: null,
       },
     };
   }
@@ -80,6 +87,10 @@ export function parseCheckCode(raw: string): ParseCodeResult {
     }
   }
 
+  // Parallel original-case rest string for note extraction (toUpperCase is length-preserving for ASCII)
+  const consumed = s.length - rest.length;
+  const restOrig = sOrig.slice(consumed);
+
   let is_empty_cavity = false;
   let has_nest = false;
   let nest_discarded = false;
@@ -95,11 +106,13 @@ export function parseCheckCode(raw: string): ParseCodeResult {
   if (!rest) {
     // Bare species code (e.g. "PM") — treat as nest only for PM, unknown otherwise
     if (species === 'PM') has_nest = true;
-    return { ok: true, data: { species, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days, dead_young_count, dead_adult_sex, gourd_removed, has_banding } };
+    return { ok: true, data: { species, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days, dead_young_count, dead_adult_sex, gourd_removed, has_banding, notes: null } };
   }
 
-  // Tokenize remaining string
-  const tokens = rest.split(/\s+/).filter(Boolean);
+  // Tokenize remaining string; keep parallel original-case tokens for note collection
+  const tokens     = rest.split(/\s+/).filter(Boolean);
+  const origTokens = restOrig.split(/\s+/).filter(Boolean);
+  const noteWords: string[] = [];
   let i = 0;
 
   while (i < tokens.length) {
@@ -144,7 +157,9 @@ export function parseCheckCode(raw: string): ParseCodeResult {
     m = t.match(/^(\d+)DO$/);
     if (m) { nestling_age_days = parseInt(m[1], 10); i++; continue; }
 
-    return { ok: false, raw, reason: `Unrecognized code: "${t}"` };
+    // Unrecognized token → treat as free-text note (preserve original case)
+    noteWords.push(origTokens[i] ?? t);
+    i++;
   }
 
   // {n}ED alone → all found were discarded → egg_count = discarded_eggs
@@ -156,7 +171,18 @@ export function parseCheckCode(raw: string): ParseCodeResult {
     return { ok: false, raw, reason: `Discarded eggs (${discarded_eggs}) > total eggs (${egg_count})` };
   }
 
-  return { ok: true, data: { species, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days, dead_young_count, dead_adult_sex, gourd_removed, has_banding } };
+  const notes = noteWords.length > 0 ? noteWords.join(' ') : null;
+  return { ok: true, data: { species, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days, dead_young_count, dead_adult_sex, gourd_removed, has_banding, notes } };
+}
+
+// ── Unit name helpers ──────────────────────────────────────────────────────────
+
+function defaultUnitName(housingTypeCode: string): string {
+  const names: Record<string, string> = {
+    WH: 'Wooden House', MH: 'Metal House', PH: 'Plastic House',
+    NG: 'Natural Gourd Rack', AG: 'Artificial Gourd Rack',
+  };
+  return names[housingTypeCode.toUpperCase()] ?? housingTypeCode;
 }
 
 // ── Date helpers ───────────────────────────────────────────────────────────────
@@ -227,8 +253,16 @@ export async function parseImportFile(uri: string): Promise<ImportSummary | stri
   }
   const year = [...years][0];
 
-  // Last 3 cols are summary (Egg #, Hatch #, Fledge #); skip them
-  const summaryStart = checkColIndices[checkColIndices.length - 1] + 1;
+  // Detect import format
+  type ImportFormat = 'a' | 'b' | 'c';
+  let detectedFormat: ImportFormat = 'a';
+  const col0Header = String(header1[0] ?? '').trim().toLowerCase();
+  if (col0Header === 'housing unit') {
+    detectedFormat = 'c';
+  } else {
+    const hasPipe = raw.slice(2).some(row => row && String(row[2] ?? '').includes('|'));
+    if (hasPipe) detectedFormat = 'b';
+  }
 
   // Track RA count per bare label to assign nesting_attempt
   const attemptCounter = new Map<string, number>();
@@ -240,10 +274,34 @@ export async function parseImportFile(uri: string): Promise<ImportSummary | stri
     const row = raw[ri];
     if (!row || row.every(c => !String(c).trim())) continue; // skip blank rows
 
-    const housing_type = String(row[0] ?? '').trim().toUpperCase();
-    const hole_type    = String(row[1] ?? '').trim().toUpperCase();
-    const rawLabel     = String(row[2] ?? '').trim();
-    const ageStr       = String(row[3] ?? '').trim();
+    let housing_type: string, hole_type: string, rawLabel: string, ageStr: string, unit_name: string;
+
+    if (detectedFormat === 'c') {
+      unit_name    = String(row[0] ?? '').trim();
+      housing_type = String(row[1] ?? '').trim().toUpperCase();
+      hole_type    = String(row[2] ?? '').trim().toUpperCase();
+      rawLabel     = String(row[3] ?? '').trim();
+      ageStr       = String(row[4] ?? '').trim();
+    } else if (detectedFormat === 'b') {
+      housing_type = String(row[0] ?? '').trim().toUpperCase();
+      hole_type    = String(row[1] ?? '').trim().toUpperCase();
+      const combined = String(row[2] ?? '').trim();
+      const pipeIdx  = combined.lastIndexOf('|');
+      if (pipeIdx >= 0) {
+        unit_name = combined.slice(0, pipeIdx).trim();
+        rawLabel  = combined.slice(pipeIdx + 1).trim();
+      } else {
+        unit_name = defaultUnitName(housing_type);
+        rawLabel  = combined;
+      }
+      ageStr = String(row[3] ?? '').trim();
+    } else {
+      housing_type = String(row[0] ?? '').trim().toUpperCase();
+      hole_type    = String(row[1] ?? '').trim().toUpperCase();
+      rawLabel     = String(row[2] ?? '').trim();
+      ageStr       = String(row[3] ?? '').trim();
+      unit_name    = defaultUnitName(housing_type);
+    }
 
     if (!rawLabel) continue;
 
@@ -289,7 +347,7 @@ export async function parseImportFile(uri: string): Promise<ImportSummary | stri
       }
     }
 
-    rows.push({ rowIndex: ri + 1, housing_type, hole_type, cavity_label: bare, nesting_attempt, male_age, female_age, checks });
+    rows.push({ rowIndex: ri + 1, unit_name, housing_type, hole_type, cavity_label: bare, nesting_attempt, male_age, female_age, checks });
   }
 
   return { year, check_dates: checkDates, rows, errors };

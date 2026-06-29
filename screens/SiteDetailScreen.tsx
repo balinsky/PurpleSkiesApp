@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { Button, Card, Dialog, Divider, HelperText, List, Portal, Text, TextInput } from 'react-native-paper';
+import { Button, Card, Checkbox, Dialog, Divider, HelperText, List, Portal, RadioButton, Text, TextInput } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
@@ -44,6 +44,8 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
   const [EditContactCity, setEditContactCity]   = useState('');
   const [EditContactState, setEditContactState] = useState('');
   const [EditContactZip, setEditContactZip]     = useState('');
+  const [EditExportFormat, setEditExportFormat]           = useState<'a' | 'b' | 'c' | null>(null);
+  const [EditExportIncludeNotes, setEditExportIncludeNotes] = useState(false);
   const [EditLoading, setEditLoading]           = useState(false);
   const [EditFetching, setEditFetching]         = useState(false);
   const [EditError, setEditError]               = useState('');
@@ -147,20 +149,22 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
     setEditVisible(true);
     const { data } = await supabase
       .from('sites')
-      .select('name, address, contact_name, contact_email, contact_phone, contact_address, contact_city, contact_state, contact_zip')
+      .select('name, address, contact_name, contact_email, contact_phone, contact_address, contact_city, contact_state, contact_zip, export_format, export_include_notes')
       .eq('id', SiteId)
       .single();
     setEditFetching(false);
     if (data) {
       setEditName(data.name ?? '');
-      setEditAddress(data.address ?? '');
+      setEditAddress((data as any).address ?? '');
       setEditContactName(data.contact_name ?? '');
-      setEditContactEmail(data.contact_email ?? '');
-      setEditContactPhone(data.contact_phone ?? '');
+      setEditContactEmail((data as any).contact_email ?? '');
+      setEditContactPhone((data as any).contact_phone ?? '');
       setEditContactAddr(data.contact_address ?? '');
       setEditContactCity(data.contact_city ?? '');
       setEditContactState(data.contact_state ?? '');
       setEditContactZip(data.contact_zip ?? '');
+      setEditExportFormat(((data as any).export_format as 'a' | 'b' | 'c') ?? null);
+      setEditExportIncludeNotes(!!(data as any).export_include_notes);
     }
   }
 
@@ -179,7 +183,9 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
         contact_city:    EditContactCity.trim()  || null,
         contact_state:   EditContactState.trim() || null,
         contact_zip:     EditContactZip.trim()   || null,
-      })
+        export_format:         EditExportFormat,
+        export_include_notes:  EditExportIncludeNotes,
+      } as any)
       .eq('id', SiteId);
     setEditLoading(false);
     if (error) { setEditError(friendlyError(error)); return; }
@@ -411,6 +417,28 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
                   maxLength={10}
                   style={styles.DialogInput}
                 />
+                <Text variant="titleSmall" style={styles.DialogSectionLabel}>Export Format</Text>
+                <HelperText type="info" visible style={{ marginBottom: 4 }}>
+                  If not set, you will be asked each time you export. Format A uses only the cavity label (PMCA-compliant). Format B prepends the housing unit name separated by | (PMCA-compliant). Format C adds a separate Housing Unit column.
+                </HelperText>
+                <RadioButton.Group
+                  onValueChange={v => setEditExportFormat(v === 'none' ? null : (v as 'a' | 'b' | 'c'))}
+                  value={EditExportFormat ?? 'none'}
+                >
+                  <RadioButton.Item value="none" label="Ask me each time" />
+                  <RadioButton.Item value="a"    label="A — Cavity label only" />
+                  <RadioButton.Item value="b"    label="B — Unit | Cavity column" />
+                  <RadioButton.Item value="c"    label="C — Separate Housing Unit column" />
+                </RadioButton.Group>
+                <Checkbox.Item
+                  label="Include notes in export"
+                  status={EditExportIncludeNotes ? 'checked' : 'unchecked'}
+                  onPress={() => setEditExportIncludeNotes(!EditExportIncludeNotes)}
+                  mode="android"
+                />
+                <HelperText type="info" visible>
+                  When checked, any notes on nest check entries are appended to the check code cell (e.g. "1ED pecked").
+                </HelperText>
                 {EditError ? <HelperText type="error" visible>{EditError}</HelperText> : null}
               </ScrollView>
             )}

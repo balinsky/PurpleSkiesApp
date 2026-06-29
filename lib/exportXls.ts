@@ -55,6 +55,7 @@ type EntryData = {
   gourd_removed: boolean;
   dead_young_count: number;
   dead_adult_sex: string | null;
+  notes: string | null;
 };
 
 function ordinal(n: number): string {
@@ -79,7 +80,7 @@ function addDays(iso: string, days: number): string {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }
 
-function checkCode(entry: EntryData | null): string {
+function checkCode(entry: EntryData | null, includeNotes = false): string {
   if (!entry || !entry.species) return 'X';
   const sp = entry.species;
   const isPM = sp === 'PM';
@@ -112,6 +113,7 @@ function checkCode(entry: EntryData | null): string {
   if (entry.dead_young_count > 0) code += ` ${entry.dead_young_count}DY`;
   if (entry.dead_adult_sex)       code += entry.dead_adult_sex === 'M' ? ' DADM' : entry.dead_adult_sex === 'F' ? ' DADF' : ' DAD';
   if (entry.gourd_removed) code += ' GR';
+  if (includeNotes && entry.notes) code += ` ${entry.notes.replace(/[\r\n]+/g, ' ')}`;
   return code;
 }
 
@@ -229,10 +231,14 @@ function addInfoBlock(ws: any, colA: number, year: number, siteName: string, con
 }
 
 // ── Main export ────────────────────────────────────────────────────────────────
+export type ExportFormat = 'a' | 'b' | 'c';
+
 export async function exportSeasonXls(
   SeasonId: string,
   SiteId: string,
   Year: number,
+  format: ExportFormat = 'a',
+  includeNotes = false,
 ): Promise<string | null> {
   const [{ data: Checks }, { data: SiteData }] = await Promise.all([
     supabase
@@ -257,7 +263,7 @@ export async function exportSeasonXls(
 
   const { data: Entries } = await supabase
     .from('nest_check_entries')
-    .select('id, nest_check_id, compartment_id, species, adult_present, egg_count, discarded_eggs, young_count, nestling_age_days, nest_discarded, fledged_count, nesting_attempt, gourd_removed, dead_young_count, dead_adult_sex, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
+    .select('id, nest_check_id, compartment_id, species, adult_present, egg_count, discarded_eggs, young_count, nestling_age_days, nest_discarded, fledged_count, nesting_attempt, gourd_removed, dead_young_count, dead_adult_sex, notes, compartments(cavity_label, housing_type, hole_type, housing_units(name))')
     .in('nest_check_id', Checks.map(c => c.id));
 
   const BandingSet = new Set<string>();
@@ -357,6 +363,7 @@ export async function exportSeasonXls(
         gourd_removed:     !!(E as any).gourd_removed,
         dead_young_count:  (E as any).dead_young_count ?? 0,
         dead_adult_sex:    (E as any).dead_adult_sex ?? null,
+        notes:             (E as any).notes ?? null,
       });
     }
 
@@ -406,17 +413,24 @@ export async function exportSeasonXls(
   });
 
   // ── Build worksheet ────────────────────────────────────────────────
-  // Row 1: labels + ordinal check placeholders (purple, bold)
-  const HeaderRow1 = [
-    'Housing Type', 'Hole Type', 'Cavity number', 'Male/Female Age',
+  const StaticHeaders = format === 'c'
+    ? ['Housing Unit', 'Housing Type', 'Hole Type', 'Cavity number', 'Male/Female Age']
+    : ['Housing Type', 'Hole Type', format === 'b' ? 'Housing Unit | Cavity' : 'Cavity number', 'Male/Female Age'];
+  const ComputedHeaders = [
     'Date First Egg is Laid', 'Total # Eggs Laid', 'Projected Hatch Date',
     'Actual Hatch Date', 'Earliest Possible Fledge Date',
+  ];
+  // Row 1: labels + ordinal check placeholders (purple, bold)
+  const HeaderRow1 = [
+    ...StaticHeaders,
+    ...ComputedHeaders,
     ...Checks.map((_, i) => `Enter date of ${ordinal(i + 1)} nest check here:`),
     'Egg #', 'Hatch #', 'Fledge #',
   ];
-  // Row 2: blank for A–I, actual dates for check columns, blank for summary (purple, not bold)
+  // Row 2: blank for static/computed cols, actual dates for check columns
   const HeaderRow2 = [
-    '', '', '', '', '', '', '', '', '',
+    ...StaticHeaders.map(() => ''),
+    ...ComputedHeaders.map(() => ''),
     ...Checks.map(c => fmtDate(c.check_date)),
     '', '', '',
   ];
@@ -484,17 +498,21 @@ export async function exportSeasonXls(
     // For gourd-removed compartments, show blank for subsequent checks with no entry.
     const GourdDate = GourdRemovedDate.get(Data.compartment_id);
     const CheckCodes = Checks.map(c => {
-      if (Data.byCheck.has(c.id)) return checkCode(Data.byCheck.get(c.id)!);
+      if (Data.byCheck.has(c.id)) return checkCode(Data.byCheck.get(c.id)!, includeNotes);
       if (GourdDate && c.check_date > GourdDate) return '';
       if (MultiAttemptCompartments.has(Data.compartment_id)) return '';
-      return checkCode(null);
+      return checkCode(null, false);
     });
 
+    const CavityCell = IsRA ? `${Data.label} (RA)` : Data.label;
+    const StaticCells: (string | number)[] = format === 'c'
+      ? [Data.unit_name, Data.housing_type, Data.hole_type, CavityCell, AgeStr]
+      : format === 'b'
+        ? [Data.housing_type, Data.hole_type, `${Data.unit_name} | ${CavityCell}`, AgeStr]
+        : [Data.housing_type, Data.hole_type, CavityCell, AgeStr];
+
     DataRows.push([
-      Data.housing_type,
-      Data.hole_type,
-      IsRA ? `${Data.label} (RA)` : Data.label,
-      AgeStr,
+      ...StaticCells,
       FirstEggDate, MaxEggs || '', ProjHatch, ActualHatch, ProjFledge,
       ...CheckCodes,
       MaxEggs || '', HatchCount || '', FledgeCount || '',
@@ -504,7 +522,7 @@ export async function exportSeasonXls(
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([HeaderRow1, HeaderRow2, ...DataRows]);
 
-  ws['!cols'] = [
+  const CoreCols = [
     { wch: 11 },  // Housing Type
     { wch: 9  },  // Hole Type
     { wch: 11 },  // Cavity number
@@ -519,6 +537,11 @@ export async function exportSeasonXls(
     { wch: 9  },  // Hatch #
     { wch: 11 },  // Fledge #
   ];
+  ws['!cols'] = format === 'c'
+    ? [{ wch: 18 }, ...CoreCols]   // prepend Housing Unit col
+    : format === 'b'
+      ? [CoreCols[0], CoreCols[1], { wch: 24 }, ...CoreCols.slice(3)]  // wider Unit|Cavity col
+      : CoreCols;
   ws['!rows'] = [
     { hpt: 47.2 },  // row 1: tall wrapped header
     { hpt: 12   },  // row 2: check dates
@@ -531,7 +554,8 @@ export async function exportSeasonXls(
   }
 
   // Info / legend block (2 cols after Fledge #)
-  const InfoCol = 9 + Checks.length + 4;
+  const StaticColCount = format === 'c' ? 5 : 4;
+  const InfoCol = StaticColCount + 5 + Checks.length + 3 + 1;
   addInfoBlock(ws, InfoCol, Year, SiteName, Contact, BandDetails);
 
   XLSX.utils.book_append_sheet(wb, ws, `${Year} Nest Data`);

@@ -132,16 +132,18 @@ export default function CreateCompartmentScreen({ navigation, route }: Props) {
         </>
       )}
 
-      <Button
-        mode="text"
-        compact
-        style={styles.OverrideToggle}
-        onPress={() => setOverrideHoleType(!OverrideHoleType)}
-      >
-        {OverrideHoleType ? 'Use default hole type' : `Override hole type (default: ${DefaultHoleType ?? 'none'})`}
-      </Button>
+      {DefaultHoleType !== null && (
+        <Button
+          mode="text"
+          compact
+          style={styles.OverrideToggle}
+          onPress={() => setOverrideHoleType(!OverrideHoleType)}
+        >
+          {OverrideHoleType ? `Use default (${DefaultHoleType})` : `Override hole type (default: ${DefaultHoleType})`}
+        </Button>
+      )}
 
-      {OverrideHoleType && (
+      {(DefaultHoleType === null || OverrideHoleType) && (
         <>
           <Text variant="labelLarge" style={styles.Label}>Hole type</Text>
           <RadioButton.Group onValueChange={setHoleType} value={HoleType}>

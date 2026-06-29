@@ -4,6 +4,62 @@ This document defines the rules for importing historical nest check data into Pu
 
 ---
 
+## Export/Import Format Options
+
+Purple Skies supports three export/import formats. A per-site preference is stored in the site's settings; if not set, the app asks when exporting.
+
+### Format A — Cavity Only (PMCA-compliant)
+
+The default. The Housing Unit column uses the housing type code only. On import, the housing unit name is derived automatically from the housing type code.
+
+Static columns are the same as the [table below](#static-columns).
+
+**When to use:** Single-unit sites, or sites where all compartment labels are globally unique.
+
+### Format B — Unit | Cavity (PMCA-compliant)
+
+The Cavity column contains `{Housing Unit Name} | {Cavity Label}`. The `|` (pipe) character is the separator; it splits on the **last** occurrence, so unit names may contain spaces but not `|`.
+
+**Column layout:** Same static column positions as Format A. Only column C content changes.
+
+| Col C example | Housing unit | Cavity label |
+|---|---|---|
+| `North Pole \| 14` | North Pole | 14 |
+| `North Pole \| 14 (RA)` | North Pole | 14, renesting attempt 2 |
+| `South Pole \| A1` | South Pole | A1 |
+
+**When to use:** Multi-unit sites where the same compartment number appears in more than one housing unit.
+
+### Format C — Explicit Housing Unit Column (non-PMCA)
+
+An extra **Housing Unit** column is inserted as the leftmost column (column A), shifting all other columns one position to the right. The Column A header in row 1 is `Housing Unit`.
+
+**Column layout for Format C:**
+
+| Col | Field |
+|-----|-------|
+| A | Housing Unit name |
+| B | Housing Type |
+| C | Hole Type |
+| D | Cavity label |
+| E | Male/Female Age |
+| F–J | Computed fields (ignored on import) |
+| K+ | Check columns |
+
+**When to use:** Any site; the most explicit and least ambiguous format. Not PMCA-compliant.
+
+### Auto-Detection on Import
+
+The importer detects the format automatically:
+
+1. **Format C**: column A header (row 1) is `Housing Unit` (case-insensitive).
+2. **Format B**: column C of any data row contains a `|` character.
+3. **Format A**: otherwise.
+
+If detection is ambiguous the user is asked to confirm.
+
+---
+
 ## File Layout
 
 The file must follow the Purple Skies two-header-row layout:
@@ -18,15 +74,17 @@ For CSV exports, the info/legend block to the right of the data (site contact in
 
 ---
 
-## Static Columns (A–I)
+## Static Columns (A–I, Formats A and B)
 
 | Col | Field | Rules |
 |-----|-------|-------|
 | A | Housing Type | One of: `WH` `MH` `PH` `NG` `AG`. Case-insensitive. |
 | B | Hole Type | One of: `RH` `CH` `EH` `OH`. Case-insensitive. Optional; blank is accepted. |
-| C | Cavity label | Plain label (e.g. `A1`, `P`). Append ` (RA)` for renesting attempts (see below). |
+| C | Cavity label | Plain label (e.g. `A1`, `P`). Format B: `{Unit} \| {Label}`. Append ` (RA)` for renesting attempts (see below). |
 | D | Male/Female Age | Optional age pair (e.g. `ASY/SY/UNK`). Stored in `nest_seasons`. |
 | E–I | Computed fields | Ignored on import (first egg date, total eggs, projected hatch date, actual hatch date, fledge date). |
+
+For **Format C**, columns shift right by one; see the Format C table above.
 
 ### Housing Type Codes
 | Code | Type |
@@ -70,7 +128,7 @@ Append ` (RA)` to the cavity label for each renesting attempt row. If a cavity h
 
 ## Check Code Columns
 
-Columns 10 through N−3 (the columns between the static block and the final Egg/Hatch/Fledge summary) are check columns. Each cell contains a **check code** or is blank.
+Columns 10 through N−3 (the columns between the static block and the final Egg/Hatch/Fledge summary) are check columns. Each cell contains a **check code** or is blank. For Format C, check columns start at column 11.
 
 **Blank cell** = no entry recorded for that check (no `nest_check_entry` row is created).
 

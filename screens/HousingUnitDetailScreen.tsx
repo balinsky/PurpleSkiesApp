@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { FlatList, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, ScrollView, StyleSheet, View } from 'react-native';
 import {
   Button, Card, Dialog, FAB, HelperText, IconButton,
   Portal, RadioButton, Text, TextInput,
@@ -49,6 +49,17 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
   const [Compartments, setCompartments] = useState<Compartment[]>([]);
   const [Loading, setLoading]           = useState(true);
 
+  // ── Other units (for move-compartment) ───────────────────────────────
+  type OtherUnit = { id: string; name: string; unit_type: string };
+  const [OtherUnits, setOtherUnits] = useState<OtherUnit[]>([]);
+
+  // ── Move compartment ─────────────────────────────────────────────────
+  const [MoveCompVisible, setMoveCompVisible]   = useState(false);
+  const [MovingComp, setMovingComp]             = useState<Compartment | null>(null);
+  const [MoveTargetUnitId, setMoveTargetUnitId] = useState('');
+  const [MoveCompLoading, setMoveCompLoading]   = useState(false);
+  const [MoveCompError, setMoveCompError]       = useState('');
+
   // ── Edit unit ────────────────────────────────────────────────────────
   const [EditUnitVisible, setEditUnitVisible]       = useState(false);
   const [EditUnitName, setEditUnitName]             = useState('');
@@ -77,7 +88,7 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
   const [DeleteCompLoading, setDeleteCompLoading]   = useState(false);
   const [DeleteCompError, setDeleteCompError]       = useState('');
 
-  useFocusEffect(useCallback(() => { loadCompartments(); }, [UnitId]));
+  useFocusEffect(useCallback(() => { loadCompartments(); loadOtherUnits(); }, [UnitId]));
 
   function loadCompartments() {
     supabase
@@ -89,10 +100,57 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
       .then(({ data }) => { setCompartments(data ?? []); setLoading(false); });
   }
 
+  function loadOtherUnits() {
+    if (!SeasonId) return;
+    supabase
+      .from('housing_units')
+      .select('id, name, unit_type')
+      .eq('site_season_id', SeasonId)
+      .neq('id', UnitId)
+      .order('name', { ascending: true })
+      .then(({ data }) => setOtherUnits((data ?? []) as OtherUnit[]));
+  }
+
+  // ── Move compartment handlers ────────────────────────────────────────
+  function openMoveComp(Comp: Compartment) {
+    setMovingComp(Comp);
+    setMoveTargetUnitId(OtherUnits[0]?.id ?? '');
+    setMoveCompError('');
+    setMoveCompVisible(true);
+  }
+
+  async function handleMoveComp() {
+    if (!MovingComp || !MoveTargetUnitId) return;
+    const TargetUnit = OtherUnits.find(u => u.id === MoveTargetUnitId);
+    const CompIsGourd  = ['AG', 'NG'].includes(MovingComp.housing_type);
+    const UnitIsGourd  = UnitType === 'gourd_rack';
+    const TargIsGourd  = TargetUnit?.unit_type === 'gourd_rack';
+    if (UnitIsGourd !== TargIsGourd) {
+      const ok = await new Promise<boolean>(resolve => Alert.alert(
+        'Mixed Housing Types',
+        `This is a ${UnitIsGourd ? 'gourd rack' : 'house'} unit and the destination is a ${TargIsGourd ? 'gourd rack' : 'house'}. Mix housing types?`,
+        [
+          { text: 'Cancel',     style: 'cancel',  onPress: () => resolve(false) },
+          { text: 'Move Anyway', style: 'default', onPress: () => resolve(true)  },
+        ],
+      ));
+      if (!ok) return;
+    }
+    setMoveCompLoading(true);
+    const { error } = await supabase
+      .from('compartments')
+      .update({ housing_unit_id: MoveTargetUnitId })
+      .eq('id', MovingComp.id);
+    setMoveCompLoading(false);
+    if (error) { setMoveCompError(friendlyError(error)); return; }
+    setMoveCompVisible(false);
+    loadCompartments();
+  }
+
   // ── Edit unit handlers ───────────────────────────────────────────────
   function openEditUnit() {
     setEditUnitName(UnitName);
-    setEditDefaultHole(DefaultHoleType ?? 'CR');
+    setEditDefaultHole(DefaultHoleType ?? '');
     setEditUnitError('');
     setEditUnitVisible(true);
   }
@@ -100,14 +158,15 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
   async function handleSaveUnit() {
     if (!EditUnitName.trim()) { setEditUnitError('Please enter a name.'); return; }
     setEditUnitLoading(true);
+    const newDefault = EditDefaultHole || null;
     const { error } = await supabase
       .from('housing_units')
-      .update({ name: EditUnitName.trim(), default_hole_type: EditDefaultHole })
+      .update({ name: EditUnitName.trim(), default_hole_type: newDefault })
       .eq('id', UnitId);
     setEditUnitLoading(false);
     if (error) { setEditUnitError(friendlyError(error)); return; }
     setEditUnitVisible(false);
-    navigation.setParams({ UnitName: EditUnitName.trim(), DefaultHoleType: EditDefaultHole });
+    navigation.setParams({ UnitName: EditUnitName.trim(), DefaultHoleType: newDefault });
   }
 
   // ── Delete unit handlers ─────────────────────────────────────────────
@@ -127,7 +186,7 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
     setEditCompLabel(Comp.cavity_label);
     setEditCompHoleType(Comp.hole_type);
     setEditCompHousing(Comp.housing_type);
-    setEditCompOverride(Comp.hole_type !== (DefaultHoleType ?? 'CR'));
+    setEditCompOverride(DefaultHoleType !== null && Comp.hole_type !== DefaultHoleType);
     setEditCompError('');
     setEditCompVisible(true);
   }
@@ -140,7 +199,7 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
       .from('compartments')
       .update({
         cavity_label:  EditCompLabel.trim(),
-        hole_type:     EditCompOverride ? EditCompHoleType : (DefaultHoleType ?? 'CR'),
+        hole_type:     EditCompOverride ? EditCompHoleType : (DefaultHoleType ?? EditCompHoleType),
         ...(IsGourdRack && { housing_type: EditCompHousing }),
       })
       .eq('id', EditingComp.id);
@@ -210,6 +269,9 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
                 subtitle={`${item.housing_type}  ·  ${item.hole_type}`}
                 right={() => (
                   <View style={styles.CardActions}>
+                    {OtherUnits.length > 0 && (
+                      <IconButton icon="swap-horizontal" size={20} onPress={() => openMoveComp(item)} />
+                    )}
                     <IconButton icon="pencil" size={20} onPress={() => openEditComp(item)} />
                     <IconButton icon="delete" size={20} iconColor="red" onPress={() => openDeleteComp(item)} />
                   </View>
@@ -240,6 +302,7 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
             />
             <Text variant="labelMedium" style={styles.DialogLabel}>Default hole type</Text>
             <RadioButton.Group onValueChange={setEditDefaultHole} value={EditDefaultHole}>
+              <RadioButton.Item value="" label="No default" />
               {HoleTypes.map((H) => <RadioButton.Item key={H.value} label={H.label} value={H.value} />)}
             </RadioButton.Group>
             {EditUnitError ? <HelperText type="error" visible>{EditUnitError}</HelperText> : null}
@@ -292,8 +355,8 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
                 onPress={() => setEditCompOverride(!EditCompOverride)}
               >
                 {EditCompOverride
-                  ? 'Use default hole type'
-                  : `Override hole type (default: ${DefaultHoleType ?? 'none'})`}
+                  ? (DefaultHoleType ? `Use default (${DefaultHoleType})` : 'Remove override')
+                  : DefaultHoleType ? `Override hole type (default: ${DefaultHoleType})` : 'Set hole type'}
               </Button>
               {EditCompOverride && (
                 <>
@@ -309,6 +372,27 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
           <Dialog.Actions>
             <Button onPress={() => setEditCompVisible(false)}>Cancel</Button>
             <Button loading={EditCompLoading} onPress={handleSaveComp}>Save</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        {/* ── Move Compartment ───────────────────────────────────── */}
+        <Dialog visible={MoveCompVisible} onDismiss={() => setMoveCompVisible(false)}>
+          <Dialog.Title>Move "{MovingComp?.cavity_label}"</Dialog.Title>
+          <Dialog.Content>
+            {OtherUnits.length === 0 ? (
+              <Text>No other housing units in this season.</Text>
+            ) : (
+              <RadioButton.Group onValueChange={setMoveTargetUnitId} value={MoveTargetUnitId}>
+                {OtherUnits.map(U => <RadioButton.Item key={U.id} label={U.name} value={U.id} />)}
+              </RadioButton.Group>
+            )}
+            {MoveCompError ? <HelperText type="error" visible>{MoveCompError}</HelperText> : null}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setMoveCompVisible(false)}>Cancel</Button>
+            {OtherUnits.length > 0 && (
+              <Button loading={MoveCompLoading} onPress={handleMoveComp}>Move</Button>
+            )}
           </Dialog.Actions>
         </Dialog>
 

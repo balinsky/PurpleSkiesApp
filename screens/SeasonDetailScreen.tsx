@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { Button, Card, Dialog, FAB, HelperText, Icon, IconButton, List, Portal, Text, TextInput, TouchableRipple } from 'react-native-paper';
-import { exportSeasonXls } from '../lib/exportXls';
+import { Button, Card, Dialog, FAB, HelperText, Icon, IconButton, List, Portal, RadioButton, Text, TextInput, TouchableRipple } from 'react-native-paper';
+import { exportSeasonXls, ExportFormat } from '../lib/exportXls';
 import { Calendar } from 'react-native-calendars';
 import DateInput from '../components/DateInput';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -399,7 +399,9 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   const [ArrivalDatesExpanded, setArrivalDatesExpanded] = useState(false);
 
 
-  const [Exporting, setExporting]         = useState(false);
+  const [Exporting, setExporting]             = useState(false);
+  const [FormatPickerVisible, setFormatPickerVisible] = useState(false);
+  const [PendingExportFormat, setPendingExportFormat] = useState<ExportFormat>('a');
 
   const [NestChecks, setNestChecks]       = useState<NestCheck[]>([]);
   const [ChecksLoading, setChecksLoading] = useState(true);
@@ -465,9 +467,19 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             disabled={Exporting}
             onPress={async () => {
               setExporting(true);
-              const Err = await exportSeasonXls(SeasonId, SiteId, Year);
-              setExporting(false);
-              if (Err) Alert.alert('Export failed', Err);
+              const { data: SiteData } = await supabase
+                .from('sites').select('export_format, export_include_notes').eq('id', SiteId).single();
+              const fmt          = (SiteData as any)?.export_format as ExportFormat | null;
+              const inclNotes    = !!(SiteData as any)?.export_include_notes;
+              if (fmt) {
+                const Err = await exportSeasonXls(SeasonId, SiteId, Year, fmt, inclNotes);
+                setExporting(false);
+                if (Err) Alert.alert('Export failed', Err);
+              } else {
+                setPendingExportFormat('a');
+                setFormatPickerVisible(true);
+                setExporting(false);
+              }
             }}
           />
           <IconButton
@@ -1058,6 +1070,19 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
     setSelectedBandingDate(null);
     AsyncStorage.setItem(`banding_min_${SiteId}`, String(minVal));
     AsyncStorage.setItem(`banding_max_${SiteId}`, String(maxVal));
+  }
+
+  async function handleExportWithFormat(fmt: ExportFormat, save: boolean) {
+    setFormatPickerVisible(false);
+    if (save) {
+      await supabase.from('sites').update({ export_format: fmt } as any).eq('id', SiteId);
+    }
+    setExporting(true);
+    const { data: SD } = await supabase.from('sites').select('export_include_notes').eq('id', SiteId).single();
+    const inclNotes = !!(SD as any)?.export_include_notes;
+    const Err = await exportSeasonXls(SeasonId, SiteId, Year, fmt, inclNotes);
+    setExporting(false);
+    if (Err) Alert.alert('Export failed', Err);
   }
 
   // ── Add nest check ─────────────────────────────────────────────────
@@ -1763,6 +1788,31 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           </Dialog.ScrollArea>
           <Dialog.Actions>
             <Button onPress={() => setCompartmentHistoryId(null)}>Close</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        <Dialog visible={FormatPickerVisible} onDismiss={() => setFormatPickerVisible(false)}>
+          <Dialog.Title>Export Format</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodyMedium" style={{ marginBottom: 8 }}>
+              How should housing unit names be exported?
+            </Text>
+            <RadioButton.Group
+              onValueChange={v => setPendingExportFormat(v as ExportFormat)}
+              value={PendingExportFormat}
+            >
+              <RadioButton.Item value="a" label="A — Cavity label only (PMCA)" />
+              <RadioButton.Item value="b" label="B — Unit | Cavity column (PMCA)" />
+              <RadioButton.Item value="c" label="C — Separate Housing Unit column" />
+            </RadioButton.Group>
+            <HelperText type="info" visible>
+              Save a format preference in Site Details to skip this prompt.
+            </HelperText>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setFormatPickerVisible(false)}>Cancel</Button>
+            <Button onPress={() => handleExportWithFormat(PendingExportFormat, false)}>Export once</Button>
+            <Button onPress={() => handleExportWithFormat(PendingExportFormat, true)}>Save &amp; Export</Button>
           </Dialog.Actions>
         </Dialog>
 
