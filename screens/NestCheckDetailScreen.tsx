@@ -150,9 +150,11 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
               prev_summary: (() => {
                 const P = PrevEntryMap.get(C.id);
                 if (!P) return null;
+                // Always project to today's check date; fall back to stored age only if
+                // no hatch anchor exists (effectiveAge returns null when passed null).
                 return buildEntrySummary({
                   ...P,
-                  nestling_age_days: effectiveAge(C.id, P.nestling_age_days),
+                  nestling_age_days: effectiveAge(C.id, null) ?? P.nestling_age_days,
                 });
               })(),
               prev_entry:             PrevEntryMap.get(C.id) ?? null,
