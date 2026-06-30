@@ -39,6 +39,16 @@ function shortDate(dateStr: string): string {
   return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+function groupByUnit<T extends { unit_name: string }>(items: T[]): Array<{ unit_name: string; items: T[] }> {
+  const order: string[] = [];
+  const map = new Map<string, T[]>();
+  for (const item of items) {
+    if (!map.has(item.unit_name)) { order.push(item.unit_name); map.set(item.unit_name, []); }
+    map.get(item.unit_name)!.push(item);
+  }
+  return order.map(u => ({ unit_name: u, items: map.get(u)! }));
+}
+
 function addDays(dateStr: string, days: number): string {
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(y, m - 1, d);
@@ -319,6 +329,8 @@ function AgeGenderDisplay({ symbol, confirmed, observations, onIconPress }: {
 }
 
 function BandsList({ rows }: { rows: BandRow[] }) {
+  const [CollapsedBandsUnits, setCollapsedBandsUnits] = useState<Set<string>>(new Set());
+
   if (rows.length === 0) {
     return (
       <Text style={{ color: '#888', fontSize: 12, marginBottom: 12, fontStyle: 'italic' }}>
@@ -352,37 +364,65 @@ function BandsList({ rows }: { rows: BandRow[] }) {
 
   return (
     <View style={{ marginBottom: 8 }}>
-      {[...byYear.entries()].map(([year, yearGroups]) => (
-        <View key={year} style={{ marginBottom: 8 }}>
-          <Text style={{ fontWeight: '700', fontSize: 13, color: '#444', marginTop: 4, marginBottom: 6 }}>{year}</Text>
-          {yearGroups.map((g) => {
-            const genderSymbol = g.bird_type === 'adult_male' ? '♂' : g.bird_type === 'adult_female' ? '♀' : null;
-            const isReSight = g.bands.every(b => !b.is_new_banding);
-            const typeLabel = genderSymbol
-              ? `${genderSymbol}${isReSight ? '  re-sight' : ''}`
-              : 'Nestling';
-            return (
-              <View key={g.key} style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 6, padding: 8, marginBottom: 6 }}>
-                <View style={{ flexDirection: 'row', marginBottom: g.bands.length > 0 ? 4 : 0 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#333', width: 48 }}>{g.compartment_label}</Text>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#333', flex: 1 }}>
-                    {typeLabel}{'  '}{shortDate(g.check_date)}
-                  </Text>
+      {[...byYear.entries()].map(([year, yearGroups]) => {
+        const unitOrder: string[] = [];
+        const byUnit = new Map<string, BirdGroup[]>();
+        for (const g of yearGroups) {
+          if (!byUnit.has(g.unit_name)) { unitOrder.push(g.unit_name); byUnit.set(g.unit_name, []); }
+          byUnit.get(g.unit_name)!.push(g);
+        }
+        return (
+          <View key={year} style={{ marginBottom: 8 }}>
+            <Text style={{ fontWeight: '700', fontSize: 13, color: '#444', marginTop: 4, marginBottom: 6 }}>{year}</Text>
+            {unitOrder.map(unit_name => {
+              const unitGroups = byUnit.get(unit_name)!;
+              const collapseKey = `${year}:${unit_name}`;
+              const isCollapsed = CollapsedBandsUnits.has(collapseKey);
+              return (
+                <View key={unit_name}>
+                  <Pressable
+                    style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, marginBottom: 2 }}
+                    onPress={() => setCollapsedBandsUnits(prev => {
+                      const next = new Set(prev);
+                      if (next.has(collapseKey)) next.delete(collapseKey); else next.add(collapseKey);
+                      return next;
+                    })}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#555', flex: 1 }}>{unit_name}</Text>
+                    <IconButton icon={isCollapsed ? 'chevron-down' : 'chevron-up'} size={14} style={{ margin: 0 }} />
+                  </Pressable>
+                  {!isCollapsed && unitGroups.map((g) => {
+                    const genderSymbol = g.bird_type === 'adult_male' ? '♂' : g.bird_type === 'adult_female' ? '♀' : null;
+                    const isReSight = g.bands.every(b => !b.is_new_banding);
+                    const typeLabel = genderSymbol
+                      ? `${genderSymbol}${isReSight ? '  re-sight' : ''}`
+                      : 'Nestling';
+                    return (
+                      <View key={g.key} style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 6, padding: 8, marginBottom: 6 }}>
+                        <View style={{ flexDirection: 'row', marginBottom: g.bands.length > 0 ? 4 : 0 }}>
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: '#333', width: 48 }}>{g.compartment_label}</Text>
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: '#333', flex: 1 }}>
+                            {typeLabel}{'  '}{shortDate(g.check_date)}
+                          </Text>
+                        </View>
+                        {[...g.bands].sort((a, b) => a.band_type === 'federal' ? -1 : b.band_type === 'federal' ? 1 : 0).map((b, i) => {
+                          const parts = [b.band_type, b.band_color, b.band_code].filter(Boolean).join('  ');
+                          const reSightSuffix = !b.is_new_banding && !isReSight ? '  (re-sight)' : '';
+                          return (
+                            <View key={i} style={{ flexDirection: 'row', paddingLeft: 48, paddingVertical: 1 }}>
+                              <Text style={{ fontSize: 12, color: '#555' }}>{parts}{reSightSuffix}</Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    );
+                  })}
                 </View>
-                {[...g.bands].sort((a, b) => a.band_type === 'federal' ? -1 : b.band_type === 'federal' ? 1 : 0).map((b, i) => {
-                  const parts = [b.band_type, b.band_color, b.band_code].filter(Boolean).join('  ');
-                  const reSightSuffix = !b.is_new_banding && !isReSight ? '  (re-sight)' : '';
-                  return (
-                    <View key={i} style={{ flexDirection: 'row', paddingLeft: 48, paddingVertical: 1 }}>
-                      <Text style={{ fontSize: 12, color: '#555' }}>{parts}{reSightSuffix}</Text>
-                    </View>
-                  );
-                })}
-              </View>
-            );
-          })}
-        </View>
-      ))}
+              );
+            })}
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -435,6 +475,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
   const [AllBandsData, setAllBandsData]         = useState<BandRow[]>([]);
   const [BandsExpanded, setBandsExpanded]       = useState(false);
+  const [CollapsedProgressUnits, setCollapsedProgressUnits] = useState<Set<string>>(new Set());
+  const [CollapsedAgesUnits, setCollapsedAgesUnits] = useState<Set<string>>(new Set());
 
   // ── Housing ────────────────────────────────────────────────────────
   type HousingUnit = { id: string; name: string; unit_type: string; default_hole_type: string | null };
@@ -1366,20 +1408,35 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                 </Button>
                 {NestProgressExpanded && (
                   <>
-                    {NestProgress.map((P) => (
-                      <TouchableRipple
-                        key={`${P.compartment_id}:${P.nesting_attempt}`}
-                        onPress={() => openCompartmentHistory(P.compartment_id, `${P.unit_name} · ${P.label.replace(/ \(Attempt \d+\)$/, '')}`)}
-                        style={styles.ProgressRow}
-                      >
-                        <View>
-                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Text style={[styles.ProgressTitle, { flex: 1 }]}>{P.unit_name} · {P.label}</Text>
-                            <Icon source="history" size={15} color="#9c27b0" />
-                          </View>
-                          <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
-                        </View>
-                      </TouchableRipple>
+                    {groupByUnit(NestProgress).map(({ unit_name, items }) => (
+                      <View key={unit_name}>
+                        <Pressable
+                          style={styles.UnitHeaderRow}
+                          onPress={() => setCollapsedProgressUnits(prev => {
+                            const next = new Set(prev);
+                            if (next.has(unit_name)) next.delete(unit_name); else next.add(unit_name);
+                            return next;
+                          })}
+                        >
+                          <Text style={styles.UnitHeaderText}>{unit_name}</Text>
+                          <IconButton icon={CollapsedProgressUnits.has(unit_name) ? 'chevron-down' : 'chevron-up'} size={14} style={{ margin: 0 }} />
+                        </Pressable>
+                        {!CollapsedProgressUnits.has(unit_name) && items.map((P) => (
+                          <TouchableRipple
+                            key={`${P.compartment_id}:${P.nesting_attempt}`}
+                            onPress={() => openCompartmentHistory(P.compartment_id, `${P.unit_name} · ${P.label.replace(/ \(Attempt \d+\)$/, '')}`)}
+                            style={styles.ProgressRow}
+                          >
+                            <View>
+                              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <Text style={[styles.ProgressTitle, { flex: 1 }]}>{P.label}</Text>
+                                <Icon source="history" size={15} color="#9c27b0" />
+                              </View>
+                              <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
+                            </View>
+                          </TouchableRipple>
+                        ))}
+                      </View>
                     ))}
                   </>
                 )}
@@ -1399,13 +1456,28 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                 >
                   Adult Ages
                 </Button>
-                {AdultAgesExpanded && AdultAges.map((A) => (
-                  <View key={A.compartment_id} style={styles.ProgressRow}>
-                    <Text style={styles.ProgressTitle}>{A.unit_name} · {A.label}</Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 2 }}>
-                      <AgeGenderDisplay symbol="♂" confirmed={A.confirmed_male} observations={A.male_observations} onIconPress={() => setAgeConfirmInfoVisible(true)} />
-                      <AgeGenderDisplay symbol="♀" confirmed={A.confirmed_female} observations={A.female_observations} onIconPress={() => setAgeConfirmInfoVisible(true)} />
-                    </View>
+                {AdultAgesExpanded && groupByUnit(AdultAges).map(({ unit_name, items }) => (
+                  <View key={unit_name}>
+                    <Pressable
+                      style={styles.UnitHeaderRow}
+                      onPress={() => setCollapsedAgesUnits(prev => {
+                        const next = new Set(prev);
+                        if (next.has(unit_name)) next.delete(unit_name); else next.add(unit_name);
+                        return next;
+                      })}
+                    >
+                      <Text style={styles.UnitHeaderText}>{unit_name}</Text>
+                      <IconButton icon={CollapsedAgesUnits.has(unit_name) ? 'chevron-down' : 'chevron-up'} size={14} style={{ margin: 0 }} />
+                    </Pressable>
+                    {!CollapsedAgesUnits.has(unit_name) && items.map((A) => (
+                      <View key={A.compartment_id} style={styles.ProgressRow}>
+                        <Text style={styles.ProgressTitle}>{A.label}</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 2 }}>
+                          <AgeGenderDisplay symbol="♂" confirmed={A.confirmed_male} observations={A.male_observations} onIconPress={() => setAgeConfirmInfoVisible(true)} />
+                          <AgeGenderDisplay symbol="♀" confirmed={A.confirmed_female} observations={A.female_observations} onIconPress={() => setAgeConfirmInfoVisible(true)} />
+                        </View>
+                      </View>
+                    ))}
                   </View>
                 ))}
               </>
@@ -1595,10 +1667,25 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                   </Button>
                   {NestProgressExpanded && (
                     <>
-                      {NestProgress.map((P) => (
-                        <View key={`${P.compartment_id}:${P.nesting_attempt}`} style={styles.ProgressRow}>
-                          <Text style={styles.ProgressTitle}>{P.unit_name} · {P.label}</Text>
-                          <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
+                      {groupByUnit(NestProgress).map(({ unit_name, items }) => (
+                        <View key={unit_name}>
+                          <Pressable
+                            style={styles.UnitHeaderRow}
+                            onPress={() => setCollapsedProgressUnits(prev => {
+                              const next = new Set(prev);
+                              if (next.has(unit_name)) next.delete(unit_name); else next.add(unit_name);
+                              return next;
+                            })}
+                          >
+                            <Text style={styles.UnitHeaderText}>{unit_name}</Text>
+                            <IconButton icon={CollapsedProgressUnits.has(unit_name) ? 'chevron-down' : 'chevron-up'} size={14} style={{ margin: 0 }} />
+                          </Pressable>
+                          {!CollapsedProgressUnits.has(unit_name) && items.map((P) => (
+                            <View key={`${P.compartment_id}:${P.nesting_attempt}`} style={styles.ProgressRow}>
+                              <Text style={styles.ProgressTitle}>{P.label}</Text>
+                              <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
+                            </View>
+                          ))}
                         </View>
                       ))}
                     </>
@@ -1619,13 +1706,28 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                   >
                     Adult Ages
                   </Button>
-                  {AdultAgesExpanded && AdultAges.map((A) => (
-                    <View key={A.compartment_id} style={styles.ProgressRow}>
-                      <Text style={styles.ProgressTitle}>{A.unit_name} · {A.label}</Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 2 }}>
-                        <AgeGenderDisplay symbol="♂" confirmed={A.confirmed_male} observations={A.male_observations} onIconPress={() => setAgeConfirmInfoVisible(true)} />
-                        <AgeGenderDisplay symbol="♀" confirmed={A.confirmed_female} observations={A.female_observations} onIconPress={() => setAgeConfirmInfoVisible(true)} />
-                      </View>
+                  {AdultAgesExpanded && groupByUnit(AdultAges).map(({ unit_name, items }) => (
+                    <View key={unit_name}>
+                      <Pressable
+                        style={styles.UnitHeaderRow}
+                        onPress={() => setCollapsedAgesUnits(prev => {
+                          const next = new Set(prev);
+                          if (next.has(unit_name)) next.delete(unit_name); else next.add(unit_name);
+                          return next;
+                        })}
+                      >
+                        <Text style={styles.UnitHeaderText}>{unit_name}</Text>
+                        <IconButton icon={CollapsedAgesUnits.has(unit_name) ? 'chevron-down' : 'chevron-up'} size={14} style={{ margin: 0 }} />
+                      </Pressable>
+                      {!CollapsedAgesUnits.has(unit_name) && items.map((A) => (
+                        <View key={A.compartment_id} style={styles.ProgressRow}>
+                          <Text style={styles.ProgressTitle}>{A.label}</Text>
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 2 }}>
+                            <AgeGenderDisplay symbol="♂" confirmed={A.confirmed_male} observations={A.male_observations} onIconPress={() => setAgeConfirmInfoVisible(true)} />
+                            <AgeGenderDisplay symbol="♀" confirmed={A.confirmed_female} observations={A.female_observations} onIconPress={() => setAgeConfirmInfoVisible(true)} />
+                          </View>
+                        </View>
+                      ))}
                     </View>
                   ))}
                 </>
@@ -1851,6 +1953,8 @@ const styles = StyleSheet.create({
   ProgressRow:   { marginBottom: 6 },
   ProgressTitle: { fontSize: 13, fontWeight: '500', color: '#222' },
   ProgressDates: { fontSize: 12, color: '#555' },
+  UnitHeaderRow:  { flexDirection: 'row', alignItems: 'center', marginTop: 8, marginBottom: 2 },
+  UnitHeaderText: { fontSize: 12, fontWeight: '700', color: '#555', flex: 1 },
   EmptyText:     { color: '#666', marginBottom: 16 },
   FAB:           { position: 'absolute', right: 16, bottom: 16 },
   DialogInput:   { marginBottom: 8 },

@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Alert, SectionList, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, SectionList, StyleSheet, View } from 'react-native';
 import { Button, Card, Dialog, HelperText, IconButton, Portal, Text, TextInput } from 'react-native-paper';
 import DateInput from '../components/DateInput';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -66,6 +66,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
   const { syncNow, isOnline } = useSync();
 
   const [Sections, setSections] = useState<Section[]>([]);
+  const [CollapsedUnits, setCollapsedUnits] = useState<Set<string>>(new Set());
   const [Loading, setLoading]   = useState(true);
   const [QuickSaving, setQuickSaving]     = useState<string | null>(null);
   const [MarkingAllEmpty, setMarkingAllEmpty] = useState(false);
@@ -566,7 +567,10 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
   return (
     <>
       <SectionList
-        sections={Sections}
+        sections={Sections.map(s => ({
+          ...s,
+          data: CollapsedUnits.has(s.unit_id) ? [] : s.data,
+        }))}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.List}
         ListHeaderComponent={(
@@ -606,7 +610,22 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
           </View>
         )}
         renderSectionHeader={({ section }) => (
-          <Text variant="labelLarge" style={styles.SectionHeader}>{section.title}</Text>
+          <Pressable
+            style={styles.SectionHeaderRow}
+            onPress={() => setCollapsedUnits(prev => {
+              const next = new Set(prev);
+              if (next.has(section.unit_id)) next.delete(section.unit_id);
+              else next.add(section.unit_id);
+              return next;
+            })}
+          >
+            <Text variant="labelLarge" style={styles.SectionHeader}>{section.title}</Text>
+            <IconButton
+              icon={CollapsedUnits.has(section.unit_id) ? 'chevron-down' : 'chevron-up'}
+              size={16}
+              style={styles.SectionChevron}
+            />
+          </Pressable>
         )}
         renderItem={({ item }) => (
           <Card style={styles.Card} mode="outlined" onPress={() => navigateToEntry(item)}>
@@ -748,7 +767,9 @@ const styles = StyleSheet.create({
   HeaderBtns:       { flexDirection: 'row', gap: 8 },
   EditDateBtn:      { flex: 1 },
   DeleteBtn:        { borderColor: 'red' },
-  SectionHeader:    { marginTop: 16, marginBottom: 6, paddingHorizontal: 4 },
+  SectionHeaderRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16, marginBottom: 2 },
+  SectionHeader:    { flex: 1, marginBottom: 0, paddingHorizontal: 4 },
+  SectionChevron:   { margin: 0 },
   Card:             { marginBottom: 8 },
   QuickActions:     { paddingHorizontal: 4, paddingBottom: 4, gap: 3, justifyContent: 'flex-start' },
   QuickBtn:         { alignSelf: 'flex-start', marginHorizontal: 0 },
