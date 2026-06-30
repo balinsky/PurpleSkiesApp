@@ -22,9 +22,13 @@ type PrevEntryData = {
   species: string;
   is_empty_cavity: boolean;
   has_nest: boolean;
+  nest_discarded: boolean;
+  adult_present: boolean;
   egg_count: number;
   discarded_eggs: number;
   young_count: number;
+  nestling_age_days: number | null;
+  fledged_count: number;
   nesting_attempt: number;
   renesting_attempt: boolean;
 };
@@ -143,7 +147,14 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
                 female_age: AgeMap.get(C.id)?.female_age ?? (Entry as any).observed_female_age ?? null,
                 has_banding: BandingSet.has(Entry.id),
               }) : null,
-              prev_summary:           PrevEntryMap.get(C.id)?.summary ?? null,
+              prev_summary: (() => {
+                const P = PrevEntryMap.get(C.id);
+                if (!P) return null;
+                return buildEntrySummary({
+                  ...P,
+                  nestling_age_days: effectiveAge(C.id, P.nestling_age_days),
+                });
+              })(),
               prev_entry:             PrevEntryMap.get(C.id) ?? null,
               calculated_nestling_age: effectiveAge(C.id, null),
             };
@@ -265,13 +276,17 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
             if (summary === null) continue; // unchecked entries don't overwrite real prior data
             PrevEntryMap.set(E.compartment_id, {
               summary,
-              species:          E.species,
-              is_empty_cavity:  E.is_empty_cavity,
-              has_nest:         E.has_nest,
-              egg_count:        E.egg_count,
-              discarded_eggs:   E.discarded_eggs,
-              young_count:      E.young_count,
-              nesting_attempt:  (E as any).nesting_attempt ?? 1,
+              species:           E.species,
+              is_empty_cavity:   E.is_empty_cavity,
+              has_nest:          E.has_nest,
+              nest_discarded:    !!E.nest_discarded,
+              adult_present:     !!E.adult_present,
+              egg_count:         E.egg_count,
+              discarded_eggs:    E.discarded_eggs,
+              young_count:       E.young_count,
+              nestling_age_days: E.nestling_age_days ?? null,
+              fledged_count:     E.fledged_count ?? 0,
+              nesting_attempt:   (E as any).nesting_attempt ?? 1,
               renesting_attempt: !!E.renesting_attempt,
             });
           }
