@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { SectionList, StyleSheet, View } from 'react-native';
+import { Alert, SectionList, StyleSheet, View } from 'react-native';
 import { Button, Card, Dialog, HelperText, IconButton, Portal, Text, TextInput } from 'react-native-paper';
 import DateInput from '../components/DateInput';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -364,27 +364,58 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
   async function handleMarkAllEmpty() {
     const Unrecorded = Sections.flatMap(s => s.data).filter(c => c.entry_id === null);
     if (Unrecorded.length === 0) return;
+
+    // Identify unrecorded compartments whose young are past fledge age — same check
+    // used by the per-compartment quick-save fledge prompt.
+    const FledgeReady = Unrecorded.filter(
+      c => c.prev_entry && c.prev_entry.young_count > 0 &&
+           c.calculated_nestling_age !== null && c.calculated_nestling_age >= 26
+    );
+    const FledgeCounts = new Map<string, number>();
+    if (FledgeReady.length > 0) {
+      const TotalYoung = FledgeReady.reduce((n, c) => n + c.prev_entry!.young_count, 0);
+      const NestWord   = FledgeReady.length === 1 ? 'nest' : 'nests';
+      const YoungWord  = TotalYoung === 1 ? 'young was' : 'young were';
+      const markFledged = await new Promise<boolean>(resolve =>
+        Alert.alert(
+          'Young may have fledged',
+          `${FledgeReady.length} ${NestWord} had ${TotalYoung} ${YoungWord} old enough to fledge. Mark them as fledged?`,
+          [
+            { text: 'Not fledged', onPress: () => resolve(false) },
+            { text: 'Mark as fledged', onPress: () => resolve(true) },
+          ],
+        )
+      );
+      if (markFledged) {
+        for (const c of FledgeReady) FledgeCounts.set(c.id, c.prev_entry!.young_count);
+      }
+    }
+
     setMarkingAllEmpty(true);
-    const Payload = {
+    const basePayload = {
       species: 'PM' as const, is_empty_cavity: true, has_nest: false, adult_present: false,
       nest_discarded: false, nest_replaced: false,
       egg_count: 0, discarded_eggs: 0, young_count: 0,
       nestling_age_days: null, nestling_age_notes: null as null,
       dead_young_count: 0, dead_adult_sex: null,
-      fledged_count: 0, renesting_attempt: false, notes: null,
+      renesting_attempt: false, notes: null,
       observed_male_age: null, observed_female_age: null, gourd_removed: false,
     };
+    const Payload = (compartmentId: string) => ({
+      ...basePayload,
+      fledged_count: FledgeCounts.get(compartmentId) ?? 0,
+    });
     // Generate stable IDs upfront so local and Supabase writes use the same ones
     const NewItems = Unrecorded.map(item => ({ id: makeId(), compartment_id: item.id }));
     try {
       await Promise.all(NewItems.map(({ id, compartment_id }) =>
-        upsertLocalEntry({ id, nest_check_id: CheckId, compartment_id, ...Payload })
+        upsertLocalEntry({ id, nest_check_id: CheckId, compartment_id, ...Payload(compartment_id) })
       ));
     } catch {}
     // Write-through to Supabase so navigating away immediately shows correct data
     try {
       await supabase.from('nest_check_entries').upsert(
-        NewItems.map(({ id, compartment_id }) => ({ id, nest_check_id: CheckId, compartment_id, ...Payload }))
+        NewItems.map(({ id, compartment_id }) => ({ id, nest_check_id: CheckId, compartment_id, ...Payload(compartment_id) }))
       );
     } catch {}
     syncNow();
