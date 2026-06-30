@@ -38,10 +38,17 @@ export function addDays(dateStr: string, days: number): string {
 }
 
 export function computeConfirmedAge(others: (string | null)[], current: string | null): string | null {
-  const Counts: Record<string, number> = {};
-  for (const O of [...others, current]) if (O) Counts[O] = (Counts[O] ?? 0) + 1;
-  for (const [Age, N] of Object.entries(Counts)) if (N >= 3) return Age;
-  return null;
+  // Walk observations in chronological order. Whichever age most recently crossed
+  // a multiple of 3 becomes the confirmed age — so a replacement bird whose age
+  // accumulates 3 later observations overrides an earlier confirmation.
+  const counts: Record<string, number> = {};
+  let result: string | null = null;
+  for (const O of [...others, current]) {
+    if (!O) continue;
+    counts[O] = (counts[O] ?? 0) + 1;
+    if (counts[O] % 3 === 0) result = O;
+  }
+  return result;
 }
 
 export function netEggs(eggCount: number, discardedEggs: number): number {

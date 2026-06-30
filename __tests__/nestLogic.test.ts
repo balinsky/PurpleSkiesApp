@@ -99,6 +99,18 @@ describe('computeConfirmedAge', () => {
   it('returns null when all values are null', () => {
     expect(computeConfirmedAge([null, null], null)).toBeNull();
   });
+  it('first age to reach 3 is confirmed when the other has fewer', () => {
+    // 3 ASY + 1 SY → ASY confirmed
+    expect(computeConfirmedAge(['ASY', 'ASY', 'ASY'], 'SY')).toBe('ASY');
+  });
+  it('later set of 3 overrides earlier confirmation (replacement bird)', () => {
+    // ASY confirmed first, then SY accumulates 3 later → SY wins
+    expect(computeConfirmedAge(['ASY', 'ASY', 'ASY', 'SY', 'SY'], 'SY')).toBe('SY');
+  });
+  it('second override: a third set of 3 wins again', () => {
+    // ASY→SY→ASY each reaching 3 in order; last ASY triple wins
+    expect(computeConfirmedAge(['ASY','ASY','ASY','SY','SY','SY','ASY','ASY'], 'ASY')).toBe('ASY');
+  });
 });
 
 // ── netEggs ───────────────────────────────────────────────────────────────────
