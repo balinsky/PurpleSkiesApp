@@ -395,6 +395,9 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     }
 
     setMarkingAllEmpty(true);
+    const AttemptByCompartment = new Map(
+      Unrecorded.map(item => [item.id, item.prev_entry?.nesting_attempt ?? 1])
+    );
     const basePayload = {
       species: 'PM' as const, is_empty_cavity: true, has_nest: false, adult_present: false,
       nest_discarded: false, nest_replaced: false,
@@ -407,6 +410,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     const Payload = (compartmentId: string) => ({
       ...basePayload,
       fledged_count: FledgeCounts.get(compartmentId) ?? 0,
+      nesting_attempt: AttemptByCompartment.get(compartmentId) ?? 1,
     });
     // Generate stable IDs upfront so local and Supabase writes use the same ones
     const NewItems = Unrecorded.map(item => ({ id: makeId(), compartment_id: item.id }));
@@ -447,6 +451,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       dead_young_count: 0, dead_adult_sex: null,
       fledged_count: fledgedCount, renesting_attempt: false, notes: null,
       observed_male_age: null, observed_female_age: null, gourd_removed: false,
+      nesting_attempt: item.prev_entry?.nesting_attempt ?? 1,
     };
     try {
       await upsertLocalEntry({ id: EntryId, nest_check_id: CheckId, compartment_id: item.id, ...QuickPayload });

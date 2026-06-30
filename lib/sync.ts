@@ -54,6 +54,7 @@ async function pushPendingEntries() {
       dead_adult_sex:      E.dead_adult_sex ?? null,
       fledged_count:       E.fledged_count,
       renesting_attempt:   !!E.renesting_attempt,
+      nesting_attempt:     E.nesting_attempt,
       notes:               E.notes,
       observed_male_age:   E.observed_male_age,
       observed_female_age: E.observed_female_age,
