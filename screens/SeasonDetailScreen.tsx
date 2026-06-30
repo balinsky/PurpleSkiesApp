@@ -1060,7 +1060,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
     if (checkIds.length > 0) {
       const { data } = await supabase
         .from('nest_check_entries')
-        .select('nest_check_id, species, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count, dead_young_count, dead_adult_male, dead_adult_female, has_nest, nest_replaced, is_empty_cavity, adult_present, nest_discarded, nesting_attempt')
+        .select('nest_check_id, species, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count, dead_young_count, dead_adult_sex, has_nest, nest_replaced, is_empty_cavity, adult_present, nest_discarded, nesting_attempt')
         .eq('compartment_id', compartmentId)
         .in('nest_check_id', checkIds);
       const CheckMap = new Map(NestChecks.map(c => [c.id, c.check_date]));
@@ -1073,8 +1073,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         nestling_age_days: E.nestling_age_days,
         fledged_count:     E.fledged_count ?? 0,
         dead_young_count:  E.dead_young_count ?? 0,
-        dead_adult_male:   !!E.dead_adult_male,
-        dead_adult_female: !!E.dead_adult_female,
+        dead_adult_male:   E.dead_adult_sex === 'M',
+        dead_adult_female: E.dead_adult_sex === 'F',
         has_nest:          !!E.has_nest,
         nest_replaced:     !!E.nest_replaced,
         is_empty_cavity:   !!E.is_empty_cavity,
