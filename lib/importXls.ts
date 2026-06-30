@@ -186,6 +186,63 @@ export function parseCheckCode(raw: string): ParseCodeResult {
   return { ok: true, data: { species, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days, dead_young_count, dead_adult_sex, gourd_removed, has_banding, notes } };
 }
 
+// ── Fledge detection ──────────────────────────────────────────────────────────
+
+export function elapsedDays(from: string, to: string): number {
+  return Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400000);
+}
+
+export function calcFledgeFromChecks(
+  checks: Array<{ date: string; data: ImportEntryData }>,
+  allCheckDates: string[],
+): number {
+  let hatchDate: string | null = null;
+  for (const { date, data } of checks) {
+    if (data.is_empty_cavity || data.young_count <= 0 || data.nestling_age_days == null) continue;
+    const ms = new Date(date).getTime() - data.nestling_age_days * 86400000;
+    const hd = new Date(ms);
+    hatchDate = `${hd.getFullYear()}-${String(hd.getMonth() + 1).padStart(2, '0')}-${String(hd.getDate()).padStart(2, '0')}`;
+    break;
+  }
+
+  function ageAt(date: string): number | null {
+    if (hatchDate === null) return null;
+    return elapsedDays(hatchDate, date);
+  }
+
+  const fledgeThreshold = 26;
+  let total = 0;
+
+  for (let i = 1; i < checks.length; i++) {
+    const { date: prevDate, data: prev } = checks[i - 1];
+    const { date: currDate, data: curr } = checks[i];
+    if (prev.is_empty_cavity || prev.young_count <= 0) continue;
+
+    const ageAtCurr = curr.nestling_age_days ?? ageAt(currDate);
+    if (ageAtCurr == null || ageAtCurr < fledgeThreshold) continue;
+
+    const currYoung = curr.is_empty_cavity ? 0 : curr.young_count;
+    const drop      = prev.young_count - currYoung;
+    if (drop <= 0) continue;
+
+    const deadYoung = curr.is_empty_cavity ? 0 : curr.dead_young_count;
+    total += Math.max(0, drop - deadYoung);
+  }
+
+  if (checks.length > 0) {
+    const { date: lastDate, data: last } = checks[checks.length - 1];
+    if (!last.is_empty_cavity && last.young_count > 0) {
+      let projectedAge = last.nestling_age_days ?? ageAt(lastDate) ?? null;
+      if (projectedAge != null && projectedAge < fledgeThreshold) {
+        const nextScheduled = allCheckDates.find(d => d > lastDate);
+        if (nextScheduled) projectedAge = projectedAge + elapsedDays(lastDate, nextScheduled);
+      }
+      if (projectedAge != null && projectedAge >= fledgeThreshold) total += last.young_count;
+    }
+  }
+  return total;
+}
+
 // ── Unit name helpers ──────────────────────────────────────────────────────────
 
 function defaultUnitName(housingTypeCode: string): string {
