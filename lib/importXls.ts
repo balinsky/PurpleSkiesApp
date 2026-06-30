@@ -93,7 +93,13 @@ export function parseCheckCode(raw: string): ParseCodeResult {
 
   // Parallel original-case rest string for note extraction (toUpperCase is length-preserving for ASCII)
   const consumed = s.length - rest.length;
-  const restOrig = sOrig.slice(consumed);
+  let restOrig = sOrig.slice(consumed);
+
+  // Pre-process PMCA slash notation before tokenizing.
+  // "TOKEN/D" → TOKEN with discard suffix fused (e.g. 3E/D → 3ED, 1DY/D → 1DYD).
+  // Bare "/" → space separator (e.g. 1Y/3E → 1Y 3E).
+  rest     = rest.replace(/(\w+)\/D\b/g, '$1D').replace(/\//g, ' ');
+  restOrig = restOrig.replace(/(\w+)\/[Dd]\b/g, '$1D').replace(/\//g, ' ');
 
   let is_empty_cavity = false;
   let has_nest = false;

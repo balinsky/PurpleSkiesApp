@@ -174,6 +174,34 @@ describe('parseCheckCode — fused tokens', () => {
   });
 });
 
+describe('parseCheckCode — slash separator notation', () => {
+  it('treats / as a separator between tokens (1Y/3E)', () => {
+    const d = ok('1Y/3E');
+    expect(d.young_count).toBe(1);
+    expect(d.egg_count).toBe(3);
+  });
+  it('treats /D as discard suffix for preceding token (3E/D)', () => {
+    const d = ok('3E/D');
+    expect(d.egg_count).toBe(3);
+    expect(d.discarded_eggs).toBe(3);
+  });
+  it('treats /D as discard for dead young (1DY/D)', () => {
+    const d = ok('1DY/D');
+    expect(d.dead_young_count).toBe(1);
+  });
+  it('handles combined slash tokens (1Y/3E/D)', () => {
+    const d = ok('1Y/3E/D');
+    expect(d.young_count).toBe(1);
+    expect(d.egg_count).toBe(3);
+    expect(d.discarded_eggs).toBe(3);
+  });
+  it('handles lowercase /d', () => {
+    const d = ok('2E/d');
+    expect(d.egg_count).toBe(2);
+    expect(d.discarded_eggs).toBe(2);
+  });
+});
+
 describe('parseCheckCode — notes and errors', () => {
   it('collects unrecognised tokens as notes', () => {
     const d = ok('4Y moved');
