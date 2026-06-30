@@ -1130,6 +1130,17 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           year: parseInt(CheckDate.substring(0, 4), 10),
           male_age: ConfirmedMale, female_age: ConfirmedFemale,
         });
+        // Write-through nest_seasons immediately so confirmed ages appear without
+        // waiting for background sync (mirrors the entry write-through below).
+        try {
+          const { data: ExNS } = await supabase.from('nest_seasons').select('id')
+            .eq('compartment_id', CompartmentId).eq('site_season_id', SeasonId).maybeSingle();
+          if (ExNS) {
+            await supabase.from('nest_seasons').update({ male_age: ConfirmedMale, female_age: ConfirmedFemale }).eq('id', ExNS.id);
+          } else {
+            await supabase.from('nest_seasons').insert({ compartment_id: CompartmentId, site_season_id: SeasonId, year: parseInt(CheckDate.substring(0, 4), 10), male_age: ConfirmedMale, female_age: ConfirmedFemale });
+          }
+        } catch {}
       }
 
       // Write-through to Supabase immediately so that the next loadEntry read

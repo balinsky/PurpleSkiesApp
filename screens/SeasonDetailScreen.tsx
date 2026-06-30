@@ -9,6 +9,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { friendlyError } from '../lib/errorUtils';
+import { computeConfirmedAge } from '../lib/nestLogic';
 import { AppStackParamList } from '../App';
 import { useSettings } from '../contexts/SettingsContext';
 import { useSync } from '../contexts/SyncContext';
@@ -665,8 +666,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             compartment_id:    cid,
             label,
             unit_name,
-            confirmed_male:    ageData?.male_age ?? null,
-            confirmed_female:  ageData?.female_age ?? null,
+            confirmed_male:    ageData?.male_age ?? (obsData ? computeConfirmedAge(obsData.male, null) : null),
+            confirmed_female:  ageData?.female_age ?? (obsData ? computeConfirmedAge(obsData.female, null) : null),
             male_observations:   obsData?.male ?? [],
             female_observations: obsData?.female ?? [],
           });
