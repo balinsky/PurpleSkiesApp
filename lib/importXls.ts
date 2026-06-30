@@ -355,13 +355,17 @@ export async function parseImportFile(uri: string): Promise<ImportSummary | stri
     }
     const nesting_attempt = attemptCounter.get(bare) ?? 1;
 
-    // Parse male/female age
+    // Parse male/female age; normalize '?' → 'UNK'
+    const normAge = (s: string | undefined): string | null => {
+      const t = s?.trim();
+      return !t ? null : t === '?' ? 'UNK' : t;
+    };
     let male_age: string | null = null;
     let female_age: string | null = null;
     if (ageStr) {
       const parts = ageStr.split('/');
-      male_age   = parts[0]?.trim() || null;
-      female_age = parts[1]?.trim() || null;
+      male_age   = normAge(parts[0]);
+      female_age = normAge(parts[1]);
     }
 
     // Parse check cells
