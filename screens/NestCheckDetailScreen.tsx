@@ -376,17 +376,19 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       const TotalYoung = FledgeReady.reduce((n, c) => n + c.prev_entry!.young_count, 0);
       const NestWord   = FledgeReady.length === 1 ? 'nest' : 'nests';
       const YoungWord  = TotalYoung === 1 ? 'young was' : 'young were';
-      const markFledged = await new Promise<boolean>(resolve =>
+      const choice = await new Promise<'fledged' | 'not_fledged' | 'cancel'>(resolve =>
         Alert.alert(
           'Young may have fledged',
           `${FledgeReady.length} ${NestWord} had ${TotalYoung} ${YoungWord} old enough to fledge. Mark them as fledged?`,
           [
-            { text: 'Not fledged', onPress: () => resolve(false) },
-            { text: 'Mark as fledged', onPress: () => resolve(true) },
+            { text: 'Keep editing', onPress: () => resolve('cancel') },
+            { text: 'Not fledged',  onPress: () => resolve('not_fledged') },
+            { text: 'Mark as fledged', onPress: () => resolve('fledged') },
           ],
         )
       );
-      if (markFledged) {
+      if (choice === 'cancel') return;
+      if (choice === 'fledged') {
         for (const c of FledgeReady) FledgeCounts.set(c.id, c.prev_entry!.young_count);
       }
     }
