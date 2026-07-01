@@ -425,14 +425,14 @@ export async function exportSeasonXls(
     ...StaticHeaders,
     ...ComputedHeaders,
     ...Checks.map((_, i) => `Enter date of ${ordinal(i + 1)} nest check here:`),
-    'Egg #', 'Hatch #', 'Fledge #',
+    'Egg #', 'Hatch #', 'Fledge #', 'RA New Eggs',
   ];
   // Row 2: blank for static/computed cols, actual dates for check columns
   const HeaderRow2 = [
     ...StaticHeaders.map(() => ''),
     ...ComputedHeaders.map(() => ''),
     ...Checks.map(c => fmtDate(c.check_date)),
-    '', '', '',
+    '', '', '', '',
   ];
 
   const DataRows: (string | number)[][] = [];
@@ -494,6 +494,27 @@ export async function exportSeasonXls(
     HatchCount = EWD.length > 0 ? Math.max(...EWD.map(({ entry }) => entry?.young_count ?? 0)) : 0;
     const FledgeCount = EWD.reduce((sum, { entry }) => sum + (entry?.fledged_count ?? 0), 0);
 
+    // For RA rows: estimate eggs genuinely laid for this attempt by subtracting stale carryover.
+    // Stale eggs = those that vanish from the nest before any young appear (they were left over
+    // from the prior attempt past their hatch window). Capped by the prior attempt's peak.
+    // Floor: adjusted count can't be fewer than the young that actually hatched.
+    let RaAdjEggs: number | null = null;
+    if (IsRA && MaxEggs > 0 && FirstWithEggs?.entry) {
+      const PriorKey = `${Data.compartment_id}:${Data.nesting_attempt - 1}`;
+      const PriorData = CompMap.get(PriorKey);
+      const PriorPeakArr = PriorData ? [...PriorData.byCheck.values()].map(e => e.egg_count) : [];
+      const PriorPeak = PriorPeakArr.length > 0 ? Math.max(0, ...PriorPeakArr) : 0;
+      if (PriorPeak > 0) {
+        const RaFirstEggs = FirstWithEggs.entry.egg_count;
+        const FirstYoungIdx = EWD.findIndex(({ entry }) => (entry?.young_count ?? 0) > 0);
+        const BeforeYoung = FirstYoungIdx === -1 ? EWD : EWD.slice(0, FirstYoungIdx);
+        const EggsBefore = BeforeYoung.map(({ entry }) => entry?.egg_count ?? 0).filter(n => n > 0);
+        const MinEggsBefore = EggsBefore.length > 0 ? Math.min(...EggsBefore) : RaFirstEggs;
+        const Stale = Math.min(Math.max(0, RaFirstEggs - MinEggsBefore), PriorPeak);
+        RaAdjEggs = Math.max(MaxEggs - Stale, HatchCount);
+      }
+    }
+
     // For multi-attempt compartments, show blank for checks belonging to a different attempt.
     // For gourd-removed compartments, show blank for subsequent checks with no entry.
     const GourdDate = GourdRemovedDate.get(Data.compartment_id);
@@ -516,6 +537,7 @@ export async function exportSeasonXls(
       FirstEggDate, MaxEggs || '', ProjHatch, ActualHatch, ProjFledge,
       ...CheckCodes,
       MaxEggs || '', HatchCount || '', FledgeCount || '',
+      RaAdjEggs !== null ? RaAdjEggs : '',
     ]);
   }
 
@@ -536,6 +558,7 @@ export async function exportSeasonXls(
     { wch: 9  },  // Egg #
     { wch: 9  },  // Hatch #
     { wch: 11 },  // Fledge #
+    { wch: 12 },  // RA New Eggs
   ];
   ws['!cols'] = format === 'c'
     ? [{ wch: 18 }, ...CoreCols]   // prepend Housing Unit col
@@ -555,7 +578,7 @@ export async function exportSeasonXls(
 
   // Info / legend block (2 cols after Fledge #)
   const StaticColCount = format === 'c' ? 5 : 4;
-  const InfoCol = StaticColCount + 5 + Checks.length + 3 + 1;
+  const InfoCol = StaticColCount + 5 + Checks.length + 4 + 1;
   addInfoBlock(ws, InfoCol, Year, SiteName, Contact, BandDetails);
 
   XLSX.utils.book_append_sheet(wb, ws, `${Year} Nest Data`);
