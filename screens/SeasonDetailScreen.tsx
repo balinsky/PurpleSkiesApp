@@ -1274,7 +1274,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
     <>
       <View style={styles.Container}>
         {SeasonCalendarView ? (
-          <ScrollView contentContainerStyle={styles.CalendarScroll}>
+          <ScrollView contentContainerStyle={styles.CalendarScroll} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
             {ColonyStats && (
               <View style={styles.ColonyStatsRow}>
                 <View style={styles.ColonyStat}>
@@ -1557,6 +1557,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           data={NestChecks}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.List}
+          automaticallyAdjustKeyboardInsets
+          keyboardShouldPersistTaps="handled"
           ListHeaderComponent={(
             <View>
               {ColonyStats && (
