@@ -58,7 +58,7 @@ export default function ProfileScreen({ navigation }: Props) {
   if (Fetching) return null;
 
   return (
-    <ScrollView contentContainerStyle={styles.Container}>
+    <ScrollView contentContainerStyle={styles.Container} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
       <TextInput
         label="Email"
         value={Email}

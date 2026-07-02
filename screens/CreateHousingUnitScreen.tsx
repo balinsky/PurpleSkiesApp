@@ -118,7 +118,7 @@ export default function CreateHousingUnitScreen({ navigation, route }: Props) {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.Container}>
+    <ScrollView contentContainerStyle={styles.Container} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
 
       <TextInput
         label="Unit name *"

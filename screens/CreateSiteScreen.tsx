@@ -52,7 +52,7 @@ export default function CreateSiteScreen({ navigation }: Props) {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.Container}>
+    <ScrollView contentContainerStyle={styles.Container} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
       <TextInput
         label="Site name *"
         value={SiteName}

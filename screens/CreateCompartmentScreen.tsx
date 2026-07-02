@@ -110,7 +110,7 @@ export default function CreateCompartmentScreen({ navigation, route }: Props) {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.Container}>
+    <ScrollView contentContainerStyle={styles.Container} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
       <TextInput
         label="Compartment label *"
         value={CavityLabel}
