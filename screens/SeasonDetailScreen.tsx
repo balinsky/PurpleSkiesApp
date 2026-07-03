@@ -688,14 +688,20 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         const BandedByKey = new Map<string, number>();
         const EntryIdList = (Entries as any[]).map(e => e.id).filter(Boolean);
         if (EntryIdList.length > 0) {
-          const { data: BandRows } = await supabase
-            .from('bands')
-            .select('nest_check_entry_id, nestling_id')
-            .in('nest_check_entry_id', EntryIdList)
-            .eq('bird_type', 'nestling')
-            .eq('is_new_banding', true)
-            .not('nestling_id', 'is', null);
-          if (BandRows) {
+          const CHUNK = 150;
+          const BandChunks = await Promise.all(
+            Array.from({ length: Math.ceil(EntryIdList.length / CHUNK) }, (_, i) =>
+              supabase
+                .from('bands')
+                .select('nest_check_entry_id, nestling_id')
+                .in('nest_check_entry_id', EntryIdList.slice(i * CHUNK, (i + 1) * CHUNK))
+                .eq('bird_type', 'nestling')
+                .eq('is_new_banding', true)
+                .not('nestling_id', 'is', null)
+            )
+          );
+          const BandRows = BandChunks.flatMap(r => r.data ?? []);
+          if (BandRows.length > 0) {
             const EntryKeyMap = new Map(
               (Entries as any[]).map(e => [e.id, `${e.compartment_id}:${e.nesting_attempt ?? 1}`])
             );
@@ -946,10 +952,19 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         if (!Ents?.length) { setAllBandsData([]); return; }
 
         const EntMap = new Map((Ents as any[]).map(e => [e.id as string, e]));
-        const { data: Bands } = await supabase
-          .from('bands')
-          .select('nest_check_entry_id, nestling_id, bird_type, is_new_banding, band_type, band_color, band_code')
-          .in('nest_check_entry_id', Ents.map(e => (e as any).id));
+
+        // Chunk entry IDs to avoid HTTP 414 (URI Too Long) when there are many entries.
+        const EntIds = (Ents as any[]).map(e => e.id as string);
+        const CHUNK = 150;
+        const BandChunks = await Promise.all(
+          Array.from({ length: Math.ceil(EntIds.length / CHUNK) }, (_, i) =>
+            supabase
+              .from('bands')
+              .select('nest_check_entry_id, nestling_id, bird_type, is_new_banding, band_type, band_color, band_code')
+              .in('nest_check_entry_id', EntIds.slice(i * CHUNK, (i + 1) * CHUNK))
+          )
+        );
+        const Bands = BandChunks.flatMap(r => (r.data ?? []) as any[]);
 
         const Rows: BandRow[] = [];
         for (const B of (Bands ?? []) as any[]) {
