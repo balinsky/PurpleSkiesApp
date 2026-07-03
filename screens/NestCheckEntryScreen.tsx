@@ -525,12 +525,6 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           dead_young_count: (Prev as any).dead_young_count ?? 0,
           nesting_attempt:  (Prev as any).nesting_attempt ?? 1,
         });
-        // For new entries: if the prior PM check had an established nest, default
-        // HasNestOnly=true so a 0-egg entry isn't saved as has_nest=false (unchecked).
-        // The egg onChange resets HasNestOnly to false as soon as eggs are entered.
-        if (!ExistingEntryId && Prev.species === 'PM' && (Prev as any).has_nest) {
-          setHasNestOnly(true);
-        }
       }
 
     }

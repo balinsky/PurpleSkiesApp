@@ -88,11 +88,14 @@ type BandRow = {
   nest_check_entry_id: string;
 };
 
+type StatusSegment = { text: string; color: string };
+
 type CompartmentProgress = {
   compartment_id: string;
   nesting_attempt: number;
   label: string;
   unit_name: string;
+  current_status: StatusSegment[] | null;
   first_egg_min: string | null;
   first_egg_max: string | null;
   proj_hatch_min: string | null;
@@ -597,7 +600,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         const [EntriesResult, NestSeasonsResult, NonPMResult] = await Promise.all([
           supabase
             .from('nest_check_entries')
-            .select('id, nest_check_id, compartment_id, adult_present, is_empty_cavity, has_nest, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count, dead_young_count, nesting_attempt, observed_male_age, observed_female_age, compartments(cavity_label, housing_units(name))')
+            .select('id, nest_check_id, compartment_id, adult_present, is_empty_cavity, has_nest, nest_discarded, egg_count, discarded_eggs, young_count, nestling_age_days, fledged_count, dead_young_count, nesting_attempt, observed_male_age, observed_female_age, compartments(cavity_label, housing_units(name))')
             .in('nest_check_id', Checks.map(c => c.id))
             .eq('species', 'PM'),
           supabase
@@ -606,7 +609,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             .eq('site_season_id', SeasonId),
           supabase
             .from('nest_check_entries')
-            .select('compartment_id, has_nest, egg_count, young_count, is_empty_cavity, adult_present, compartments(cavity_label, housing_units(name))')
+            .select('nest_check_id, compartment_id, species, has_nest, nest_discarded, egg_count, young_count, is_empty_cavity, adult_present, compartments(cavity_label, housing_units(name))')
             .in('nest_check_id', Checks.map(c => c.id))
             .neq('species', 'PM')
             .not('species', 'is', null),
@@ -731,6 +734,66 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         for (const [id, hist] of AllHistoryByCompartment)
           AllHistoryByCompartment.set(id, hist.sort((a, b) => a.check_date.localeCompare(b.check_date)));
 
+        // Most recent substantive entry per compartment, for the "current status" badge.
+        // Substantive = actually checked the nest (not adult-present-only or no-data).
+        const isSubstantive = (E: any) =>
+          !E.adult_present &&
+          (E.is_empty_cavity || E.has_nest || E.nest_discarded ||
+           (E.egg_count ?? 0) > 0 || (E.young_count ?? 0) > 0);
+
+        const S_PURPLE = '#7b1fa2';
+        const S_GREEN  = '#2e7d32';
+        const S_BLUE   = '#1565c0';
+
+        function currentStatusSegments(E: any, attempt: number): StatusSegment[] {
+          if (E.is_empty_cavity) return [{ text: 'Empty', color: S_BLUE }];
+          const sp = (E.species ?? 'PM') as string;
+          const isPM = sp === 'PM';
+          const ra = attempt > 1 ? (attempt === 2 ? 'RA' : `RA${attempt}`) : '';
+
+          if (E.nest_discarded) {
+            const segs: StatusSegment[] = [{ text: isPM ? 'D' : `${sp}ND`, color: S_BLUE }];
+            if (ra) segs.push({ text: ` ${ra}`, color: S_BLUE });
+            return segs;
+          }
+
+          const segs: StatusSegment[] = [];
+          if ((E.young_count ?? 0) > 0) segs.push({ text: `${E.young_count}Y`, color: S_PURPLE });
+          if ((E.egg_count ?? 0)   > 0) segs.push({ text: `${segs.length ? ' ' : ''}${E.egg_count}E`, color: S_GREEN });
+          if (segs.length > 0) {
+            if (ra) segs.push({ text: ` ${ra}`, color: S_BLUE });
+            return segs;
+          }
+
+          const nestSegs: StatusSegment[] = [{ text: isPM ? 'PMN' : `${sp}N`, color: S_BLUE }];
+          if (ra) nestSegs.push({ text: ` ${ra}`, color: S_BLUE });
+          return nestSegs;
+        }
+
+        type LatestSub = { entry: any; check_date: string; attempt: number };
+        const LatestSubstantiveByComp = new Map<string, LatestSub>();
+
+        for (const E of Entries as any[]) {
+          if (!isSubstantive(E)) continue;
+          const Chk = Checks.find(c => c.id === E.nest_check_id);
+          if (!Chk) continue;
+          const attempt = (E.nesting_attempt ?? 1) as number;
+          const cur = LatestSubstantiveByComp.get(E.compartment_id);
+          if (!cur || Chk.check_date > cur.check_date ||
+              (Chk.check_date === cur.check_date && attempt > cur.attempt)) {
+            LatestSubstantiveByComp.set(E.compartment_id, { entry: E, check_date: Chk.check_date, attempt });
+          }
+        }
+        for (const E of (NonPMResult.data ?? []) as any[]) {
+          if (!isSubstantive(E)) continue;
+          const Chk = Checks.find(c => c.id === E.nest_check_id);
+          if (!Chk) continue;
+          const cur = LatestSubstantiveByComp.get(E.compartment_id);
+          if (!cur || Chk.check_date > cur.check_date) {
+            LatestSubstantiveByComp.set(E.compartment_id, { entry: E, check_date: Chk.check_date, attempt: 1 });
+          }
+        }
+
         // Group entries by (compartment, nesting_attempt)
         type CompKey = string; // `${compartment_id}:${nesting_attempt}`
         const CompMap = new Map<CompKey, { compartment_id: string; label: string; unit_name: string; nesting_attempt: number; ewd: { check_date: string; egg_count: number; young_count: number; nestling_age_days: number | null; fledged_count: number; dead_young_count: number }[] }>();
@@ -827,29 +890,22 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           const BandedCount = BandedByKey.get(`${Data.compartment_id}:${Data.nesting_attempt}`) ?? 0;
           const AttemptSuffix = Data.nesting_attempt > 1 ? ` (Attempt ${Data.nesting_attempt})` : '';
           const FleddgeDates = EWD.filter(e => e.fledged_count > 0).map(e => e.check_date).sort();
-          Progress.push({ compartment_id: Data.compartment_id, nesting_attempt: Data.nesting_attempt, label: Data.label + AttemptSuffix, unit_name: Data.unit_name, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, fledge_dates: FleddgeDates, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount, banded_count: BandedCount, superseded: false });
+          const sub = LatestSubstantiveByComp.get(Data.compartment_id);
+          Progress.push({ compartment_id: Data.compartment_id, nesting_attempt: Data.nesting_attempt, label: Data.label + AttemptSuffix, unit_name: Data.unit_name, current_status: sub ? currentStatusSegments(sub.entry, sub.attempt) : null, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, fledge_dates: FleddgeDates, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount, banded_count: BandedCount, superseded: false });
         }
 
-        // Add non-PM compartments that have nesting activity and aren't already in Progress
-        const PMCompartmentIds = new Set(Progress.map(p => p.compartment_id));
-        const NonPMCompartments = new Map<string, { compartment_id: string; label: string; unit_name: string }>();
-        for (const E of (NonPMResult.data ?? []) as any[]) {
-          if (PMCompartmentIds.has(E.compartment_id)) continue;
-          if (E.is_empty_cavity || E.adult_present) continue;
-          if (!E.has_nest && (E.egg_count ?? 0) === 0 && (E.young_count ?? 0) === 0) continue;
-          if (!E.compartments) continue;
-          if (!NonPMCompartments.has(E.compartment_id)) {
-            NonPMCompartments.set(E.compartment_id, {
-              compartment_id: E.compartment_id,
-              label:     (E.compartments as any).cavity_label ?? '?',
-              unit_name: (E.compartments as any).housing_units?.name ?? '',
-            });
-          }
-        }
-        for (const [, C] of NonPMCompartments) {
+        // Add any compartments with a substantive status not already in Progress
+        // (PMN, Empty, and non-PM nesting compartments)
+        const TrackedCompIds = new Set(Progress.map(p => p.compartment_id));
+        for (const [compId, sub] of LatestSubstantiveByComp) {
+          if (TrackedCompIds.has(compId)) continue;
+          const comp = sub.entry.compartments as any;
+          if (!comp) continue;
           Progress.push({
-            compartment_id: C.compartment_id, nesting_attempt: 1,
-            label: C.label, unit_name: C.unit_name,
+            compartment_id: compId, nesting_attempt: sub.attempt,
+            label:     comp.cavity_label ?? '?',
+            unit_name: comp.housing_units?.name ?? '',
+            current_status: currentStatusSegments(sub.entry, sub.attempt),
             first_egg_min: null, first_egg_max: null,
             proj_hatch_min: null, proj_hatch_max: null,
             actual_hatch: null, proj_fledge: null, fledge_dates: [],
@@ -1090,18 +1146,22 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   }
 
   // ── Save arrival dates ─────────────────────────────────────────────
-  async function handleSaveDates() {
+  async function saveDatesWithValues(Asy: string, SyMale: string) {
     setDatesLoading(true);
     setDatesError('');
     const { error } = await supabase
       .from('site_seasons')
       .update({
-        date_first_asy_seen:    FirstAsySeen.trim() || null,
-        date_first_sy_male_seen: FirstSyMaleSeen.trim() || null,
+        date_first_asy_seen:     Asy.trim() || null,
+        date_first_sy_male_seen: SyMale.trim() || null,
       })
       .eq('id', SeasonId);
     setDatesLoading(false);
     if (error) setDatesError(friendlyError(error, 'Failed to save dates.'));
+  }
+
+  async function handleSaveDates() {
+    await saveDatesWithValues(FirstAsySeen, FirstSyMaleSeen);
   }
 
   function saveBandingWindow() {
@@ -1372,25 +1432,18 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                 <DateInput
                   label="First ASY seen"
                   value={FirstAsySeen}
-                  onChange={setFirstAsySeen}
+                  onChange={v => { setFirstAsySeen(v); saveDatesWithValues(v, FirstSyMaleSeen); }}
                   style={styles.Input}
+                  year={Year}
                 />
                 <DateInput
                   label="First SY male seen"
                   value={FirstSyMaleSeen}
-                  onChange={setFirstSyMaleSeen}
+                  onChange={v => { setFirstSyMaleSeen(v); saveDatesWithValues(FirstAsySeen, v); }}
                   style={styles.Input}
+                  year={Year}
                 />
                 {DatesError ? <HelperText type="error" visible>{DatesError}</HelperText> : null}
-                <Button
-                  mode="outlined"
-                  compact
-                  loading={DatesLoading}
-                  onPress={handleSaveDates}
-                  style={styles.SaveDatesBtn}
-                >
-                  Save dates
-                </Button>
               </>
             )}
 
@@ -1430,10 +1483,13 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                           >
                             <View>
                               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <Text style={[styles.ProgressTitle, { flex: 1 }]}>{P.label}</Text>
+                                <Text style={[styles.ProgressTitle, { flex: 1 }]}>
+                                  {P.label}
+                                  {P.current_status && <>{'  ·  '}{P.current_status.map((seg, i) => <Text key={i} style={[styles.ProgressStatus, { color: seg.color }]}>{seg.text}</Text>)}</>}
+                                </Text>
                                 <Icon source="history" size={15} color="#9c27b0" />
                               </View>
-                              <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
+                              {progressLine(P) ? <Text style={styles.ProgressDates}>{progressLine(P)}</Text> : null}
                             </View>
                           </TouchableRipple>
                         ))}
@@ -1593,13 +1649,18 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                   {SeasonHousingUnits.length === 0 ? (
                     <Text variant="bodySmall" style={styles.Hint}>No housing set up for this season.</Text>
                   ) : (
-                    SeasonHousingUnits.map(U => (
-                      <Card key={U.id} style={styles.Card} mode="outlined"
-                        onPress={() => navigation.navigate('HousingUnitDetail', { UnitId: U.id, UnitName: U.name, UnitType: U.unit_type, DefaultHoleType: U.default_hole_type, SeasonId })}
-                      >
-                        <Card.Title title={U.name} subtitle={UnitTypeLabel[U.unit_type] ?? U.unit_type} />
-                      </Card>
-                    ))
+                    <>
+                      {HousingIsLegacy && (
+                        <Text variant="bodySmall" style={styles.Hint}>Shared housing (not yet season-specific)</Text>
+                      )}
+                      {SeasonHousingUnits.map(U => (
+                        <Card key={U.id} style={styles.Card} mode="outlined"
+                          onPress={() => navigation.navigate('HousingUnitDetail', { UnitId: U.id, UnitName: U.name, UnitType: U.unit_type, DefaultHoleType: U.default_hole_type, SeasonId })}
+                        >
+                          <Card.Title title={U.name} subtitle={UnitTypeLabel[U.unit_type] ?? U.unit_type} />
+                        </Card>
+                      ))}
+                    </>
                   )}
                   {(CopyHousingSourceId || CopyHousingIsLegacy) && SeasonHousingUnits.length === 0 && (
                     <Button mode="outlined" compact loading={CopyingHousing} style={styles.HousingBtn} onPress={handleCopyHousing}>
@@ -1633,25 +1694,18 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                   <DateInput
                     label="First ASY seen"
                     value={FirstAsySeen}
-                    onChange={setFirstAsySeen}
+                    onChange={v => { setFirstAsySeen(v); saveDatesWithValues(v, FirstSyMaleSeen); }}
                     style={styles.Input}
+                    year={Year}
                   />
                   <DateInput
                     label="First SY male seen"
                     value={FirstSyMaleSeen}
-                    onChange={setFirstSyMaleSeen}
+                    onChange={v => { setFirstSyMaleSeen(v); saveDatesWithValues(FirstAsySeen, v); }}
                     style={styles.Input}
+                    year={Year}
                   />
                   {DatesError ? <HelperText type="error" visible>{DatesError}</HelperText> : null}
-                  <Button
-                    mode="outlined"
-                    compact
-                    loading={DatesLoading}
-                    onPress={handleSaveDates}
-                    style={styles.SaveDatesBtn}
-                  >
-                    Save dates
-                  </Button>
                 </>
               )}
 
@@ -1684,10 +1738,22 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                             <IconButton icon={CollapsedProgressUnits.has(unit_name) ? 'chevron-down' : 'chevron-up'} size={14} style={{ margin: 0 }} />
                           </Pressable>
                           {!CollapsedProgressUnits.has(unit_name) && items.map((P) => (
-                            <View key={`${P.compartment_id}:${P.nesting_attempt}`} style={styles.ProgressRow}>
-                              <Text style={styles.ProgressTitle}>{P.label}</Text>
-                              <Text style={styles.ProgressDates}>{progressLine(P)}</Text>
-                            </View>
+                            <TouchableRipple
+                              key={`${P.compartment_id}:${P.nesting_attempt}`}
+                              onPress={() => openCompartmentHistory(P.compartment_id, `${P.unit_name} · ${P.label.replace(/ \(Attempt \d+\)$/, '')}`)}
+                              style={styles.ProgressRow}
+                            >
+                              <View>
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                  <Text style={[styles.ProgressTitle, { flex: 1 }]}>
+                                    {P.label}
+                                    {P.current_status && <>{'  ·  '}{P.current_status.map((seg, i) => <Text key={i} style={[styles.ProgressStatus, { color: seg.color }]}>{seg.text}</Text>)}</>}
+                                  </Text>
+                                  <Icon source="history" size={15} color="#9c27b0" />
+                                </View>
+                                {progressLine(P) ? <Text style={styles.ProgressDates}>{progressLine(P)}</Text> : null}
+                              </View>
+                            </TouchableRipple>
                           ))}
                         </View>
                       ))}
@@ -1953,9 +2019,10 @@ const styles = StyleSheet.create({
   Input:         { marginBottom: 8 },
   SaveDatesBtn:  { alignSelf: 'flex-start', marginBottom: 16 },
   Card:          { marginBottom: 8 },
-  ProgressRow:   { marginBottom: 6 },
-  ProgressTitle: { fontSize: 13, fontWeight: '500', color: '#222' },
-  ProgressDates: { fontSize: 12, color: '#555' },
+  ProgressRow:    { marginBottom: 6 },
+  ProgressTitle:  { fontSize: 13, fontWeight: '500', color: '#222' },
+  ProgressStatus: { fontSize: 13, fontWeight: '600' },
+  ProgressDates:  { fontSize: 12, color: '#555' },
   UnitHeaderRow:  { flexDirection: 'row', alignItems: 'center', marginTop: 8, marginBottom: 2 },
   UnitHeaderText: { fontSize: 12, fontWeight: '700', color: '#555', flex: 1 },
   EmptyText:     { color: '#666', marginBottom: 16 },
