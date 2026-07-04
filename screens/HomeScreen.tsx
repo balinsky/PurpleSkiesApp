@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, StyleSheet, View } from 'react-native';
 import { Button, Card, FAB, IconButton, Text } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -89,8 +89,13 @@ export default function HomeScreen({ navigation }: Props) {
     setAccepting(Inv.id);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setAccepting(null); return; }
-    await supabase.from('site_members')
+    const { error } = await supabase.from('site_members')
       .insert({ site_id: Inv.site_id, user_id: user.id, role: Inv.role });
+    if (error) {
+      setAccepting(null);
+      Alert.alert('Could not join site', error.message);
+      return;
+    }
     await supabase.from('invitations')
       .update({ accepted_at: new Date().toISOString() })
       .eq('id', Inv.id);
