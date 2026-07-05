@@ -9,6 +9,7 @@ import { useFonts } from 'expo-font';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { SyncProvider } from './contexts/SyncContext';
+import HeaderMenu from './components/HeaderMenu';
 import { initDb } from './lib/localDb';
 import { en, registerTranslation } from 'react-native-paper-dates';
 registerTranslation('en', en);
@@ -66,7 +67,10 @@ function AuthNavigator() {
 
 function AppNavigator() {
   return (
-    <AppStack.Navigator>
+    <AppStack.Navigator screenOptions={({ navigation }) => ({
+      headerBackButtonDisplayMode: 'minimal',
+      headerRight: () => <HeaderMenu navigation={navigation as any} />,
+    })}>
       <AppStack.Screen name="Home" component={HomeScreen} options={{ title: 'Purple Skies' }} />
       <AppStack.Screen name="Profile" component={ProfileScreen} options={{ title: 'My Profile' }} />
       <AppStack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />

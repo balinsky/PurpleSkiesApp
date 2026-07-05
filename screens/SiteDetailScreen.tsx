@@ -6,6 +6,7 @@ import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { friendlyError } from '../lib/errorUtils';
 import { AppStackParamList } from '../App';
+import HeaderMenu from '../components/HeaderMenu';
 
 type SiteSeason = {
   id: string;
@@ -49,6 +50,18 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
   const [EditLoading, setEditLoading]           = useState(false);
   const [EditFetching, setEditFetching]         = useState(false);
   const [EditError, setEditError]               = useState('');
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <HeaderMenu
+          navigation={navigation}
+          onDelete={() => setDeleteDialogVisible(true)}
+          deleteLabel="Delete site"
+        />
+      ),
+    });
+  }, [navigation]);
 
   useEffect(() => {
     async function loadRole() {

@@ -1,7 +1,8 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, SectionList, StyleSheet, View } from 'react-native';
 import { Button, Card, Dialog, HelperText, IconButton, Portal, Text, TextInput } from 'react-native-paper';
 import DateInput from '../components/DateInput';
+import HeaderMenu from '../components/HeaderMenu';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
@@ -82,6 +83,18 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
   const [EditDateValue, setEditDateValue]       = useState('');
   const [EditDateLoading, setEditDateLoading]   = useState(false);
   const [EditDateError, setEditDateError]       = useState('');
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <HeaderMenu
+          navigation={navigation}
+          onDelete={() => setDeleteVisible(true)}
+          deleteLabel="Delete check"
+        />
+      ),
+    });
+  }, [navigation]);
 
   // ── Delete check ───────────────────────────────────────────────────
   const [DeleteVisible, setDeleteVisible] = useState(false);

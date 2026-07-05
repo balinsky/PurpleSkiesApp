@@ -5,6 +5,7 @@ import { Button, Card, Dialog, FAB, HelperText, Icon, IconButton, List, Portal, 
 import { exportSeasonXls, ExportFormat } from '../lib/exportXls';
 import { Calendar } from 'react-native-calendars';
 import DateInput from '../components/DateInput';
+import HeaderMenu from '../components/HeaderMenu';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
@@ -533,18 +534,15 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             size={22}
             onPress={toggleSeasonCalendarView}
           />
-          <IconButton
-            icon="trash-can-outline"
-            size={22}
-            iconColor="red"
-            disabled={DeletingSeason}
-            style={{ marginRight: 4 }}
-            onPress={handleDeleteSeasonPress}
+          <HeaderMenu
+            navigation={navigation}
+            onDelete={handleDeleteSeasonPress}
+            deleteLabel="Delete season"
           />
         </View>
       ),
     });
-  }, [SeasonCalendarView, Exporting, DeletingSeason, NestChecks.length]);
+  }, [SeasonCalendarView, Exporting, NestChecks.length]);
 
   useEffect(() => {
     AsyncStorage.multiGet([`banding_min_${SiteId}`, `banding_max_${SiteId}`])

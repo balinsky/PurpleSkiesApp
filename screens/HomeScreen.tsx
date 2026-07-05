@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Alert, FlatList, StyleSheet, View } from 'react-native';
-import { Button, Card, FAB, IconButton, Text } from 'react-native-paper';
+import { Button, Card, FAB, Text } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
@@ -32,25 +32,6 @@ export default function HomeScreen({ navigation }: Props) {
   const [Accepting, setAccepting]       = useState<string | null>(null);
   const [Declining, setDeclining]       = useState<string | null>(null);
 
-  useEffect(() => {
-    navigation.setOptions({
-      headerRight: () => (
-        <View style={{ flexDirection: 'row' }}>
-          <IconButton
-            icon="cog-outline"
-            size={24}
-            onPress={() => navigation.navigate('Settings')}
-          />
-          <IconButton
-            icon="account-circle-outline"
-            size={24}
-            onPress={() => navigation.navigate('Profile')}
-            style={{ marginRight: 4 }}
-          />
-        </View>
-      ),
-    });
-  }, [navigation]);
 
   useFocusEffect(
     useCallback(() => {
