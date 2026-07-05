@@ -217,8 +217,8 @@ export default function SiteMembersScreen({ navigation, route }: Props) {
         <Text variant="labelLarge" style={styles.SectionLabel}>Members</Text>
 
         {Members.map((M) => {
-          const Title    = M.displayName ?? M.email;
-          const Subtitle = M.displayName ? M.email : undefined;
+          const Title    = M.displayName ?? (CanManage ? M.email : 'Member');
+          const Subtitle = CanManage && M.displayName ? M.email : undefined;
           const IsMe     = M.userId === CurrentUserId;
           const Editable = CanManage && !M.isOwner && !IsMe;
           return (
@@ -267,9 +267,9 @@ export default function SiteMembersScreen({ navigation, route }: Props) {
             {Invitations.map((Inv) => (
               <Card key={Inv.id} style={styles.Card} mode="outlined">
                 <Card.Title
-                  title={Inv.invited_email}
+                  title={CanManage ? Inv.invited_email : 'Pending invitation'}
                   subtitle={`Invited as ${RoleLabel[Inv.role] ?? Inv.role}`}
-                  right={() => (
+                  right={CanManage ? () => (
                     <Button
                       mode="text" compact textColor="red"
                       onPress={() => handleCancelInvitation(Inv.id)}
@@ -277,7 +277,7 @@ export default function SiteMembersScreen({ navigation, route }: Props) {
                     >
                       Cancel
                     </Button>
-                  )}
+                  ) : undefined}
                 />
               </Card>
             ))}

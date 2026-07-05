@@ -56,12 +56,12 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
       headerRight: () => (
         <HeaderMenu
           navigation={navigation}
-          onDelete={() => setDeleteDialogVisible(true)}
+          onDelete={UserRole === 'owner' ? () => setDeleteDialogVisible(true) : undefined}
           deleteLabel="Delete site"
         />
       ),
     });
-  }, [navigation]);
+  }, [navigation, UserRole]);
 
   useEffect(() => {
     async function loadRole() {
@@ -290,7 +290,7 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
               </Card>
             ))
           )}
-          {!HasCurrentSeason && (
+          {!HasCurrentSeason && UserRole !== 'viewer' && (
             <Button
               mode="outlined"
               style={styles.SectionButton}
@@ -300,22 +300,22 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
               Start {CurrentYear} Season
             </Button>
           )}
-          <Button
+          {UserRole !== 'viewer' && <Button
             mode="outlined"
             style={styles.SectionButton}
             icon="calendar-plus"
             onPress={() => { setOtherSeasonYear(''); setOtherSeasonError(''); setOtherSeasonVisible(true); }}
           >
             Enter data for another year
-          </Button>
-          <Button
+          </Button>}
+          {UserRole !== 'viewer' && <Button
             mode="outlined"
             style={styles.SectionButton}
             icon="file-import-outline"
             onPress={() => navigation.navigate('ImportSeason', { SiteId, SiteName })}
           >
             Import season from file
-          </Button>
+          </Button>}
         </List.Section>
 
         <Divider style={styles.Divider} />

@@ -114,6 +114,7 @@ export default function CreateHousingUnitScreen({ navigation, route }: Props) {
       UnitType: Unit.unit_type,
       DefaultHoleType: Unit.default_hole_type,
       SeasonId,
+      SiteId,
     });
   }
 

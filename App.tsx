@@ -45,7 +45,7 @@ export type AppStackParamList = {
   CreateSite: undefined;
   SiteDetail: { SiteId: string; SiteName: string };
   CreateHousingUnit: { SiteId: string; SeasonId: string };
-  HousingUnitDetail: { UnitId: string; UnitName: string; UnitType: string; DefaultHoleType: string | null; SeasonId: string };
+  HousingUnitDetail: { UnitId: string; UnitName: string; UnitType: string; DefaultHoleType: string | null; SeasonId: string; SiteId: string };
   CreateCompartment: { UnitId: string; UnitType: string; DefaultHoleType: string | null; SeasonId: string };
   SeasonDetail: { SeasonId: string; SiteId: string; Year: number };
   NestCheckDetail: { CheckId: string; CheckDate: string; SiteId: string; SeasonId: string; Year: number };

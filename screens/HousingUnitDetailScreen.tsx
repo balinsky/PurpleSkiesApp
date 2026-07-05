@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import { useSiteRole } from '../lib/useSiteRole';
 import { Alert, FlatList, ScrollView, StyleSheet, View } from 'react-native';
 import {
   Button, Card, Dialog, FAB, HelperText, IconButton,
@@ -43,7 +44,9 @@ const GourdTypes = [
 ];
 
 export default function HousingUnitDetailScreen({ navigation, route }: Props) {
-  const { UnitId, UnitName, UnitType, DefaultHoleType, SeasonId } = route.params;
+  const { UnitId, UnitName, UnitType, DefaultHoleType, SeasonId, SiteId } = route.params;
+  const UserRole = useSiteRole(SiteId);
+  const CanWrite = UserRole !== null && UserRole !== 'viewer';
   const IsGourdRack = UnitType === 'gourd_rack';
 
   const [Compartments, setCompartments] = useState<Compartment[]>([]);
@@ -240,7 +243,7 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
                 {UnitTypeLabel[UnitType] ?? UnitType}
                 {DefaultHoleType ? `  ·  Default hole: ${DefaultHoleType}` : ''}
               </Text>
-              <View style={styles.UnitActions}>
+              {CanWrite && <View style={styles.UnitActions}>
                 <Button mode="outlined" compact onPress={openEditUnit} style={styles.ActionBtn}>
                   Edit Unit
                 </Button>
@@ -251,7 +254,7 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
                 >
                   Delete Unit
                 </Button>
-              </View>
+              </View>}
             </View>
           )}
           ListEmptyComponent={!Loading ? (
@@ -267,7 +270,7 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
               <Card.Title
                 title={item.cavity_label}
                 subtitle={`${item.housing_type}  ·  ${item.hole_type}`}
-                right={() => (
+                right={CanWrite ? () => (
                   <View style={styles.CardActions}>
                     {OtherUnits.length > 0 && (
                       <IconButton icon="swap-horizontal" size={20} onPress={() => openMoveComp(item)} />
@@ -275,17 +278,17 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
                     <IconButton icon="pencil" size={20} onPress={() => openEditComp(item)} />
                     <IconButton icon="delete" size={20} iconColor="red" onPress={() => openDeleteComp(item)} />
                   </View>
-                )}
+                ) : undefined}
               />
             </Card>
           )}
         />
 
-        <FAB
+        {CanWrite && <FAB
           icon="plus"
           style={styles.FAB}
           onPress={() => navigation.navigate('CreateCompartment', { UnitId, UnitType, DefaultHoleType, SeasonId })}
-        />
+        />}
       </View>
 
       <Portal>

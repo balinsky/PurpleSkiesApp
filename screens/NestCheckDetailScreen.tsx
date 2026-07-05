@@ -3,6 +3,7 @@ import { Alert, Pressable, SectionList, StyleSheet, View } from 'react-native';
 import { Button, Card, Dialog, HelperText, IconButton, Portal, Text, TextInput } from 'react-native-paper';
 import DateInput from '../components/DateInput';
 import HeaderMenu from '../components/HeaderMenu';
+import { useSiteRole } from '../lib/useSiteRole';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
@@ -65,6 +66,9 @@ type Props = {
 export default function NestCheckDetailScreen({ navigation, route }: Props) {
   const { CheckId, CheckDate, SiteId, SeasonId, Year } = route.params;
   const { syncNow, isOnline } = useSync();
+  const UserRole  = useSiteRole(SiteId);
+  const CanWrite  = UserRole !== null && UserRole !== 'viewer';
+  const CanManage = UserRole === 'owner' || UserRole === 'manager';
 
   const [Sections, setSections] = useState<Section[]>([]);
   const [CollapsedUnits, setCollapsedUnits] = useState<Set<string>>(new Set());
@@ -89,12 +93,12 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       headerRight: () => (
         <HeaderMenu
           navigation={navigation}
-          onDelete={() => setDeleteVisible(true)}
+          onDelete={CanManage ? () => setDeleteVisible(true) : undefined}
           deleteLabel="Delete check"
         />
       ),
     });
-  }, [navigation]);
+  }, [navigation, CanManage]);
 
   // ── Delete check ───────────────────────────────────────────────────
   const [DeleteVisible, setDeleteVisible] = useState(false);
@@ -601,19 +605,19 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
             <Text variant="bodyMedium" style={styles.Stats}>
               {TotalCount} compartments · {EnteredCount} entered
             </Text>
-            <View style={styles.HeaderBtns}>
+            {CanWrite && <View style={styles.HeaderBtns}>
               <Button mode="outlined" compact disabled={!isOnline} onPress={openEditDate} style={styles.EditDateBtn}>
                 Edit date
               </Button>
-              <Button
+              {CanManage && <Button
                 mode="outlined" compact textColor="red" disabled={!isOnline}
                 style={[styles.EditDateBtn, styles.DeleteBtn]}
                 onPress={() => { setDeleteError(''); setDeleteVisible(true); }}
               >
                 Delete check
-              </Button>
-            </View>
-            {TotalCount > EnteredCount && (
+              </Button>}
+            </View>}
+            {CanWrite && TotalCount > EnteredCount && (
               <Button
                 mode="contained-tonal"
                 compact
@@ -646,26 +650,26 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
           </Pressable>
         )}
         renderItem={({ item }) => (
-          <Card style={styles.Card} mode="outlined" onPress={() => navigateToEntry(item)}>
+          <Card style={styles.Card} mode="outlined" onPress={CanWrite ? () => navigateToEntry(item) : undefined}>
             <Card.Title
               title={item.cavity_label}
               subtitle={item.entry_summary ?? 'Not entered'}
               subtitleStyle={item.entry_summary ? styles.EnteredText : styles.PendingText}
-              right={() => (
+              right={CanWrite ? () => (
                 <IconButton
                   icon={item.entry_id ? 'pencil' : 'plus-circle-outline'}
                   size={20}
                   style={styles.RowIcon}
                   onPress={() => navigateToEntry(item)}
                 />
-              )}
+              ) : undefined}
             />
             {item.prev_summary && (!item.entry_id || !item.entry_has_nest) && (
               <Card.Content style={styles.PrevContent}>
                 <Text style={styles.PrevText}>Prev: {item.prev_summary}</Text>
               </Card.Content>
             )}
-            <Card.Actions style={styles.QuickActions}>
+            {CanWrite && <Card.Actions style={styles.QuickActions}>
               <Button
                 compact mode="outlined"
                 style={styles.QuickBtn}
@@ -698,7 +702,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
                   Copy Prev
                 </Button>
               )}
-            </Card.Actions>
+            </Card.Actions>}
           </Card>
         )}
         ListEmptyComponent={(
@@ -706,12 +710,12 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
             <Text variant="bodyMedium" style={styles.EmptyText}>
               No housing units or compartments have been set up for this site yet.
             </Text>
-            <Button
+            {CanWrite && <Button
               mode="outlined"
               onPress={() => navigation.navigate('CreateHousingUnit', { SiteId, SeasonId })}
             >
               Add Housing Unit
-            </Button>
+            </Button>}
           </View>
         )}
       />

@@ -6,6 +6,7 @@ import { exportSeasonXls, ExportFormat } from '../lib/exportXls';
 import { Calendar } from 'react-native-calendars';
 import DateInput from '../components/DateInput';
 import HeaderMenu from '../components/HeaderMenu';
+import { useSiteRole } from '../lib/useSiteRole';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
@@ -436,6 +437,9 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
   const { SeasonId, SiteId, Year } = route.params;
   const { SeasonCalendarView, toggleSeasonCalendarView, BandingEnabled } = useSettings();
   const { isOnline, syncNow } = useSync();
+  const UserRole  = useSiteRole(SiteId);
+  const CanWrite  = UserRole !== null && UserRole !== 'viewer';
+  const CanManage = UserRole === 'owner' || UserRole === 'manager';
 
   const [FirstAsySeen, setFirstAsySeen]           = useState('');
   const [FirstSyMaleSeen, setFirstSyMaleSeen]     = useState('');
@@ -536,13 +540,13 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           />
           <HeaderMenu
             navigation={navigation}
-            onDelete={handleDeleteSeasonPress}
+            onDelete={CanManage ? handleDeleteSeasonPress : undefined}
             deleteLabel="Delete season"
           />
         </View>
       ),
     });
-  }, [SeasonCalendarView, Exporting, NestChecks.length]);
+  }, [SeasonCalendarView, Exporting, NestChecks.length, CanManage]);
 
   useEffect(() => {
     AsyncStorage.multiGet([`banding_min_${SiteId}`, `banding_max_${SiteId}`])
@@ -1406,23 +1410,23 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                     )}
                     {SeasonHousingUnits.map(U => (
                       <Card key={U.id} style={styles.Card} mode="outlined"
-                        onPress={() => navigation.navigate('HousingUnitDetail', { UnitId: U.id, UnitName: U.name, UnitType: U.unit_type, DefaultHoleType: U.default_hole_type, SeasonId })}
+                        onPress={() => navigation.navigate('HousingUnitDetail', { UnitId: U.id, UnitName: U.name, UnitType: U.unit_type, DefaultHoleType: U.default_hole_type, SeasonId, SiteId })}
                       >
                         <Card.Title title={U.name} subtitle={UnitTypeLabel[U.unit_type] ?? U.unit_type} />
                       </Card>
                     ))}
                   </>
                 )}
-                {(CopyHousingSourceId || CopyHousingIsLegacy) && SeasonHousingUnits.length === 0 && (
+                {CanWrite && (CopyHousingSourceId || CopyHousingIsLegacy) && SeasonHousingUnits.length === 0 && (
                   <Button mode="outlined" compact loading={CopyingHousing} style={styles.HousingBtn} onPress={handleCopyHousing}>
                     Copy from {CopyHousingIsLegacy ? 'previous setup' : `${CopyHousingSourceYear} season`}
                   </Button>
                 )}
-                <Button mode="outlined" compact icon="plus" style={styles.HousingBtn}
+                {CanWrite && <Button mode="outlined" compact icon="plus" style={styles.HousingBtn}
                   onPress={() => navigation.navigate('CreateHousingUnit', { SiteId, SeasonId })}
                 >
                   Add Housing Unit
-                </Button>
+                </Button>}
               </View>
             )}
 
@@ -1438,7 +1442,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
               Arrival Dates
             </Button>
             {ArrivalDatesExpanded && (
-              <>
+              <View pointerEvents={CanWrite ? 'auto' : 'none'}>
                 <Text variant="bodySmall" style={styles.Hint}>
                   ASY = After Second Year (adult).  SY = Second Year (yearling male).
                 </Text>
@@ -1457,7 +1461,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                   year={Year}
                 />
                 {DatesError ? <HelperText type="error" visible>{DatesError}</HelperText> : null}
-              </>
+              </View>
             )}
 
             {/* ── Nest progress ── */}
@@ -1568,7 +1572,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                 </Button>
                 {BandingExpanded && (
                   <>
-                    <View style={styles.BandingWindowRow}>
+                    <View style={styles.BandingWindowRow} pointerEvents={CanWrite ? 'auto' : 'none'}>
                       <Text style={styles.BandingWindowLabel}>Window (days):</Text>
                       <TextInput
                         mode="outlined"
@@ -1668,23 +1672,23 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                       )}
                       {SeasonHousingUnits.map(U => (
                         <Card key={U.id} style={styles.Card} mode="outlined"
-                          onPress={() => navigation.navigate('HousingUnitDetail', { UnitId: U.id, UnitName: U.name, UnitType: U.unit_type, DefaultHoleType: U.default_hole_type, SeasonId })}
+                          onPress={() => navigation.navigate('HousingUnitDetail', { UnitId: U.id, UnitName: U.name, UnitType: U.unit_type, DefaultHoleType: U.default_hole_type, SeasonId, SiteId })}
                         >
                           <Card.Title title={U.name} subtitle={UnitTypeLabel[U.unit_type] ?? U.unit_type} />
                         </Card>
                       ))}
                     </>
                   )}
-                  {(CopyHousingSourceId || CopyHousingIsLegacy) && SeasonHousingUnits.length === 0 && (
+                  {CanWrite && (CopyHousingSourceId || CopyHousingIsLegacy) && SeasonHousingUnits.length === 0 && (
                     <Button mode="outlined" compact loading={CopyingHousing} style={styles.HousingBtn} onPress={handleCopyHousing}>
                       Copy from {CopyHousingIsLegacy ? 'previous setup' : `${CopyHousingSourceYear} season`}
                     </Button>
                   )}
-                  <Button mode="outlined" compact icon="plus" style={styles.HousingBtn}
+                  {CanWrite && <Button mode="outlined" compact icon="plus" style={styles.HousingBtn}
                     onPress={() => navigation.navigate('CreateHousingUnit', { SiteId, SeasonId })}
                   >
                     Add Housing Unit
-                  </Button>
+                  </Button>}
                 </View>
               )}
 
@@ -1700,7 +1704,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                 Arrival Dates
               </Button>
               {ArrivalDatesExpanded && (
-                <>
+                <View pointerEvents={CanWrite ? 'auto' : 'none'}>
                   <Text variant="bodySmall" style={styles.Hint}>
                     ASY = After Second Year (adult).  SY = Second Year (yearling male).
                   </Text>
@@ -1719,7 +1723,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                     year={Year}
                   />
                   {DatesError ? <HelperText type="error" visible>{DatesError}</HelperText> : null}
-                </>
+                </View>
               )}
 
               {/* ── Nest progress ── */}
@@ -1830,7 +1834,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                   </Button>
                   {BandingExpanded && (
                     <>
-                      <View style={styles.BandingWindowRow}>
+                      <View style={styles.BandingWindowRow} pointerEvents={CanWrite ? 'auto' : 'none'}>
                         <Text style={styles.BandingWindowLabel}>Window (days):</Text>
                         <TextInput
                           mode="outlined"
@@ -1912,11 +1916,11 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         />
         )}
 
-        <FAB
+        {CanWrite && <FAB
           icon="plus"
           style={styles.FAB}
           onPress={() => openAddCheck()}
-        />
+        />}
       </View>
 
       <Portal>
