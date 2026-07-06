@@ -1584,11 +1584,20 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           </Button>
         </View>
         {SpeciesExpanded && (
-          <RadioButton.Group onValueChange={handleSpeciesChange} value={SpeciesVal}>
+          <View>
             {SpeciesList.map((S) => (
-              <RadioButton.Item key={S.value} label={S.label} value={S.value} />
+              <TouchableRipple key={S.value} onPress={() => handleSpeciesChange(S.value)} style={styles.InlineCheck}>
+                <View style={styles.InlineCheckRow}>
+                  <Text variant="bodyLarge">{S.label}</Text>
+                  <RadioButton.Android
+                    value={S.value}
+                    status={SpeciesVal === S.value ? 'checked' : 'unchecked'}
+                    onPress={() => handleSpeciesChange(S.value)}
+                  />
+                </View>
+              </TouchableRipple>
             ))}
-          </RadioButton.Group>
+          </View>
         )}
 
         <Divider style={styles.Divider} />
@@ -1596,45 +1605,50 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         {/* ── Empty cavity / Adult present (PM only, one row) ─────── */}
         {IsPM && (
           <View style={styles.PMStatusRow}>
-            <Checkbox.Item
-              label={L('Empty', 'X')}
-              status={IsEmpty ? 'checked' : 'unchecked'}
+            <TouchableRipple
               onPress={() => {
                 MarkDirty();
                 const Next = !IsEmpty;
                 setIsEmpty(Next);
                 if (Next) { setEggCount(0); setYoungCount(0); setHasNestOnly(false); setAdultPresent(false); }
               }}
-              mode="android"
-              style={[styles.CheckboxItem, styles.PMStatusItem]}
-            />
-            <Checkbox.Item
-              label={L('Adult present (no check)', 'A')}
-              status={AdultPresent ? 'checked' : 'unchecked'}
+              style={[styles.InlineCheck, { flex: 1 }]}
+            >
+              <View style={styles.InlineCheckRow}>
+                <Text variant="bodyLarge">{L('Empty', 'X')}</Text>
+                <Checkbox.Android status={IsEmpty ? 'checked' : 'unchecked'} />
+              </View>
+            </TouchableRipple>
+            <TouchableRipple
               onPress={() => {
                 MarkDirty();
                 const Next = !AdultPresent;
                 setAdultPresent(Next);
                 if (Next) { setIsEmpty(false); setHasNestOnly(false); }
               }}
-              mode="android"
-              style={[styles.CheckboxItem, styles.PMStatusItem]}
-            />
+              style={[styles.InlineCheck, { flex: 1 }]}
+            >
+              <View style={styles.InlineCheckRow}>
+                <Text variant="bodyLarge">{L('Adult present (no check)', 'A')}</Text>
+                <Checkbox.Android status={AdultPresent ? 'checked' : 'unchecked'} />
+              </View>
+            </TouchableRipple>
           </View>
         )}
 
         {/* ── Purple Martin form ───────────────────────────────────── */}
         {!IsEmpty && !AdultPresent && IsPM && (
           <>
-            <Checkbox.Item
-              label={L('Nest (no eggs)', 'N')}
-              status={HasNestOnly ? 'checked' : 'unchecked'}
-              disabled={EggCount > 0 || YoungCount > 0}
+            <TouchableRipple
               onPress={() => { MarkDirty(); const N = !HasNestOnly; setHasNestOnly(N); if (N) setIsEmpty(false); }}
-              mode="android"
-              position="trailing"
-              style={[styles.CheckboxItem, { alignSelf: 'flex-start' }]}
-            />
+              disabled={EggCount > 0 || YoungCount > 0}
+              style={[styles.InlineCheck, (EggCount > 0 || YoungCount > 0) && { opacity: 0.38 }]}
+            >
+              <View style={styles.InlineCheckRow}>
+                <Text variant="bodyLarge">{L('Nest (no eggs)', 'N')}</Text>
+                <Checkbox.Android status={HasNestOnly ? 'checked' : 'unchecked'} disabled={EggCount > 0 || YoungCount > 0} />
+              </View>
+            </TouchableRipple>
 
             <View style={styles.CountersRow}>
               <View style={{ flex: 1, paddingRight: 8 }}>
@@ -1697,13 +1711,12 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             </View>
 
             {HasNest && (
-              <Checkbox.Item
-                label={L('Renesting attempt', 'RA')}
-                status={Renesting ? 'checked' : 'unchecked'}
-                onPress={handleRenestingToggle}
-                mode="android"
-                style={styles.CheckboxItem}
-              />
+              <TouchableRipple onPress={handleRenestingToggle} style={styles.InlineCheck}>
+                <View style={styles.InlineCheckRow}>
+                  <Text variant="bodyLarge">{L('Renesting attempt', 'RA')}</Text>
+                  <Checkbox.Android status={Renesting ? 'checked' : 'unchecked'} />
+                </View>
+              </TouchableRipple>
             )}
           </>
         )}
@@ -1724,22 +1737,32 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         {HasNest && (
           <>
             {(SpeciesVal === 'HS' || SpeciesVal === 'ST') && (
-              <Checkbox.Item
-                label={L('Nest discarded', 'ND')}
-                status={NestDiscarded ? 'checked' : 'unchecked'}
-                onPress={() => { MarkDirty(); setNestDiscarded(!NestDiscarded); }}
-                mode="android"
-                style={styles.CheckboxItem}
-              />
+              <TouchableRipple onPress={() => { MarkDirty(); setNestDiscarded(!NestDiscarded); }} style={styles.InlineCheck}>
+                <View style={styles.InlineCheckRow}>
+                  <Text variant="bodyLarge">{L('Nest discarded', 'ND')}</Text>
+                  <Checkbox.Android status={NestDiscarded ? 'checked' : 'unchecked'} />
+                </View>
+              </TouchableRipple>
             )}
-            {IsPM && (
-              <Checkbox.Item
-                label={L('Nest replaced', 'NR')}
-                status={NestReplaced ? 'checked' : 'unchecked'}
-                onPress={() => { MarkDirty(); setNestReplaced(!NestReplaced); }}
-                mode="android"
-                style={styles.CheckboxItem}
-              />
+            {(IsPM || IsGourd) && (
+              <View style={styles.InlineCheckGroup}>
+                {IsPM && (
+                  <TouchableRipple onPress={() => { MarkDirty(); setNestReplaced(!NestReplaced); }} style={styles.InlineCheck}>
+                    <View style={styles.InlineCheckRow}>
+                      <Text variant="bodyLarge">{L('Nest replaced', 'NR')}</Text>
+                      <Checkbox.Android status={NestReplaced ? 'checked' : 'unchecked'} />
+                    </View>
+                  </TouchableRipple>
+                )}
+                {IsGourd && (
+                  <TouchableRipple onPress={() => { MarkDirty(); setGourdRemoved(!GourdRemoved); }} style={styles.InlineCheck}>
+                    <View style={styles.InlineCheckRow}>
+                      <Text variant="bodyLarge">{L('Gourd removed', 'GR')}</Text>
+                      <Checkbox.Android status={GourdRemoved ? 'checked' : 'unchecked'} />
+                    </View>
+                  </TouchableRipple>
+                )}
+              </View>
             )}
           </>
         )}
@@ -1759,6 +1782,12 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           return (
             <>
               <View style={styles.ExpandRow}>
+                <TouchableRipple onPress={() => setAdultAgesExpanded(!AdultAgesExpanded)} style={styles.InlineCheck}>
+                  <View style={styles.InlineCheckRow}>
+                    <Text variant="bodyLarge">Adult ages{AgeLabel ? ` · ${AgeLabel}` : ''}</Text>
+                    <Icon source={AdultAgesExpanded ? 'chevron-up' : 'chevron-down'} size={20} />
+                  </View>
+                </TouchableRipple>
                 <TouchableRipple onPress={() => setAgeConfirmInfoVisible(true)} borderless style={{ padding: 2, borderRadius: 12 }}>
                   <Icon
                     source={AgeStatus === 'complete' ? 'check-circle' : 'help-circle-outline'}
@@ -1766,15 +1795,6 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                     color={AgeStatus === 'complete' ? '#22c55e' : AgeStatus === 'partial' ? '#f59e0b' : '#9e9e9e'}
                   />
                 </TouchableRipple>
-                <Button
-                  mode="text" compact
-                  icon={AdultAgesExpanded ? 'chevron-up' : 'chevron-down'}
-                  contentStyle={styles.ExpandBtnContent}
-                  onPress={() => setAdultAgesExpanded(!AdultAgesExpanded)}
-                  style={styles.ExpandBtnInRow}
-                >
-                  {L('Adult ages', 'Ages')}{AgeLabel ? ` · ${AgeLabel}` : ''}
-                </Button>
               </View>
               {AdultAgesExpanded && (
                 <View style={styles.ExpandedSection}>
@@ -1828,19 +1848,15 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           return (
             <>
               <View style={styles.ExpandRow}>
-                {BandingStatus !== 'none'
-                  ? <Icon source="check-circle" size={16} color={BandingStatus === 'all' ? '#22c55e' : '#f59e0b'} />
-                  : <View style={styles.ExpandIconSpacer} />
-                }
-                <Button
-                  mode="text" compact
-                  icon={BandingExpanded ? 'chevron-up' : 'chevron-down'}
-                  contentStyle={styles.ExpandBtnContent}
-                  onPress={() => setBandingExpanded(!BandingExpanded)}
-                  style={styles.ExpandBtnInRow}
-                >
-                  {L('Banding (B)', 'B')}{HasBands ? ' · B' : ''}
-                </Button>
+                <TouchableRipple onPress={() => setBandingExpanded(!BandingExpanded)} style={styles.InlineCheck}>
+                  <View style={styles.InlineCheckRow}>
+                    <Text variant="bodyLarge">Banding (B){HasBands ? ' · B' : ''}</Text>
+                    <Icon source={BandingExpanded ? 'chevron-up' : 'chevron-down'} size={20} />
+                  </View>
+                </TouchableRipple>
+                {BandingStatus !== 'none' && (
+                  <Icon source="check-circle" size={16} color={BandingStatus === 'all' ? '#22c55e' : '#f59e0b'} />
+                )}
               </View>
               {BandingExpanded && (
                 <View style={styles.ExpandedSection}>
@@ -2004,13 +2020,12 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
         })()}
 
         {/* ── Dead adult ──────────────────────────────────────────── */}
-        <Checkbox.Item
-          label={`${L('Dead adult bird', 'DA')}${DeadAdultLabel ? ` · ${DeadAdultLabel}` : ''}`}
-          status={DeadAdultSex !== null ? 'checked' : 'unchecked'}
-          onPress={() => { MarkDirty(); setDeadAdultSex(DeadAdultSex !== null ? null : 'U'); }}
-          mode="android"
-          style={styles.CheckboxItem}
-        />
+        <TouchableRipple onPress={() => { MarkDirty(); setDeadAdultSex(DeadAdultSex !== null ? null : 'U'); }} style={styles.InlineCheck}>
+          <View style={styles.InlineCheckRow}>
+            <Text variant="bodyLarge">{`${L('Dead adult bird discarded', 'DAD')}${DeadAdultLabel ? ` · ${DeadAdultLabel}` : ''}`}</Text>
+            <Checkbox.Android status={DeadAdultSex !== null ? 'checked' : 'unchecked'} />
+          </View>
+        </TouchableRipple>
         {DeadAdultSex !== null && (
           <View style={[styles.ExpandedSection, { paddingHorizontal: 16, paddingBottom: 8 }]}>
             <SegmentedButtons
@@ -2025,30 +2040,13 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
           </View>
         )}
 
-        {/* ── Gourd Removed (gourds only) ─────────────────────────── */}
-        {IsGourd && (
-          <Checkbox.Item
-            label="Gourd removed"
-            status={GourdRemoved ? 'checked' : 'unchecked'}
-            onPress={() => { MarkDirty(); setGourdRemoved(!GourdRemoved); }}
-            mode="android"
-            style={styles.CheckboxItem}
-          />
-        )}
-
         {/* ── Notes (expandable) ──────────────────────────────────── */}
-        <View style={styles.ExpandRow}>
-          <View style={styles.ExpandIconSpacer} />
-          <Button
-            mode="text" compact
-            icon={NotesExpanded ? 'chevron-up' : 'chevron-down'}
-            contentStyle={styles.ExpandBtnContent}
-            onPress={() => setNotesExpanded(!NotesExpanded)}
-            style={styles.ExpandBtnInRow}
-          >
-            Notes{Notes.trim() ? ' · …' : ''}
-          </Button>
-        </View>
+        <TouchableRipple onPress={() => setNotesExpanded(!NotesExpanded)} style={styles.InlineCheck}>
+          <View style={styles.InlineCheckRow}>
+            <Text variant="bodyLarge">Notes{Notes.trim() ? ' · …' : ''}</Text>
+            <Icon source={NotesExpanded ? 'chevron-up' : 'chevron-down'} size={20} />
+          </View>
+        </TouchableRipple>
         {NotesExpanded && (
           <TextInput
             value={Notes}
@@ -2489,14 +2487,17 @@ const styles = StyleSheet.create({
   PrevBtnH:         { alignSelf: 'center' },
   PrevBtnLabel:      { fontSize: 14, marginVertical: 2, marginHorizontal: 4 },
   CheckboxItem:      { paddingVertical: 0 },
+  InlineCheck:       { alignSelf: 'flex-start', borderRadius: 4 },
+  InlineCheckRow:    { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingRight: 8, gap: 4 },
+  InlineCheckGroup:  { flexDirection: 'row', flexWrap: 'wrap' },
   PMStatusRow:       { flexDirection: 'row' },
   PMStatusItem:      { flex: 1 },
   ColumnDivider:     { width: 1, backgroundColor: '#ddd', alignSelf: 'stretch' },
   DeadYoungRow:      { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   ExpandBtn:         { alignSelf: 'flex-start', marginTop: 4 },
-  ExpandBtnContent:  { flexDirection: 'row-reverse' },
+  ExpandBtnContent:  { flexDirection: 'row-reverse', paddingLeft: 0 },
   ExpandRow:         { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginTop: 0 },
-  ExpandBtnInRow:    {},
+  ExpandBtnInRow:    { paddingLeft: 0 },
   ExpandIconSpacer:  { width: 16 },
   ExpandedSection:   { paddingLeft: 8 },
   NotesInput:        { marginTop: 8 },
