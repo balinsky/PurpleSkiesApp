@@ -380,6 +380,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
   }
 
   async function handleMarkAllEmpty() {
+    if (!CanWrite) return;
     const Unrecorded = Sections.flatMap(s => s.data).filter(c => c.entry_id === null);
     if (Unrecorded.length === 0) return;
 
@@ -457,6 +458,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
   }
 
   async function performQuickSave(item: CompartmentRow, type: 'empty' | 'pm_nest', fledgedCount: number) {
+    if (!CanWrite) return;
     const Key = `${item.id}:${type}`;
     setQuickSaving(Key);
     const EntryId = item.entry_id ?? makeId();
@@ -504,6 +506,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
   }
 
   async function handleSameAsPrior(item: CompartmentRow) {
+    if (!CanWrite) return;
     if (!item.prev_entry) return;
     const Key = `${item.id}:same`;
     setQuickSaving(Key);

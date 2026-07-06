@@ -14,6 +14,7 @@ import { initDb } from './lib/localDb';
 import { en, registerTranslation } from 'react-native-paper-dates';
 registerTranslation('en', en);
 import { supabase } from './lib/supabase';
+import { clearSiteRoleCache } from './lib/useSiteRole';
 import LoginScreen from './screens/auth/LoginScreen';
 import SignUpScreen from './screens/auth/SignUpScreen';
 import HomeScreen from './screens/HomeScreen';
@@ -102,6 +103,7 @@ export default function App() {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (_event === 'SIGNED_OUT') clearSiteRoleCache();
       setSession(session);
     });
 
