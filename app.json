@@ -4,6 +4,7 @@
     "slug": "PurpleSkiesApp",
     "version": "1.0.0",
     "orientation": "portrait",
+    "tabletOrientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
