@@ -19,7 +19,7 @@ import {
   getLocalNestlings, cacheNestlings,
   getLocalBands, cacheBands, getLocalPriorBandCounts,
   upsertLocalEntry, upsertLocalNestling, replaceLocalBands,
-  upsertLocalNestSeason, deleteLocalEntry, makeId, setLocalEntriesNestingAttempt,
+  upsertLocalNestSeason, getLocalNestSeason, deleteLocalEntry, makeId, setLocalEntriesNestingAttempt,
   resetLocalNestingAttemptsForCompartment, lookupLocalBandLocation, getLocalPriorBandDetails,
 } from '../lib/localDb';
 
@@ -1119,20 +1119,27 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       if (IsPM) {
         const ConfirmedMale   = computeConfirmedAge(OtherMaleObs,   ObservedMaleAge);
         const ConfirmedFemale = computeConfirmedAge(OtherFemaleObs, ObservedFemaleAge);
+        // Preserve imported or previously confirmed ages — only overwrite a field
+        // when this save produces a confirmed value for it.
+        const LocalNs = await getLocalNestSeason(CompartmentId, SeasonId);
+        const FinalMale   = ConfirmedMale   !== null ? ConfirmedMale   : (LocalNs?.male_age   ?? null);
+        const FinalFemale = ConfirmedFemale !== null ? ConfirmedFemale : (LocalNs?.female_age ?? null);
         await upsertLocalNestSeason({
           compartment_id: CompartmentId, site_season_id: SeasonId,
           year: parseInt(CheckDate.substring(0, 4), 10),
-          male_age: ConfirmedMale, female_age: ConfirmedFemale,
+          male_age: FinalMale, female_age: FinalFemale,
         });
         // Write-through nest_seasons immediately so confirmed ages appear without
         // waiting for background sync (mirrors the entry write-through below).
         try {
-          const { data: ExNS } = await supabase.from('nest_seasons').select('id')
+          const { data: ExNS } = await supabase.from('nest_seasons').select('id, male_age, female_age')
             .eq('compartment_id', CompartmentId).eq('site_season_id', SeasonId).maybeSingle();
+          const RemoteFinalMale   = ConfirmedMale   !== null ? ConfirmedMale   : (ExNS?.male_age   ?? null);
+          const RemoteFinalFemale = ConfirmedFemale !== null ? ConfirmedFemale : (ExNS?.female_age ?? null);
           if (ExNS) {
-            await supabase.from('nest_seasons').update({ male_age: ConfirmedMale, female_age: ConfirmedFemale }).eq('id', ExNS.id);
-          } else {
-            await supabase.from('nest_seasons').insert({ compartment_id: CompartmentId, site_season_id: SeasonId, year: parseInt(CheckDate.substring(0, 4), 10), male_age: ConfirmedMale, female_age: ConfirmedFemale });
+            await supabase.from('nest_seasons').update({ male_age: RemoteFinalMale, female_age: RemoteFinalFemale }).eq('id', ExNS.id);
+          } else if (RemoteFinalMale !== null || RemoteFinalFemale !== null) {
+            await supabase.from('nest_seasons').insert({ compartment_id: CompartmentId, site_season_id: SeasonId, year: parseInt(CheckDate.substring(0, 4), 10), male_age: RemoteFinalMale, female_age: RemoteFinalFemale });
           }
         } catch {}
       }
@@ -1194,11 +1201,13 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
       if (IsPM) {
         const ConfirmedMale   = computeConfirmedAge(OtherMaleObs,   ObservedMaleAge);
         const ConfirmedFemale = computeConfirmedAge(OtherFemaleObs, ObservedFemaleAge);
-        const { data: Existing } = await supabase.from('nest_seasons').select('id').eq('compartment_id', CompartmentId).eq('site_season_id', SeasonId).maybeSingle();
+        const { data: Existing } = await supabase.from('nest_seasons').select('id, male_age, female_age').eq('compartment_id', CompartmentId).eq('site_season_id', SeasonId).maybeSingle();
+        const FinalMale   = ConfirmedMale   !== null ? ConfirmedMale   : (Existing?.male_age   ?? null);
+        const FinalFemale = ConfirmedFemale !== null ? ConfirmedFemale : (Existing?.female_age ?? null);
         if (Existing) {
-          await supabase.from('nest_seasons').update({ male_age: ConfirmedMale, female_age: ConfirmedFemale }).eq('id', Existing.id);
-        } else {
-          await supabase.from('nest_seasons').insert({ compartment_id: CompartmentId, site_season_id: SeasonId, year: parseInt(CheckDate.substring(0, 4), 10), male_age: ConfirmedMale, female_age: ConfirmedFemale });
+          await supabase.from('nest_seasons').update({ male_age: FinalMale, female_age: FinalFemale }).eq('id', Existing.id);
+        } else if (FinalMale !== null || FinalFemale !== null) {
+          await supabase.from('nest_seasons').insert({ compartment_id: CompartmentId, site_season_id: SeasonId, year: parseInt(CheckDate.substring(0, 4), 10), male_age: FinalMale, female_age: FinalFemale });
         }
       }
     }

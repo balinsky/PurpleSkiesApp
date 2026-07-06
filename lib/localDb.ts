@@ -607,6 +607,16 @@ export async function upsertLocalNestSeason(data: {
   }
 }
 
+export async function getLocalNestSeason(
+  compartmentId: string, seasonId: string,
+): Promise<{ male_age: string | null; female_age: string | null } | null> {
+  const D = await db();
+  return D.getFirstAsync(
+    'SELECT male_age, female_age FROM nest_seasons WHERE compartment_id = ? AND site_season_id = ?',
+    [compartmentId, seasonId],
+  );
+}
+
 export async function getLocalNestSeasons(
   seasonId: string,
 ): Promise<{ compartment_id: string; male_age: string | null; female_age: string | null }[]> {
