@@ -833,6 +833,14 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           }
         }
 
+        // Pre-compute max nesting attempt per compartment so superseded rows can be
+        // identified during the Progress loop (before the post-loop that sets P.superseded).
+        const MaxAttemptByComp = new Map<string, number>();
+        for (const [, Data] of CompMap) {
+          const cur = MaxAttemptByComp.get(Data.compartment_id) ?? 0;
+          if (Data.nesting_attempt > cur) MaxAttemptByComp.set(Data.compartment_id, Data.nesting_attempt);
+        }
+
         // Compute projections per (compartment, nesting_attempt)
         const Progress: CompartmentProgress[] = [];
         let StatEggs = 0, StatHatched = 0, StatFledged = 0;
@@ -893,12 +901,18 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           }
 
           const Ages = AgeMap.get(Data.compartment_id);
-          // Use the last recorded young_count — if young disappeared after hatching, they're excluded from banding
-          const YoungCount = EWD[EWD.length - 1]?.young_count ?? 0;
+          // A superseded attempt's young have left the nest (fledged, died, or removed before
+          // renesting). The fledge entry is often tagged to the next attempt, so the last EWD
+          // entry for this attempt may still show young_count > 0. Set to 0 for superseded
+          // attempts so the banding window and status badge don't show phantom young.
+          const IsSuperseded = Data.nesting_attempt < (MaxAttemptByComp.get(Data.compartment_id) ?? Data.nesting_attempt);
+          const YoungCount = IsSuperseded ? 0 : (EWD[EWD.length - 1]?.young_count ?? 0);
           const BandedCount = BandedByKey.get(`${Data.compartment_id}:${Data.nesting_attempt}`) ?? 0;
           const AttemptSuffix = Data.nesting_attempt > 1 ? ` (Attempt ${Data.nesting_attempt})` : '';
           const FleddgeDates = EWD.filter(e => e.fledged_count > 0).map(e => e.check_date).sort();
-          const sub = LatestSubstantiveByComp.get(Data.compartment_id);
+          // For superseded attempts show no live status badge — the global latest entry belongs
+          // to a later attempt. For the current attempt use the global latest (same thing).
+          const sub = IsSuperseded ? null : LatestSubstantiveByComp.get(Data.compartment_id);
           Progress.push({ compartment_id: Data.compartment_id, nesting_attempt: Data.nesting_attempt, label: Data.label + AttemptSuffix, unit_name: Data.unit_name, current_status: sub ? currentStatusSegments(sub.entry, sub.attempt) : null, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, fledge_dates: FleddgeDates, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount, banded_count: BandedCount, superseded: false });
         }
 
