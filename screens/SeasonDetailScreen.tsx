@@ -1514,10 +1514,14 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                           >
                             <View>
                               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <Text style={[styles.ProgressTitle, { flex: 1 }]}>
-                                  {P.label}
-                                  {P.current_status && <>{'  ·  '}{P.current_status.map((seg, i) => <Text key={i} style={[styles.ProgressStatus, { color: seg.color }]}>{seg.text}</Text>)}</>}
-                                </Text>
+                                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                                  <Text style={styles.ProgressTitle}>{P.label}</Text>
+                                  {P.current_status && P.current_status.map((seg, i) => (
+                                    <View key={i} style={[styles.StatusPill, { backgroundColor: seg.color }]}>
+                                      <Text style={styles.StatusPillText}>{seg.text}</Text>
+                                    </View>
+                                  ))}
+                                </View>
                                 <Icon source="history" size={15} color="#9c27b0" />
                               </View>
                               {progressLine(P) ? <Text style={styles.ProgressDates}>{progressLine(P)}</Text> : null}
@@ -1776,10 +1780,14 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                             >
                               <View>
                                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                  <Text style={[styles.ProgressTitle, { flex: 1 }]}>
-                                    {P.label}
-                                    {P.current_status && <>{'  ·  '}{P.current_status.map((seg, i) => <Text key={i} style={[styles.ProgressStatus, { color: seg.color }]}>{seg.text}</Text>)}</>}
-                                  </Text>
+                                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                                    <Text style={styles.ProgressTitle}>{P.label}</Text>
+                                    {P.current_status && P.current_status.map((seg, i) => (
+                                      <View key={i} style={[styles.StatusPill, { backgroundColor: seg.color }]}>
+                                        <Text style={styles.StatusPillText}>{seg.text}</Text>
+                                      </View>
+                                    ))}
+                                  </View>
                                   <Icon source="history" size={15} color="#9c27b0" />
                                 </View>
                                 {progressLine(P) ? <Text style={styles.ProgressDates}>{progressLine(P)}</Text> : null}
@@ -2052,7 +2060,8 @@ const styles = StyleSheet.create({
   Card:          { marginBottom: 8 },
   ProgressRow:    { marginBottom: 6 },
   ProgressTitle:  { fontSize: 13, fontWeight: '500', color: '#222' },
-  ProgressStatus: { fontSize: 13, fontWeight: '600' },
+  StatusPill:     { borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  StatusPillText: { fontSize: 12, fontWeight: '700', color: '#fff' },
   ProgressDates:  { fontSize: 12, color: '#555' },
   UnitHeaderRow:  { flexDirection: 'row', alignItems: 'center', marginTop: 8, marginBottom: 2 },
   UnitHeaderText: { fontSize: 12, fontWeight: '700', color: '#555', flex: 1 },
