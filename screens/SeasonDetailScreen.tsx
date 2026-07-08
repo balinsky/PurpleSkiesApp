@@ -752,15 +752,17 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         const S_PURPLE = '#7b1fa2';
         const S_GREEN  = '#2e7d32';
         const S_BLUE   = '#1565c0';
+        const S_BROWN  = '#6d4c41';
+        const S_GREY   = '#9e9e9e';
 
         function currentStatusSegments(E: any, attempt: number): StatusSegment[] {
-          if (E.is_empty_cavity) return [{ text: 'Empty', color: S_BLUE }];
+          if (E.is_empty_cavity) return [{ text: 'Empty', color: S_GREY }];
           const sp = (E.species ?? 'PM') as string;
           const isPM = sp === 'PM';
           const ra = attempt > 1 ? (attempt === 2 ? 'RA' : `RA${attempt}`) : '';
 
           if (E.nest_discarded) {
-            const segs: StatusSegment[] = [{ text: isPM ? 'D' : `${sp}ND`, color: S_BLUE }];
+            const segs: StatusSegment[] = [{ text: isPM ? 'D' : `${sp}ND`, color: isPM ? S_BLUE : S_BROWN }];
             if (ra) segs.push({ text: ` ${ra}`, color: S_BLUE });
             return segs;
           }
@@ -773,7 +775,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             return segs;
           }
 
-          const nestSegs: StatusSegment[] = [{ text: isPM ? 'PMN' : `${sp}N`, color: S_BLUE }];
+          const nestSegs: StatusSegment[] = [{ text: isPM ? 'PMN' : `${sp}N`, color: isPM ? S_BLUE : S_BROWN }];
           if (ra) nestSegs.push({ text: ` ${ra}`, color: S_BLUE });
           return nestSegs;
         }
