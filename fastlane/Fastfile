@@ -1,6 +1,10 @@
 default_platform(:ios)
 
 platform :ios do
+  before_all do
+    ENV.delete("NODE_OPTIONS")
+  end
+
   desc "Build and upload to TestFlight"
   lane :beta do
     app_store_connect_api_key(
