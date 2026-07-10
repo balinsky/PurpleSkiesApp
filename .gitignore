@@ -42,5 +42,6 @@ yarn-error.*
 *.tsbuildinfo
 
 # generated native folders
-/ios
+/ios/Pods/
+ios/PurpleSkiesApp/Images.xcassets/AppIcon.appiconset/App-Icon-1024x1024@1x.png
 /android

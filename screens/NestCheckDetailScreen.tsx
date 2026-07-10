@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert, Pressable, SectionList, StyleSheet, View } from 'react-native';
 import { Button, Card, Dialog, HelperText, IconButton, Portal, Text, TextInput } from 'react-native-paper';
 import DateInput from '../components/DateInput';
@@ -75,6 +76,43 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
   const [Loading, setLoading]   = useState(true);
   const [QuickSaving, setQuickSaving]     = useState<string | null>(null);
   const [MarkingAllEmpty, setMarkingAllEmpty] = useState(false);
+
+  // ── Near-fledge warning (young 22-25 days old — first time per season) ────
+  const FledgeWarnCallbackRef = useRef<(() => void) | null>(null);
+  const [FledgeWarnVisible, setFledgeWarnVisible] = useState(false);
+  const [FledgeWarnIsInfo, setFledgeWarnIsInfo] = useState(false);
+  const NearFledgeWarnKey = `near_fledge_warned_${SeasonId}`;
+
+  function isNearFledge(item: CompartmentRow) {
+    return (
+      item.calculated_nestling_age !== null &&
+      item.calculated_nestling_age >= 22 &&
+      item.calculated_nestling_age < 26 &&
+      (item.prev_entry?.young_count ?? 0) > 0
+    );
+  }
+
+  function showFledgeInfo() {
+    FledgeWarnCallbackRef.current = null;
+    setFledgeWarnIsInfo(true);
+    setFledgeWarnVisible(true);
+  }
+
+  async function guardNearFledge(item: CompartmentRow, fn: () => void) {
+    if (!isNearFledge(item)) { fn(); return; }
+    const warned = await AsyncStorage.getItem(NearFledgeWarnKey);
+    if (warned) { fn(); return; }
+    FledgeWarnCallbackRef.current = fn;
+    setFledgeWarnIsInfo(false);
+    setFledgeWarnVisible(true);
+  }
+
+  async function handleFledgeWarnProceed() {
+    await AsyncStorage.setItem(NearFledgeWarnKey, '1');
+    setFledgeWarnVisible(false);
+    FledgeWarnCallbackRef.current?.();
+    FledgeWarnCallbackRef.current = null;
+  }
 
   // ── Fledge prompt (triggered by quick-save when prior had young ≥ 26 days)
   const [FledgePromptVisible, setFledgePromptVisible] = useState(false);
@@ -492,6 +530,10 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
   }
 
   async function handleQuick(item: CompartmentRow, type: 'empty' | 'pm_nest') {
+    await guardNearFledge(item, () => { void innerHandleQuick(item, type); });
+  }
+
+  async function innerHandleQuick(item: CompartmentRow, type: 'empty' | 'pm_nest') {
     if (item.prev_entry && item.prev_entry.young_count > 0) {
       const Age = item.calculated_nestling_age;
       if (Age !== null && Age >= 26) {
@@ -507,6 +549,11 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
 
   async function handleSameAsPrior(item: CompartmentRow) {
     if (!CanWrite) return;
+    if (!item.prev_entry) return;
+    await guardNearFledge(item, () => { void doSameAsPrior(item); });
+  }
+
+  async function doSameAsPrior(item: CompartmentRow) {
     if (!item.prev_entry) return;
     const Key = `${item.id}:same`;
     setQuickSaving(Key);
@@ -560,6 +607,10 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
   }
 
   function navigateToEntry(item: CompartmentRow) {
+    void guardNearFledge(item, () => doNavigateToEntry(item));
+  }
+
+  function doNavigateToEntry(item: CompartmentRow) {
     const AllCompartments = Sections.flatMap(s => s.data).map(c => ({
       id: c.id, cavity_label: c.cavity_label, unit_name: c.unit_name, entry_id: c.entry_id,
     }));
@@ -653,18 +704,25 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
           </Pressable>
         )}
         renderItem={({ item }) => (
-          <Card style={styles.Card} mode="outlined" onPress={CanWrite ? () => navigateToEntry(item) : undefined}>
+          <Card style={[styles.Card, isNearFledge(item) && styles.NearFledgeCard]} mode="outlined" onPress={CanWrite ? () => navigateToEntry(item) : undefined}>
             <Card.Title
               title={item.cavity_label}
               subtitle={item.entry_summary ?? 'Not entered'}
               subtitleStyle={item.entry_summary ? styles.EnteredText : styles.PendingText}
-              right={CanWrite ? () => (
-                <IconButton
-                  icon={item.entry_id ? 'pencil' : 'plus-circle-outline'}
-                  size={20}
-                  style={styles.RowIcon}
-                  onPress={() => navigateToEntry(item)}
-                />
+              right={(isNearFledge(item) || CanWrite) ? () => (
+                <View style={styles.CardRight}>
+                  {isNearFledge(item) && (
+                    <IconButton icon="information" size={20} iconColor="#c62828" onPress={showFledgeInfo} />
+                  )}
+                  {CanWrite && (
+                    <IconButton
+                      icon={item.entry_id ? 'pencil' : 'plus-circle-outline'}
+                      size={20}
+                      style={styles.RowIcon}
+                      onPress={() => navigateToEntry(item)}
+                    />
+                  )}
+                </View>
               ) : undefined}
             />
             {item.prev_summary && (!item.entry_id || !item.entry_has_nest) && (
@@ -745,6 +803,26 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
           </Dialog.Actions>
         </Dialog>
 
+        {/* ── Near-fledge warning ───────────────────────────────── */}
+        <Dialog visible={FledgeWarnVisible} onDismiss={() => setFledgeWarnVisible(false)}>
+          <Dialog.Title>Near Fledging – Caution</Dialog.Title>
+          <Dialog.Content>
+            <Text>
+              Checking nests close to fledging can cause young to fledge prematurely. Extra care is needed.
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            {FledgeWarnIsInfo ? (
+              <Button onPress={() => setFledgeWarnVisible(false)}>Close</Button>
+            ) : (
+              <>
+                <Button onPress={() => setFledgeWarnVisible(false)}>Cancel</Button>
+                <Button onPress={handleFledgeWarnProceed}>Proceed</Button>
+              </>
+            )}
+          </Dialog.Actions>
+        </Dialog>
+
         {/* ── Edit date ─────────────────────────────────────────── */}
         <Dialog visible={EditDateVisible} onDismiss={() => setEditDateVisible(false)}>
           <Dialog.Title>Edit check date</Dialog.Title>
@@ -796,6 +874,8 @@ const styles = StyleSheet.create({
   SectionHeader:    { flex: 1, marginBottom: 0, paddingHorizontal: 4 },
   SectionChevron:   { margin: 0 },
   Card:             { marginBottom: 8 },
+  NearFledgeCard:   { backgroundColor: '#fff0ee' },
+  CardRight:        { flexDirection: 'row', alignItems: 'center' },
   QuickActions:     { paddingHorizontal: 4, paddingBottom: 4, gap: 3, justifyContent: 'flex-start' },
   QuickBtn:         { alignSelf: 'flex-start', marginHorizontal: 0 },
   QuickBtnContent:  { paddingHorizontal: 0 },
