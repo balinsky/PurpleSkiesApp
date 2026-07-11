@@ -768,8 +768,9 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           }
 
           const segs: StatusSegment[] = [];
+          const NetEggs = Math.max(0, (E.egg_count ?? 0) - (E.discarded_eggs ?? 0));
           if ((E.young_count ?? 0) > 0) segs.push({ text: `${E.young_count}Y`, color: S_PURPLE });
-          if ((E.egg_count ?? 0)   > 0) segs.push({ text: `${segs.length ? ' ' : ''}${E.egg_count}E`, color: S_GREEN });
+          if (NetEggs > 0) segs.push({ text: `${segs.length ? ' ' : ''}${NetEggs}E`, color: S_GREEN });
           if (segs.length > 0) {
             if (ra) segs.push({ text: ` ${ra}`, color: S_BLUE });
             return segs;
