@@ -8,24 +8,29 @@ type SettingsCtx = {
   toggleSeasonCalendarView: () => void;
   BandingEnabled: boolean;
   toggleBandingEnabled: () => void;
+  FledgingWarnDays: number;
+  setFledgingWarnDays: (days: number) => void;
 };
 
 const Ctx = createContext<SettingsCtx>({
   CompactMode: false, toggleCompactMode: () => {},
   SeasonCalendarView: false, toggleSeasonCalendarView: () => {},
   BandingEnabled: false, toggleBandingEnabled: () => {},
+  FledgingWarnDays: 4, setFledgingWarnDays: () => {},
 });
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [CompactMode, setCompactMode] = useState(false);
   const [SeasonCalendarView, setSeasonCalendarView] = useState(false);
   const [BandingEnabled, setBandingEnabled] = useState(false);
+  const [FledgingWarnDays, setFledgingWarnDaysState] = useState(4);
 
   useEffect(() => {
-    AsyncStorage.multiGet(['compact_mode', 'season_calendar_view', 'banding_enabled']).then(([[, cm], [, cv], [, be]]) => {
+    AsyncStorage.multiGet(['compact_mode', 'season_calendar_view', 'banding_enabled', 'fledging_warn_days']).then(([[, cm], [, cv], [, be], [, fd]]) => {
       if (cm === 'true') setCompactMode(true);
       if (cv === 'true') setSeasonCalendarView(true);
       if (be === 'true') setBandingEnabled(true);
+      if (fd !== null) setFledgingWarnDaysState(parseInt(fd, 10));
     });
   }, []);
 
@@ -47,8 +52,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.setItem('banding_enabled', String(Next));
   }
 
+  function setFledgingWarnDays(days: number) {
+    setFledgingWarnDaysState(days);
+    AsyncStorage.setItem('fledging_warn_days', String(days));
+  }
+
   return (
-    <Ctx.Provider value={{ CompactMode, toggleCompactMode, SeasonCalendarView, toggleSeasonCalendarView, BandingEnabled, toggleBandingEnabled }}>
+    <Ctx.Provider value={{ CompactMode, toggleCompactMode, SeasonCalendarView, toggleSeasonCalendarView, BandingEnabled, toggleBandingEnabled, FledgingWarnDays, setFledgingWarnDays }}>
       {children}
     </Ctx.Provider>
   );

@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase';
 import { friendlyError } from '../lib/errorUtils';
 import { AppStackParamList } from '../App';
 import { useSync } from '../contexts/SyncContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { SpeciesLabel, buildEntrySummary } from '../lib/nestLogic';
 import {
   cacheUnitsAndCompartments, getLocalUnitsWithCompartments,
@@ -67,6 +68,7 @@ type Props = {
 export default function NestCheckDetailScreen({ navigation, route }: Props) {
   const { CheckId, CheckDate, SiteId, SeasonId, Year } = route.params;
   const { syncNow, isOnline } = useSync();
+  const { FledgingWarnDays } = useSettings();
   const UserRole  = useSiteRole(SiteId);
   const CanWrite  = UserRole !== null && UserRole !== 'viewer';
   const CanManage = UserRole === 'owner' || UserRole === 'manager';
@@ -84,9 +86,10 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
   const NearFledgeWarnKey = `near_fledge_warned_${SeasonId}`;
 
   function isNearFledge(item: CompartmentRow) {
+    if (FledgingWarnDays === 0) return false;
     return (
       item.calculated_nestling_age !== null &&
-      item.calculated_nestling_age >= 22 &&
+      item.calculated_nestling_age >= 26 - FledgingWarnDays &&
       item.calculated_nestling_age < 26 &&
       (item.prev_entry?.young_count ?? 0) > 0
     );
