@@ -323,7 +323,10 @@ export async function upsertLocalEntry(E: {
 export async function setLocalEntriesNestingAttempt(ids: string[], nestingAttempt: number): Promise<void> {
   const D = await db();
   for (const id of ids) {
-    await D.runAsync('UPDATE nest_check_entries SET nesting_attempt = ? WHERE id = ?', [nestingAttempt, id]);
+    await D.runAsync(
+      "UPDATE nest_check_entries SET nesting_attempt = ?, sync_status = 'pending' WHERE id = ?",
+      [nestingAttempt, id],
+    );
   }
 }
 
@@ -333,7 +336,7 @@ export async function resetLocalNestingAttemptsForCompartment(
 ): Promise<void> {
   const D = await db();
   await D.runAsync(
-    `UPDATE nest_check_entries SET nesting_attempt = ?
+    `UPDATE nest_check_entries SET nesting_attempt = ?, sync_status = 'pending'
      WHERE compartment_id = ? AND nesting_attempt >= ? AND nest_check_id IN (
        SELECT id FROM nest_checks WHERE site_id = ?
          AND check_date BETWEEN ? AND ?
