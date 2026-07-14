@@ -305,15 +305,17 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
 
         if (Anchors) {
           for (const Chk of PriorChecks) {
-            const A = Anchors.find(e => e.nest_check_id === Chk.id && (e.nestling_age_days ?? -1) >= 0);
-            if (A && !HatchDateMap.has(A.compartment_id)) {
-              const [ay, am, ad] = Chk.check_date.split('-').map(Number);
-              const Hatch = new Date(ay, am - 1, ad);
-              Hatch.setDate(Hatch.getDate() - A.nestling_age_days!);
-              HatchDateMap.set(
-                A.compartment_id,
-                `${Hatch.getFullYear()}-${String(Hatch.getMonth() + 1).padStart(2, '0')}-${String(Hatch.getDate()).padStart(2, '0')}`
-              );
+            const CheckAnchors = Anchors.filter(e => e.nest_check_id === Chk.id && (e.nestling_age_days ?? -1) >= 0);
+            for (const A of CheckAnchors) {
+              if (!HatchDateMap.has(A.compartment_id)) {
+                const [ay, am, ad] = Chk.check_date.split('-').map(Number);
+                const Hatch = new Date(ay, am - 1, ad);
+                Hatch.setDate(Hatch.getDate() - A.nestling_age_days!);
+                HatchDateMap.set(
+                  A.compartment_id,
+                  `${Hatch.getFullYear()}-${String(Hatch.getMonth() + 1).padStart(2, '0')}-${String(Hatch.getDate()).padStart(2, '0')}`
+                );
+              }
             }
           }
         }
