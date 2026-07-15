@@ -852,7 +852,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
 
           StatEggs    += Math.max(0, ...Data.ewd.map(e => e.egg_count));
           StatHatched += Math.max(0, ...Data.ewd.map(e => e.young_count + e.dead_young_count));
-          StatFledged += Math.max(0, ...Data.ewd.map(e => e.fledged_count));
+          StatFledged += Data.ewd.reduce((s, e) => s + e.fledged_count, 0);
 
           const EWD = [...Data.ewd].sort((a, b) => a.check_date.localeCompare(b.check_date));
           let FirstEggMin: string | null = null, FirstEggMax: string | null = null;

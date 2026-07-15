@@ -345,6 +345,9 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
         const validDates = Row.checks.filter(c => c.result.ok).map(c => c.date);
         const lastValidDate = validDates[validDates.length - 1] ?? null;
 
+        // Track fledge already recorded on skipped entries so we can compute the remainder for lastValidDate
+        let alreadyFledged = 0;
+
         for (const { date, result } of Row.checks) {
           if (!result.ok) continue;
 
@@ -355,13 +358,26 @@ export default function ImportSeasonScreen({ navigation, route }: Props) {
 
           const { data: existingEntry } = await supabase
             .from('nest_check_entries')
-            .select('id')
+            .select('id, fledged_count')
             .eq('nest_check_id', CheckId)
             .eq('compartment_id', CompId)
             .eq('nesting_attempt', Row.nesting_attempt)
             .maybeSingle();
 
-          if (existingEntry) continue;
+          if (existingEntry) {
+            if (date !== lastValidDate) {
+              alreadyFledged += existingEntry.fledged_count ?? 0;
+            } else if (effectiveFledge > 0 && !existingEntry.fledged_count) {
+              // Last check entry exists but has no fledge count — write the remainder
+              const remainder = Math.max(0, effectiveFledge - alreadyFledged);
+              if (remainder > 0) {
+                await supabase.from('nest_check_entries')
+                  .update({ fledged_count: remainder })
+                  .eq('id', existingEntry.id);
+              }
+            }
+            continue;
+          }
 
           const EntryId = makeId();
           const Payload = {
