@@ -29,9 +29,7 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
   const [OtherSeasonError, setOtherSeasonError]           = useState('');
   const [DeleteDialogVisible, setDeleteDialogVisible] = useState(false);
   const [Deleting, setDeleting]                       = useState(false);
-  const [DeleteError, setDeleteError]                 = useState('');
   const [SiteDetailsExpanded, setSiteDetailsExpanded] = useState(false);
-  const [DangerZoneExpanded, setDangerZoneExpanded]   = useState(false);
   const [UserRole, setUserRole]                       = useState<'owner' | 'manager' | 'collector' | 'viewer' | null>(null);
 
   // ── Edit site ──────────────────────────────────────────────────────
@@ -209,12 +207,9 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
   // ── Delete site handler ────────────────────────────────────────────
   async function handleDelete() {
     setDeleting(true);
-    setDeleteError('');
     const { error } = await supabase.from('sites').delete().eq('id', SiteId);
     setDeleting(false);
-    if (error) {
-      setDeleteError(friendlyError(error, 'Failed to delete site.'));
-    } else {
+    if (!error) {
       setDeleteDialogVisible(false);
       navigation.goBack();
     }
@@ -317,34 +312,6 @@ export default function SiteDetailScreen({ navigation, route }: Props) {
             Import season from file
           </Button>}
         </List.Section>
-
-        <Divider style={styles.Divider} />
-
-        {/* ── Danger zone (owner only, collapsible) ─────────────── */}
-        {UserRole === 'owner' && <Button
-          mode="text"
-          compact
-          textColor="red"
-          icon={DangerZoneExpanded ? 'chevron-up' : 'chevron-down'}
-          contentStyle={styles.ExpandBtnContent}
-          onPress={() => setDangerZoneExpanded(!DangerZoneExpanded)}
-          style={styles.ExpandBtn}
-        >
-          Danger zone
-        </Button>}
-        {DangerZoneExpanded && (
-          <View style={styles.DangerActions}>
-            <Button
-              mode="outlined"
-              textColor="red"
-              style={styles.DeleteButton}
-              onPress={() => setDeleteDialogVisible(true)}
-            >
-              Delete this site
-            </Button>
-            {DeleteError ? <Text style={styles.ErrorText}>{DeleteError}</Text> : null}
-          </View>
-        )}
 
       </ScrollView>
 
@@ -515,9 +482,6 @@ const styles = StyleSheet.create({
   Card:           { marginHorizontal: 16, marginBottom: 8 },
   SectionButton:  { marginHorizontal: 16, marginTop: 4, marginBottom: 8 },
   Divider:        { marginTop: 8 },
-  DangerActions:  { marginTop: 8, marginBottom: 8 },
-  DeleteButton:   { alignSelf: 'flex-start', borderColor: 'red' },
-  ErrorText:          { color: 'red', marginTop: 8 },
   DialogScroll:       { maxHeight: 480 },
   DialogLoadingText:  { padding: 8 },
   DialogSectionLabel: { marginTop: 12, marginBottom: 8 },
