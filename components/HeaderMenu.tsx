@@ -22,6 +22,7 @@ export default function HeaderMenu({ navigation, onDelete, deleteLabel = 'Delete
           size={24}
           onPress={() => setVisible(true)}
           style={{ marginRight: 4 }}
+          accessibilityLabel="Open menu"
         />
       }
     >

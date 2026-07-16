@@ -427,6 +427,18 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     const Unrecorded = Sections.flatMap(s => s.data).filter(c => c.entry_id === null);
     if (Unrecorded.length === 0) return;
 
+    const confirmed = await new Promise<boolean>(resolve =>
+      Alert.alert(
+        'Mark all as empty?',
+        `This will create empty entries for ${Unrecorded.length} unrecorded compartment${Unrecorded.length === 1 ? '' : 's'}.`,
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Mark as empty', onPress: () => resolve(true) },
+        ],
+      )
+    );
+    if (!confirmed) return;
+
     // Identify unrecorded compartments whose young are past fledge age — same check
     // used by the per-compartment quick-save fledge prompt.
     const FledgeReady = Unrecorded.filter(
@@ -693,6 +705,8 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
         renderSectionHeader={({ section }) => (
           <Pressable
             style={styles.SectionHeaderRow}
+            accessibilityRole="button"
+            accessibilityLabel={CollapsedUnits.has(section.unit_id) ? `Expand ${section.title}` : `Collapse ${section.title}`}
             onPress={() => setCollapsedUnits(prev => {
               const next = new Set(prev);
               if (next.has(section.unit_id)) next.delete(section.unit_id);
@@ -705,6 +719,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
               icon={CollapsedUnits.has(section.unit_id) ? 'chevron-down' : 'chevron-up'}
               size={16}
               style={styles.SectionChevron}
+              importantForAccessibility="no"
             />
           </Pressable>
         )}
@@ -717,7 +732,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
               right={(isNearFledge(item) || CanWrite) ? () => (
                 <View style={styles.CardRight}>
                   {isNearFledge(item) && (
-                    <IconButton icon="information" size={20} iconColor="#c62828" onPress={showFledgeInfo} />
+                    <IconButton icon="information" size={20} iconColor="#c62828" onPress={showFledgeInfo} accessibilityLabel="Near-fledge warning information" />
                   )}
                   {CanWrite && (
                     <IconButton
@@ -725,6 +740,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
                       size={20}
                       style={styles.RowIcon}
                       onPress={() => navigateToEntry(item)}
+                      accessibilityLabel={item.entry_id ? `Edit entry for ${item.cavity_label}` : `Add entry for ${item.cavity_label}`}
                     />
                   )}
                 </View>

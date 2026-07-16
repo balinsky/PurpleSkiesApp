@@ -50,6 +50,7 @@ export default function SettingsScreen() {
               size={20}
               disabled={FledgingWarnDays === 0}
               onPress={() => setFledgingWarnDays(FledgingWarnDays - 1)}
+              accessibilityLabel="Decrease pre-fledge warning days"
             />
             <Text style={styles.StepperValue}>{FledgingWarnDays}</Text>
             <IconButton
@@ -57,6 +58,7 @@ export default function SettingsScreen() {
               size={20}
               disabled={FledgingWarnDays >= 7}
               onPress={() => setFledgingWarnDays(FledgingWarnDays + 1)}
+              accessibilityLabel="Increase pre-fledge warning days"
             />
           </View>
         )}

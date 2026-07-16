@@ -82,7 +82,7 @@ function Counter({
     <View style={horizontal ? styles.CounterH : styles.Counter}>
       {!!label && <Text style={horizontal ? styles.CounterLabelH : styles.CounterLabel}>{label}</Text>}
       <View style={styles.CounterControls}>
-        <IconButton icon="minus" size={14} mode="contained" containerColor="#c62828" iconColor="#fff" onPress={() => onChange(Math.max(0, value - 1))} style={styles.StepBtn} />
+        <IconButton icon="minus" size={14} mode="contained" containerColor="#c62828" iconColor="#fff" onPress={() => onChange(Math.max(0, value - 1))} style={styles.StepBtn} accessibilityLabel={`Decrease ${typeof label === 'string' ? label : 'count'}`} />
         <RNTextInput
           value={String(value)}
           onChangeText={(T) => { const N = parseInt(T, 10); onChange(isNaN(N) || N < 0 ? 0 : N); }}
@@ -90,7 +90,7 @@ function Counter({
           selectTextOnFocus
           style={styles.CounterInput}
         />
-        <IconButton icon="plus" size={14} mode="contained" containerColor="#2e7d32" iconColor="#fff" onPress={() => onChange(value + 1)} style={styles.StepBtn} />
+        <IconButton icon="plus" size={14} mode="contained" containerColor="#2e7d32" iconColor="#fff" onPress={() => onChange(value + 1)} style={styles.StepBtn} accessibilityLabel={`Increase ${typeof label === 'string' ? label : 'count'}`} />
       </View>
       {prevValue != null && (
         <Button
@@ -296,6 +296,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
             size={22}
             onPress={toggleCompactMode}
             style={{ marginRight: 4 }}
+            accessibilityLabel={CompactMode ? 'Switch to standard view' : 'Switch to compact view'}
           />
         </View>
       ),
@@ -307,7 +308,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
     navigation.setOptions({
       gestureEnabled: !IsDirtyState,
       headerLeft: IsDirtyState
-        ? () => <IconButton icon="arrow-left" size={24} onPress={() => setAbandonVisible(true)} />
+        ? () => <IconButton icon="arrow-left" size={24} onPress={() => setAbandonVisible(true)} accessibilityLabel="Go back" accessibilityHint="Prompts to discard unsaved changes" />
         : undefined,
     });
   }, [IsDirtyState, navigation]);
@@ -1679,6 +1680,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                           iconColor="#1565c0"
                           onPress={() => setAgeInfoVisible(true)}
                           style={{ margin: 0 }}
+                          accessibilityLabel="How nestling age is calculated"
                         />
                       </View>
                     ) : (
@@ -1878,6 +1880,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                               iconColor="#1565c0"
                               style={{ margin: 0, marginLeft: -2 }}
                               onPress={() => openPriorBandsInfo(N.id!, N.label)}
+                              accessibilityLabel={`View prior banding history for ${N.label}`}
                             />
                           </View>
                         )}
@@ -1892,6 +1895,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                             icon="pencil" size={16}
                             onPress={() => openEditNestlingBand(NIdx, BIdx)}
                             style={styles.BandDeleteBtn}
+                            accessibilityLabel={`Edit band for ${N.label}`}
                           />
                           <IconButton
                             icon="close" size={16}
@@ -1899,6 +1903,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                               I === NIdx ? { ...Nn, bandsThisCheck: Nn.bandsThisCheck.filter((_, BI) => BI !== BIdx) } : Nn
                             )); }}
                             style={styles.BandDeleteBtn}
+                            accessibilityLabel={`Remove band from ${N.label}`}
                           />
                         </View>
                       ))}
@@ -1952,6 +1957,7 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                               icon="close" size={16}
                               onPress={() => { MarkDirty(); setAdultBands(Ab => Ab.filter(B => B.group_id !== gid)); }}
                               style={styles.BandDeleteBtn}
+                              accessibilityLabel={`Remove ${first.bird_type === 'adult_male' ? 'adult male' : 'adult female'} band group`}
                             />
                           </View>
                           {[...entries].sort((a, b) => a.band.band_type === 'federal' ? -1 : b.band.band_type === 'federal' ? 1 : 0).map(({ band: B, idx: Idx }) => (
@@ -1964,11 +1970,13 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
                                 icon="pencil" size={16}
                                 onPress={() => openEditAdultBand(Idx)}
                                 style={styles.BandDeleteBtn}
+                                accessibilityLabel="Edit adult band"
                               />
                               <IconButton
                                 icon="close" size={16}
                                 onPress={() => { MarkDirty(); setAdultBands(Ab => Ab.filter((_, I) => I !== Idx)); }}
                                 style={styles.BandDeleteBtn}
+                                accessibilityLabel="Remove adult band"
                               />
                             </View>
                           ))}

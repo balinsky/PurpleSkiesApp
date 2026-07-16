@@ -388,6 +388,8 @@ function BandsList({ rows }: { rows: BandRow[] }) {
                 <View key={unit_name}>
                   <Pressable
                     style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, marginBottom: 2 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={isCollapsed ? `Expand ${unit_name}` : `Collapse ${unit_name}`}
                     onPress={() => setCollapsedBandsUnits(prev => {
                       const next = new Set(prev);
                       if (next.has(collapseKey)) next.delete(collapseKey); else next.add(collapseKey);
@@ -395,7 +397,7 @@ function BandsList({ rows }: { rows: BandRow[] }) {
                     })}
                   >
                     <Text style={{ fontSize: 12, fontWeight: '700', color: '#555', flex: 1 }}>{unit_name}</Text>
-                    <IconButton icon={isCollapsed ? 'chevron-down' : 'chevron-up'} size={14} style={{ margin: 0 }} />
+                    <IconButton icon={isCollapsed ? 'chevron-down' : 'chevron-up'} size={14} style={{ margin: 0 }} importantForAccessibility="no" />
                   </Pressable>
                   {!isCollapsed && unitGroups.map((g) => {
                     const genderSymbol = g.bird_type === 'adult_male' ? '♂' : g.bird_type === 'adult_female' ? '♀' : null;
@@ -516,6 +518,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             icon="share-variant"
             size={22}
             disabled={Exporting}
+            accessibilityLabel="Export season data"
             onPress={async () => {
               setExporting(true);
               const { data: SiteData } = await supabase
@@ -537,6 +540,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             icon={SeasonCalendarView ? 'format-list-bulleted' : 'calendar-month'}
             size={22}
             onPress={toggleSeasonCalendarView}
+            accessibilityLabel={SeasonCalendarView ? 'Switch to list view' : 'Switch to calendar view'}
           />
           <HeaderMenu
             navigation={navigation}
@@ -1500,6 +1504,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                       <View key={unit_name}>
                         <Pressable
                           style={styles.UnitHeaderRow}
+                          accessibilityRole="button"
+                          accessibilityLabel={CollapsedProgressUnits.has(unit_name) ? `Expand ${unit_name}` : `Collapse ${unit_name}`}
                           onPress={() => setCollapsedProgressUnits(prev => {
                             const next = new Set(prev);
                             if (next.has(unit_name)) next.delete(unit_name); else next.add(unit_name);
@@ -1507,7 +1513,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                           })}
                         >
                           <Text style={styles.UnitHeaderText}>{unit_name}</Text>
-                          <IconButton icon={CollapsedProgressUnits.has(unit_name) ? 'chevron-down' : 'chevron-up'} size={14} style={{ margin: 0 }} />
+                          <IconButton icon={CollapsedProgressUnits.has(unit_name) ? 'chevron-down' : 'chevron-up'} size={14} style={{ margin: 0 }} importantForAccessibility="no" />
                         </Pressable>
                         {!CollapsedProgressUnits.has(unit_name) && items.map((P) => (
                           <TouchableRipple
@@ -1555,6 +1561,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                   <View key={unit_name}>
                     <Pressable
                       style={styles.UnitHeaderRow}
+                      accessibilityRole="button"
+                      accessibilityLabel={CollapsedAgesUnits.has(unit_name) ? `Expand ${unit_name}` : `Collapse ${unit_name}`}
                       onPress={() => setCollapsedAgesUnits(prev => {
                         const next = new Set(prev);
                         if (next.has(unit_name)) next.delete(unit_name); else next.add(unit_name);
@@ -1562,7 +1570,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                       })}
                     >
                       <Text style={styles.UnitHeaderText}>{unit_name}</Text>
-                      <IconButton icon={CollapsedAgesUnits.has(unit_name) ? 'chevron-down' : 'chevron-up'} size={14} style={{ margin: 0 }} />
+                      <IconButton icon={CollapsedAgesUnits.has(unit_name) ? 'chevron-down' : 'chevron-up'} size={14} style={{ margin: 0 }} importantForAccessibility="no" />
                     </Pressable>
                     {!CollapsedAgesUnits.has(unit_name) && items.map((A) => (
                       <View key={A.compartment_id} style={styles.ProgressRow}>
@@ -1766,6 +1774,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                         <View key={unit_name}>
                           <Pressable
                             style={styles.UnitHeaderRow}
+                            accessibilityRole="button"
+                            accessibilityLabel={CollapsedProgressUnits.has(unit_name) ? `Expand ${unit_name}` : `Collapse ${unit_name}`}
                             onPress={() => setCollapsedProgressUnits(prev => {
                               const next = new Set(prev);
                               if (next.has(unit_name)) next.delete(unit_name); else next.add(unit_name);
@@ -1773,7 +1783,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                             })}
                           >
                             <Text style={styles.UnitHeaderText}>{unit_name}</Text>
-                            <IconButton icon={CollapsedProgressUnits.has(unit_name) ? 'chevron-down' : 'chevron-up'} size={14} style={{ margin: 0 }} />
+                            <IconButton icon={CollapsedProgressUnits.has(unit_name) ? 'chevron-down' : 'chevron-up'} size={14} style={{ margin: 0 }} importantForAccessibility="no" />
                           </Pressable>
                           {!CollapsedProgressUnits.has(unit_name) && items.map((P) => (
                             <TouchableRipple
@@ -1821,6 +1831,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                     <View key={unit_name}>
                       <Pressable
                         style={styles.UnitHeaderRow}
+                        accessibilityRole="button"
+                        accessibilityLabel={CollapsedAgesUnits.has(unit_name) ? `Expand ${unit_name}` : `Collapse ${unit_name}`}
                         onPress={() => setCollapsedAgesUnits(prev => {
                           const next = new Set(prev);
                           if (next.has(unit_name)) next.delete(unit_name); else next.add(unit_name);
@@ -1828,7 +1840,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                         })}
                       >
                         <Text style={styles.UnitHeaderText}>{unit_name}</Text>
-                        <IconButton icon={CollapsedAgesUnits.has(unit_name) ? 'chevron-down' : 'chevron-up'} size={14} style={{ margin: 0 }} />
+                        <IconButton icon={CollapsedAgesUnits.has(unit_name) ? 'chevron-down' : 'chevron-up'} size={14} style={{ margin: 0 }} importantForAccessibility="no" />
                       </Pressable>
                       {!CollapsedAgesUnits.has(unit_name) && items.map((A) => (
                         <View key={A.compartment_id} style={styles.ProgressRow}>

@@ -273,10 +273,10 @@ export default function HousingUnitDetailScreen({ navigation, route }: Props) {
                 right={CanWrite ? () => (
                   <View style={styles.CardActions}>
                     {OtherUnits.length > 0 && (
-                      <IconButton icon="swap-horizontal" size={20} onPress={() => openMoveComp(item)} />
+                      <IconButton icon="swap-horizontal" size={20} onPress={() => openMoveComp(item)} accessibilityLabel={`Move ${item.cavity_label} to another unit`} />
                     )}
-                    <IconButton icon="pencil" size={20} onPress={() => openEditComp(item)} />
-                    <IconButton icon="delete" size={20} iconColor="red" onPress={() => openDeleteComp(item)} />
+                    <IconButton icon="pencil" size={20} onPress={() => openEditComp(item)} accessibilityLabel={`Edit compartment ${item.cavity_label}`} />
+                    <IconButton icon="delete" size={20} iconColor="red" onPress={() => openDeleteComp(item)} accessibilityLabel={`Delete compartment ${item.cavity_label}`} />
                   </View>
                 ) : undefined}
               />
