@@ -233,7 +233,7 @@ function BandingHistogram({ bars, today, selectedDate, onBarPress }: {
 
   if (bars.length === 0) {
     return (
-      <Text style={{ color: '#888', fontSize: 12, marginBottom: 4, fontStyle: 'italic' }}>
+      <Text style={{ color: '#616161', fontSize: 12, marginBottom: 4, fontStyle: 'italic' }}>
         No banding window available.
       </Text>
     );
@@ -298,7 +298,7 @@ function BandingCompartmentList({ progress, date, today, min, max }: {
         {shortDate(date)}{isToday ? '  (today)' : ''}
       </Text>
       {items.length === 0
-        ? <Text style={{ fontSize: 12, color: '#888', fontStyle: 'italic' }}>No unbanded nestlings in window{isToday ? ' today' : ''}.</Text>
+        ? <Text style={{ fontSize: 12, color: '#616161', fontStyle: 'italic' }}>No unbanded nestlings in window{isToday ? ' today' : ''}.</Text>
         : items.map((item, i) => (
             <Text key={i} style={{ fontSize: 12, color: '#444' }}>
               {item.label}: {item.age} day{item.age !== 1 ? 's' : ''}
@@ -339,7 +339,7 @@ function BandsList({ rows }: { rows: BandRow[] }) {
 
   if (rows.length === 0) {
     return (
-      <Text style={{ color: '#888', fontSize: 12, marginBottom: 12, fontStyle: 'italic' }}>
+      <Text style={{ color: '#616161', fontSize: 12, marginBottom: 12, fontStyle: 'italic' }}>
         No bands recorded.
       </Text>
     );
@@ -1994,9 +1994,9 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           <Dialog.ScrollArea style={{ maxHeight: 400 }}>
             <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 8 }}>
               {CompartmentHistoryLoading ? (
-                <Text style={{ color: '#888', fontStyle: 'italic' }}>Loading…</Text>
+                <Text style={{ color: '#616161', fontStyle: 'italic' }}>Loading…</Text>
               ) : CompartmentHistoryEntries.length === 0 ? (
-                <Text style={{ color: '#888', fontStyle: 'italic' }}>No entries recorded for this compartment.</Text>
+                <Text style={{ color: '#616161', fontStyle: 'italic' }}>No entries recorded for this compartment.</Text>
               ) : (
                 CompartmentHistoryEntries.map((E, i) => {
                   const prev = i > 0 ? CompartmentHistoryEntries[i - 1] : null;

@@ -133,7 +133,7 @@ export default function HomeScreen({ navigation }: Props) {
                         Join
                       </Button>
                       <Button
-                        mode="text" compact textColor="#888"
+                        mode="text" compact textColor="#616161"
                         loading={Declining === Inv.id}
                         disabled={!!Accepting || !!Declining}
                         onPress={() => handleDecline(Inv)}

@@ -516,6 +516,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     if (!CanWrite) return;
     const Key = `${item.id}:${type}`;
     setQuickSaving(Key);
+    const safetyTimer = setTimeout(() => setQuickSaving(null), 30_000);
     const EntryId = item.entry_id ?? makeId();
     const QuickPayload = {
       species: 'PM' as const, is_empty_cavity: type === 'empty', has_nest: type === 'pm_nest', adult_present: false,
@@ -535,6 +536,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       await supabase.from('nest_check_entries').upsert({ id: EntryId, nest_check_id: CheckId, compartment_id: item.id, ...QuickPayload });
     } catch {}
     syncNow();
+    clearTimeout(safetyTimer);
     setQuickSaving(null);
     setSections(prev => prev.map(sec => ({
       ...sec,
@@ -574,6 +576,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     if (!item.prev_entry) return;
     const Key = `${item.id}:same`;
     setQuickSaving(Key);
+    const safetyTimer = setTimeout(() => setQuickSaving(null), 30_000);
     const EntryId = item.entry_id ?? makeId();
     const Prev = item.prev_entry;
     const Payload = {
@@ -612,6 +615,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
       }
     } catch {}
     syncNow();
+    clearTimeout(safetyTimer);
     setQuickSaving(null);
     setSections(prev => prev.map(sec => ({
       ...sec,
@@ -901,12 +905,12 @@ const styles = StyleSheet.create({
   QuickBtn:         { alignSelf: 'flex-start', marginHorizontal: 0 },
   QuickBtnContent:  { paddingHorizontal: 0 },
   EnteredText:      { color: '#2e7d32' },
-  PendingText:      { color: '#999' },
+  PendingText:      { color: '#757575' },
   RowIcon:          { marginRight: 4 },
   EmptyContainer:   { padding: 16, alignItems: 'flex-start' },
   EmptyText:        { color: '#666', marginBottom: 12 },
   MarkAllEmptyBtn:  { marginTop: 10, alignSelf: 'stretch' },
   PrevContent:      { paddingTop: 0, paddingBottom: 4 },
-  PrevText:         { color: '#999', fontStyle: 'italic', fontSize: 12 },
+  PrevText:         { color: '#757575', fontStyle: 'italic', fontSize: 12 },
   DialogInput:      { marginBottom: 8 },
 });
