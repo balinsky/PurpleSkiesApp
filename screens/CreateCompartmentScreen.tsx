@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet } from 'react-native';
-import { Button, HelperText, RadioButton, Text, TextInput } from 'react-native-paper';
+import React, { useEffect, useState } from 'react';
+import { Alert, ScrollView, StyleSheet } from 'react-native';
+import { Button, HelperText, IconButton, RadioButton, Text, TextInput } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
@@ -43,6 +43,30 @@ export default function CreateCompartmentScreen({ navigation, route }: Props) {
   const [OverrideHoleType, setOverrideHoleType] = useState(false);
   const [Loading, setLoading] = useState(false);
   const [ErrorMessage, setErrorMessage] = useState('');
+
+  const isDirty = CavityLabel.trim() !== '';
+
+  useEffect(() => {
+    navigation.setOptions({
+      gestureEnabled: !isDirty,
+      headerLeft: isDirty ? () => (
+        <IconButton
+          icon="arrow-left"
+          size={24}
+          accessibilityLabel="Go back"
+          accessibilityHint="Prompts to discard unsaved changes"
+          onPress={() => Alert.alert(
+            'Discard changes?',
+            'You have unsaved changes. Go back and lose them?',
+            [
+              { text: 'Keep editing', style: 'cancel' },
+              { text: 'Discard', style: 'destructive', onPress: () => navigation.goBack() },
+            ]
+          )}
+        />
+      ) : undefined,
+    });
+  }, [isDirty, navigation]);
 
   async function handleCreate() {
     setErrorMessage('');
