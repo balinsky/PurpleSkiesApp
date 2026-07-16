@@ -794,7 +794,12 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
         ListEmptyComponent={(
           <View style={styles.EmptyContainer}>
             <Text variant="bodyMedium" style={styles.EmptyText}>
-              No housing units or compartments have been set up for this site yet.
+              No housing has been set up for this season yet.
+            </Text>
+            <Text variant="bodySmall" style={styles.EmptyHint}>
+              {CanWrite
+                ? 'Add a housing unit (e.g. a metal house or gourd rack), then add compartments for each cavity. Once compartments are set up you can record nest check data here.'
+                : 'A site manager needs to add housing units and compartments before nest check data can be recorded.'}
             </Text>
             {CanWrite && <Button
               mode="outlined"
@@ -908,7 +913,8 @@ const styles = StyleSheet.create({
   PendingText:      { color: '#757575' },
   RowIcon:          { marginRight: 4 },
   EmptyContainer:   { padding: 16, alignItems: 'flex-start' },
-  EmptyText:        { color: '#666', marginBottom: 12 },
+  EmptyText:        { color: '#666', marginBottom: 8 },
+  EmptyHint:        { color: '#666', marginBottom: 16 },
   MarkAllEmptyBtn:  { marginTop: 10, alignSelf: 'stretch' },
   PrevContent:      { paddingTop: 0, paddingBottom: 4 },
   PrevText:         { color: '#757575', fontStyle: 'italic', fontSize: 12 },
