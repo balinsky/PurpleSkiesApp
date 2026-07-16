@@ -87,7 +87,7 @@ magick assets/icon.png -background white -alpha remove -alpha off assets/icon.pn
 
 ## Banding
 
-Banding data entry is gated behind `BandingEnabled` in `SettingsContext`. It requires a federal USGS permit and the UI includes a legal notice. Banding fields appear in `NestCheckEntryScreen` and banding columns appear in the XLS export only when `BandingEnabled` is true.
+Banding data entry is gated behind `BandingEnabled` in `SettingsContext`. It requires a federal USFWS bird banding permit (Migratory Bird Treaty Act, 50 CFR 21.70) plus state/province permits, and the UI includes a legal notice. Banding fields appear in `NestCheckEntryScreen` and banding columns appear in the XLS export only when `BandingEnabled` is true.
 
 ## Testing
 

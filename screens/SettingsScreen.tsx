@@ -5,12 +5,13 @@ import Constants from 'expo-constants';
 import { useSettings } from '../contexts/SettingsContext';
 
 const BANDING_WARNING =
-  'Bird banding must only be performed by properly licensed bird banders operating under a federal USGS permit. ' +
+  'Bird banding is a federally regulated process according to the Migratory Bird Treaty Act, 50 CFR 21.70. ' +
+  'This requires a federal bird banding permit, as well as permits from states and provinces to legally band a bird. ' +
   'It is a violation of federal law to band birds without a permit. ' +
   'Do not use your own bands that are sold for pigeons or other non-native birds. ' +
-  'These can harm or kill birds for which they are not properly sized. ' +
-  'Contact the USGS Bird Banding Lab for more information. ' +
-  'Permits are not required to report on observations of bands you encounter.';
+  'These can harm or kill birds for which they are not properly sized.\n\n' +
+  'Permits are NOT required to observe and report on observations of birds you encounter, ' +
+  'and we encourage you to report them at reportband.gov';
 
 export default function SettingsScreen() {
   const { BandingEnabled, toggleBandingEnabled, FledgingWarnDays, setFledgingWarnDays } = useSettings();
