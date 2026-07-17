@@ -1,9 +1,10 @@
 import React, { useCallback, useState } from 'react';
-import { Alert, FlatList, StyleSheet, View } from 'react-native';
-import { Button, Card, FAB, Text } from 'react-native-paper';
+import { FlatList, StyleSheet, View } from 'react-native';
+import { Button, Card, FAB, HelperText, Text } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
+import { friendlyError } from '../lib/errorUtils';
 import { AppStackParamList } from '../App';
 
 type Site = { id: string; name: string; address: string | null };
@@ -31,6 +32,7 @@ export default function HomeScreen({ navigation }: Props) {
   const [Invites, setInvites]           = useState<PendingInvite[]>([]);
   const [Accepting, setAccepting]       = useState<string | null>(null);
   const [Declining, setDeclining]       = useState<string | null>(null);
+  const [AcceptError, setAcceptError]   = useState<string | null>(null);
 
 
   useFocusEffect(
@@ -68,13 +70,14 @@ export default function HomeScreen({ navigation }: Props) {
 
   async function handleAccept(Inv: PendingInvite) {
     setAccepting(Inv.id);
+    setAcceptError(null);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setAccepting(null); return; }
     const { error } = await supabase.from('site_members')
       .insert({ site_id: Inv.site_id, user_id: user.id, role: Inv.role });
     if (error) {
       setAccepting(null);
-      Alert.alert('Could not join site', error.message);
+      setAcceptError(friendlyError(error, 'Could not join site. Please try again.'));
       return;
     }
     await supabase.from('invitations')
@@ -144,6 +147,7 @@ export default function HomeScreen({ navigation }: Props) {
                   </Card.Content>
                 </Card>
               ))}
+              {AcceptError && <HelperText type="error" visible>{AcceptError}</HelperText>}
             </View>
           ) : null}
           renderItem={({ item }) => (

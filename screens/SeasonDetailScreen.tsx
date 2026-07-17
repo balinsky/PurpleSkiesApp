@@ -1283,9 +1283,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
     } catch (e: any) {
       setDeletingSeason(false);
       console.error(e);
-      const msg = 'Failed to delete season. Please try again.';
-      setDeleteSeasonError(msg);
-      Alert.alert('Delete failed', msg);
+      setDeleteSeasonError('Failed to delete season. Please try again.');
     }
   }
 
