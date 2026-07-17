@@ -670,6 +670,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
         }))}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.List}
+        accessibilityLabel="Compartments"
         ListHeaderComponent={(
           <View style={styles.Header}>
             {!isOnline && (
@@ -735,7 +736,12 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
           </Pressable>
         )}
         renderItem={({ item }) => (
-          <Card style={[styles.Card, isNearFledge(item) && styles.NearFledgeCard]} mode="outlined" onPress={CanWrite ? () => navigateToEntry(item) : undefined}>
+          <Card
+            style={[styles.Card, isNearFledge(item) && styles.NearFledgeCard]}
+            mode="outlined"
+            accessibilityLabel={`${item.cavity_label}: ${item.entry_summary ?? 'not entered'}${isNearFledge(item) ? ', near fledge age' : ''}`}
+            onPress={CanWrite ? () => navigateToEntry(item) : undefined}
+          >
             <Card.Title
               title={item.cavity_label}
               subtitle={item.entry_summary ?? 'Not entered'}
