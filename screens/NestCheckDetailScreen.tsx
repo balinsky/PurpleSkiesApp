@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Alert, Pressable, SectionList, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, SectionList, StyleSheet, View } from 'react-native';
 import { Button, Card, Dialog, HelperText, IconButton, Portal, Text, TextInput } from 'react-native-paper';
 import DateInput from '../components/DateInput';
 import HeaderMenu from '../components/HeaderMenu';
@@ -848,11 +848,14 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
 
         {/* ── Near-fledge warning ───────────────────────────────── */}
         <Dialog visible={FledgeWarnVisible} onDismiss={() => setFledgeWarnVisible(false)}>
-          <Dialog.Title>Near Fledging – Caution</Dialog.Title>
+          <Dialog.Title>Caution: Nestlings Near Fledge Age</Dialog.Title>
           <Dialog.Content>
-            <Text>
-              Checking nests close to fledging can cause young to fledge prematurely. Extra care is needed.
-            </Text>
+            <ScrollView style={styles.FledgeWarnScroll}>
+              <Text>
+                To avoid premature fledging (nestlings leaving the nest before they can properly fly), keep checks on nestlings 22 days or older very brief. Just look inside to confirm that nestlings are present.{'\n\n'}
+                Use the plug &amp; string method to keep older nestlings safely inside throughout the nest check. Tie a string long enough to reach the ground with the system raised to a foam or fabric entrance plug. Quietly lower the system and plug the cavities containing nestlings 22 days and older. Once you have completed the nest check, raise the system and wait 5-10 minutes for the nestlings to settle down. Gently tug on the strings to remove the plugs.
+              </Text>
+            </ScrollView>
           </Dialog.Content>
           <Dialog.Actions>
             {FledgeWarnIsInfo ? (
@@ -933,4 +936,5 @@ const styles = StyleSheet.create({
   PrevContent:      { paddingTop: 0, paddingBottom: 4 },
   PrevText:         { color: '#757575', fontStyle: 'italic', fontSize: 12 },
   DialogInput:      { marginBottom: 8 },
+  FledgeWarnScroll: { maxHeight: 320 },
 });
