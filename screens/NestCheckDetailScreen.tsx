@@ -677,6 +677,11 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
                 Offline · showing cached data
               </Text>
             )}
+            {UserRole === 'viewer' && (
+              <Text variant="bodySmall" style={styles.ViewOnlyBanner}>
+                You have view-only access · contact a site manager to record nest checks
+              </Text>
+            )}
             <Text variant="bodyMedium" style={styles.Stats}>
               {TotalCount} compartments · {EnteredCount} entered
             </Text>
@@ -684,13 +689,15 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
               <Button mode="outlined" compact disabled={!isOnline} onPress={openEditDate} style={styles.EditDateBtn}>
                 Edit date
               </Button>
-              {CanManage && <Button
-                mode="outlined" compact textColor="red" disabled={!isOnline}
+              <Button
+                mode="outlined" compact textColor="red"
+                disabled={!isOnline || !CanManage}
+                accessibilityHint={!CanManage ? 'Only managers and owners can delete checks' : undefined}
                 style={[styles.EditDateBtn, styles.DeleteBtn]}
                 onPress={() => { setDeleteError(''); setDeleteVisible(true); }}
               >
                 Delete check
-              </Button>}
+              </Button>
             </View>}
             {CanWrite && TotalCount > EnteredCount && (
               <Button
@@ -896,6 +903,7 @@ const styles = StyleSheet.create({
   List:             { padding: 16, paddingBottom: 32 },
   Header:           { marginBottom: 8 },
   OfflineBanner:    { color: '#b45309', marginBottom: 6, fontStyle: 'italic' },
+  ViewOnlyBanner:   { color: '#616161', marginBottom: 6, fontStyle: 'italic' },
   Stats:            { color: '#555', marginBottom: 8 },
   HeaderBtns:       { flexDirection: 'row', gap: 8 },
   EditDateBtn:      { flex: 1 },
