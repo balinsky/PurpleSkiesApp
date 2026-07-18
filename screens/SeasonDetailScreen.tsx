@@ -110,6 +110,7 @@ type CompartmentProgress = {
   young_count: number;
   banded_count: number;
   superseded: boolean;
+  total_fledged: number;
 };
 
 type HistoryEntry = {
@@ -758,9 +759,14 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
         const S_BLUE   = '#1565c0';
         const S_BROWN  = '#6d4c41';
         const S_GREY   = '#9e9e9e';
+        const S_FLEDGE = '#4527a0';
 
-        function currentStatusSegments(E: any, attempt: number): StatusSegment[] {
-          if (E.is_empty_cavity) return [{ text: 'Empty', color: S_GREY }];
+        function currentStatusSegments(E: any, attempt: number, totalFledged?: number): StatusSegment[] {
+          const fledgedCount = totalFledged ?? E.fledged_count ?? 0;
+          if (E.is_empty_cavity) {
+            if (fledgedCount > 0) return [{ text: `${fledgedCount}F`, color: S_FLEDGE }];
+            return [{ text: 'Empty', color: S_GREY }];
+          }
           const sp = (E.species ?? 'PM') as string;
           const isPM = sp === 'PM';
           const ra = attempt > 1 ? (attempt === 2 ? 'RA' : `RA${attempt}`) : '';
@@ -774,7 +780,8 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           const segs: StatusSegment[] = [];
           const NetEggs = Math.max(0, (E.egg_count ?? 0) - (E.discarded_eggs ?? 0));
           if ((E.young_count ?? 0) > 0) segs.push({ text: `${E.young_count}Y`, color: S_PURPLE });
-          if (NetEggs > 0) segs.push({ text: `${segs.length ? ' ' : ''}${NetEggs}E`, color: S_GREEN });
+          if (fledgedCount > 0) segs.push({ text: `${fledgedCount}F`, color: S_FLEDGE });
+          if (NetEggs > 0) segs.push({ text: `${NetEggs}E`, color: S_GREEN });
           if (segs.length > 0) {
             if (ra) segs.push({ text: ` ${ra}`, color: S_BLUE });
             return segs;
@@ -917,10 +924,11 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
           const BandedCount = BandedByKey.get(`${Data.compartment_id}:${Data.nesting_attempt}`) ?? 0;
           const AttemptSuffix = Data.nesting_attempt > 1 ? ` (Attempt ${Data.nesting_attempt})` : '';
           const FleddgeDates = EWD.filter(e => e.fledged_count > 0).map(e => e.check_date).sort();
+          const TotalFledged = EWD.reduce((s, e) => s + e.fledged_count, 0);
           // For superseded attempts show no live status badge — the global latest entry belongs
           // to a later attempt. For the current attempt use the global latest (same thing).
           const sub = IsSuperseded ? null : LatestSubstantiveByComp.get(Data.compartment_id);
-          Progress.push({ compartment_id: Data.compartment_id, nesting_attempt: Data.nesting_attempt, label: Data.label + AttemptSuffix, unit_name: Data.unit_name, current_status: sub ? currentStatusSegments(sub.entry, sub.attempt) : null, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, fledge_dates: FleddgeDates, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount, banded_count: BandedCount, superseded: false });
+          Progress.push({ compartment_id: Data.compartment_id, nesting_attempt: Data.nesting_attempt, label: Data.label + AttemptSuffix, unit_name: Data.unit_name, current_status: sub ? currentStatusSegments(sub.entry, sub.attempt, TotalFledged) : null, first_egg_min: FirstEggMin, first_egg_max: FirstEggMax, proj_hatch_min: ProjHatchMin, proj_hatch_max: ProjHatchMax, actual_hatch: ActualHatch, proj_fledge: ProjFledge, fledge_dates: FleddgeDates, male_age: Ages?.male_age ?? null, female_age: Ages?.female_age ?? null, young_count: YoungCount, banded_count: BandedCount, superseded: false, total_fledged: TotalFledged });
         }
 
         // Add any compartments with a substantive status not already in Progress
@@ -939,7 +947,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
             proj_hatch_min: null, proj_hatch_max: null,
             actual_hatch: null, proj_fledge: null, fledge_dates: [],
             male_age: null, female_age: null,
-            young_count: 0, banded_count: 0, superseded: false,
+            young_count: 0, banded_count: 0, superseded: false, total_fledged: 0,
           });
         }
 
