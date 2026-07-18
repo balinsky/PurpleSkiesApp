@@ -1397,7 +1397,7 @@ export default function SeasonDetailScreen({ navigation, route }: Props) {
                     CheckId: Check.id, CheckDate: Check.check_date,
                     SiteId, SeasonId, Year,
                   });
-                } else {
+                } else if (CanWrite) {
                   openAddCheck(day.dateString);
                 }
               }}
