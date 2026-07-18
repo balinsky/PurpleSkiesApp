@@ -1629,8 +1629,8 @@ export default function NestCheckEntryScreen({ navigation, route }: Props) {
               }}
               style={[styles.InlineCheck, { flex: 1 }]}
             >
-              <View style={styles.InlineCheckRow}>
-                <Text variant="bodyLarge">{L('Adult present (no check)', 'A')}</Text>
+              <View style={[styles.InlineCheckRow, { alignItems: 'flex-start' }]}>
+                <Text variant="bodyLarge">{L('Adult present\n(no check)', 'A')}</Text>
                 <Checkbox.Android status={AdultPresent ? 'checked' : 'unchecked'} />
               </View>
             </TouchableRipple>
