@@ -50,6 +50,7 @@ type CompartmentRow = {
   prev_summary: string | null;
   prev_entry: PrevEntryData | null;
   calculated_nestling_age: number | null;
+  entry_is_pending: boolean;
 };
 
 type Section = {
@@ -156,7 +157,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     function buildSections(
       Units: UnitRow[], Entries: EntryRow[], BandingSet: Set<string>,
       HatchDateMap: Map<string, string>, SeasonRows: SeasonRow[],
-      PrevEntryMap: Map<string, PrevEntryData>,
+      PrevEntryMap: Map<string, PrevEntryData>, PendingIds: Set<string> = new Set(),
     ) {
       function effectiveAge(compartmentId: string, stored: number | null): number | null {
         if (stored !== null) return stored;
@@ -218,6 +219,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
               })(),
               prev_entry:             PrevEntryMap.get(C.id) ?? null,
               calculated_nestling_age: effectiveAge(C.id, null),
+              entry_is_pending:        PendingIds.has(C.id),
             };
           }),
       })));
@@ -251,12 +253,14 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
 
       // Overlay locally-pending entries so saves appear immediately before sync completes
       let Entries: any[] = RemoteEntries ?? [];
+      const PendingIds = new Set<string>();
       try {
         const LocalPending = (await getLocalEntriesForCheck(CheckId))
           .filter(E => E.sync_status === 'pending')
           .map(localEntryToJs);
         if (LocalPending.length > 0) {
           const PendingByComp = new Map(LocalPending.map(E => [E.compartment_id, E]));
+          LocalPending.forEach(E => PendingIds.add(E.compartment_id));
           Entries = [
             ...Entries.filter(E => !PendingByComp.has(E.compartment_id)),
             ...LocalPending,
@@ -370,7 +374,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
           id: C.id, cavity_label: C.cavity_label, sort_order: C.sort_order ?? null, housing_type: C.housing_type ?? null,
         })),
       }));
-      buildSections(TypedUnits, (Entries ?? []) as EntryRow[], BandingSet, HatchDateMap, NestSeasonRows ?? [], PrevEntryMap);
+      buildSections(TypedUnits, (Entries ?? []) as EntryRow[], BandingSet, HatchDateMap, NestSeasonRows ?? [], PrevEntryMap, PendingIds);
     } catch {
       // Offline or network error: fall back to local DB (no-op on web — SQLite not available)
       try {
@@ -401,6 +405,12 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
     if (!Val) { setEditDateError('Please enter a date.'); return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(Val)) {
       setEditDateError('Use YYYY-MM-DD format, e.g. 2026-06-01.');
+      return;
+    }
+    const [dy, dm, dd] = Val.split('-').map(Number);
+    const parsed = new Date(dy, dm - 1, dd);
+    if (parsed.getFullYear() !== dy || parsed.getMonth() !== dm - 1 || parsed.getDate() !== dd) {
+      setEditDateError('That date does not exist. Please enter a valid date.');
       return;
     }
     setEditDateLoading(true);
@@ -544,6 +554,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
         ...row,
         entry_id: EntryId,
         entry_summary: buildEntrySummary(QuickPayload),
+        entry_is_pending: !isOnline,
       }),
     })));
   }
@@ -623,6 +634,7 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
         ...row,
         entry_id: EntryId,
         entry_summary: buildEntrySummary({ ...Payload, nestling_age_days: null }),
+        entry_is_pending: !isOnline,
       }),
     })));
   }
@@ -766,6 +778,11 @@ export default function NestCheckDetailScreen({ navigation, route }: Props) {
             {item.prev_summary && (!item.entry_id || !item.entry_has_nest) && (
               <Card.Content style={styles.PrevContent}>
                 <Text style={styles.PrevText}>Prev: {item.prev_summary}</Text>
+              </Card.Content>
+            )}
+            {item.entry_is_pending && (
+              <Card.Content style={styles.PrevContent}>
+                <Text style={styles.SyncPendingText}>Pending sync</Text>
               </Card.Content>
             )}
             {CanWrite && <Card.Actions style={styles.QuickActions}>
@@ -935,6 +952,7 @@ const styles = StyleSheet.create({
   MarkAllEmptyBtn:  { marginTop: 10, alignSelf: 'stretch' },
   PrevContent:      { paddingTop: 0, paddingBottom: 4 },
   PrevText:         { color: '#757575', fontStyle: 'italic', fontSize: 12 },
+  SyncPendingText:  { color: '#616161', fontStyle: 'italic', fontSize: 11 },
   DialogInput:      { marginBottom: 8 },
   FledgeWarnScroll: { maxHeight: 320 },
 });

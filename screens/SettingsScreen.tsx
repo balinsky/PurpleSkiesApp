@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { Divider, IconButton, List, Switch, Text } from 'react-native-paper';
+import { Divider, IconButton, List, Switch, Text, TextInput } from 'react-native-paper';
 import Constants from 'expo-constants';
 import { useSettings } from '../contexts/SettingsContext';
 
@@ -52,7 +52,19 @@ export default function SettingsScreen() {
               onPress={() => setFledgingWarnDays(FledgingWarnDays - 1)}
               accessibilityLabel="Decrease pre-fledge warning days"
             />
-            <Text style={styles.StepperValue}>{FledgingWarnDays}</Text>
+            <TextInput
+              value={String(FledgingWarnDays)}
+              onChangeText={(v) => {
+                const n = parseInt(v, 10);
+                if (!isNaN(n)) setFledgingWarnDays(Math.min(7, Math.max(0, n)));
+              }}
+              keyboardType="numeric"
+              selectTextOnFocus
+              mode="outlined"
+              dense
+              style={styles.StepperInput}
+              accessibilityLabel="Pre-fledge warning days"
+            />
             <IconButton
               icon="plus"
               size={20}
@@ -79,6 +91,6 @@ const styles = StyleSheet.create({
   BandingWarningTitle: { fontWeight: '700', color: '#b45309', marginBottom: 4 },
   BandingWarningText:  { color: '#78350f', lineHeight: 18 },
   Stepper:             { flexDirection: 'row', alignItems: 'center' },
-  StepperValue:        { width: 24, textAlign: 'center', fontSize: 16, fontWeight: '600' },
+  StepperInput:        { width: 52, textAlign: 'center' },
   BuildInfo:           { marginTop: 16, color: '#aaa', textAlign: 'center' },
 });
